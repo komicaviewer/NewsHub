@@ -48,15 +48,17 @@ The architecture is modelled after [Mihon](https://github.com/mihonapp/mihon)'s 
 
 ```
 :extension-api
-      ↓              ↓              ↓
+      ↓                    ↓                ↓
 :extensions-builtin  :extension-loader  :marketplace
-                          ↓
-                      :collection
-                          ↓
-                         :app
+                           ↓                ↓ (PackageManager via Context, NOT :extension-loader)
+                       :collection
+                           ↓
+                          :app
 ```
 
 `:extension-api` is a pure Kotlin JVM library so it can be published independently in the future for third-party extension developers.
+
+**Note on `:marketplace` boundaries:** `:marketplace` checks install state by querying `PackageManager` directly via Android `Context`. It does **not** depend on `:extension-loader`. The loader's responsibility is loading and instantiating `Source` objects from APKs; the marketplace's responsibility is discovery, download, and install lifecycle only.
 
 ---
 
