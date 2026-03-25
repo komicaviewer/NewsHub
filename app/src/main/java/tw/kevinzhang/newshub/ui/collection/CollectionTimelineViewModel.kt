@@ -1,5 +1,6 @@
 package tw.kevinzhang.newshub.ui.collection
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
@@ -18,10 +19,13 @@ import javax.inject.Inject
 class CollectionTimelineViewModel @Inject constructor(
     private val collectionRepo: CollectionRepository,
     private val extensionLoader: ExtensionLoader,
+    savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    fun getTimelinePager(collectionId: String): Flow<PagingData<ThreadSummary>> {
-        return collectionRepo.observeSubscriptions(collectionId)
+    private val collectionId: String = checkNotNull(savedStateHandle["collectionId"])
+
+    val timelinePager: Flow<PagingData<ThreadSummary>> =
+        collectionRepo.observeSubscriptions(collectionId)
             .flatMapLatest { subs ->
                 Pager(PagingConfig(pageSize = 20)) {
                     MergedTimelinePagingSource(
@@ -31,5 +35,4 @@ class CollectionTimelineViewModel @Inject constructor(
                 }.flow
             }
             .cachedIn(viewModelScope)
-    }
 }

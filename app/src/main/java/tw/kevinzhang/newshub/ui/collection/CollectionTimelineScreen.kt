@@ -20,7 +20,6 @@ import androidx.compose.ui.res.dimensionResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.compose.items
 import coil.compose.AsyncImage
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.newshub.R
@@ -31,15 +30,15 @@ import tw.kevinzhang.newshub.ui.news.CardHeadTimeBlock
 
 @Composable
 fun CollectionTimelineScreen(
-    collectionId: String,
     onThreadClick: (ThreadSummary) -> Unit,
     viewModel: CollectionTimelineViewModel = hiltViewModel(),
 ) {
-    val items = viewModel.getTimelinePager(collectionId).collectAsLazyPagingItems()
+    val items = viewModel.timelinePager.collectAsLazyPagingItems()
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn {
-            items(items) { summary ->
+            items(count = items.itemCount) { index ->
+                val summary = items[index]
                 if (summary != null) {
                     ThreadSummaryCard(summary = summary, onClick = { onThreadClick(summary) })
                 }
