@@ -15,30 +15,42 @@ import tw.kevinzhang.marketplace.data.InstallState
 import tw.kevinzhang.newshub.R
 import tw.kevinzhang.newshub.ui.component.AppCard
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MarketplaceScreen(
     viewModel: MarketplaceViewModel = hiltViewModel(),
 ) {
     val extensions by viewModel.extensions.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val installError by viewModel.installError.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    if (isLoading && extensions.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+    LaunchedEffect(installError) {
+        if (installError != null) {
+            snackbarHostState.showSnackbar(installError!!)
+            viewModel.clearInstallError()
         }
-        return
     }
 
-    if (extensions.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No extensions available. Configure the marketplace URL in Settings.")
+    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { innerPadding ->
+        if (isLoading && extensions.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            return@Scaffold
         }
-        return
-    }
 
-    LazyColumn {
-        items(extensions, key = { it.first.id }) { (info, state) ->
-            ExtensionCard(info = info, state = state, onInstall = { viewModel.install(info) })
+        if (extensions.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                Text("No extensions available. Configure the marketplace URL in Settings.")
+            }
+            return@Scaffold
+        }
+
+        LazyColumn(contentPadding = innerPadding) {
+            items(extensions, key = { it.first.id }) { (info, state) ->
+                ExtensionCard(info = info, state = state, onInstall = { viewModel.install(info) })
+            }
         }
     }
 }

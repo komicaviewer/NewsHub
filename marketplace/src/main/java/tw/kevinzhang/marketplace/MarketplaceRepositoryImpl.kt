@@ -14,6 +14,7 @@ import tw.kevinzhang.marketplace.data.ExtensionInfo
 import tw.kevinzhang.marketplace.data.InstallState
 import java.io.File
 import java.io.IOException
+import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Named
 
@@ -34,7 +35,11 @@ class MarketplaceRepositoryImpl @Inject constructor(
 
     override suspend fun downloadApk(apkUrl: String): File = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(apkUrl).build()
-        val destFile = File(context.cacheDir, apkUrl.substringAfterLast('/'))
+        val safeFilename = MessageDigest.getInstance("SHA-256")
+            .digest(apkUrl.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+            .take(16) + ".apk"
+        val destFile = File(context.cacheDir, safeFilename)
         okHttpClient.newCall(request).execute().use { response ->
             val body = response.body ?: throw IOException("Empty response body for APK: $apkUrl")
             body.byteStream().use { input ->
