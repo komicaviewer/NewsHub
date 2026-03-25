@@ -27,7 +27,7 @@ class CollectionTimelineViewModel @Inject constructor(
     val timelinePager: Flow<PagingData<ThreadSummary>> =
         collectionRepo.observeSubscriptions(collectionId)
             .flatMapLatest { subs ->
-                Pager(PagingConfig(pageSize = 20)) {
+                Pager(PagingConfig(pageSize = 20, enablePlaceholders = false)) {
                     MergedTimelinePagingSource(
                         subscriptions = subs,
                         sourceResolver = { extensionLoader.getSource(it) },

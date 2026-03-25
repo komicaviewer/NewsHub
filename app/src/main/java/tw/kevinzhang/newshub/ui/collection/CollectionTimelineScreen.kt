@@ -38,10 +38,8 @@ fun CollectionTimelineScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn {
             items(count = items.itemCount) { index ->
-                val summary = items[index]
-                if (summary != null) {
-                    ThreadSummaryCard(summary = summary, onClick = { onThreadClick(summary) })
-                }
+                val summary = items[index] ?: return@items
+                ThreadSummaryCard(summary = summary, onClick = { onThreadClick(summary) })
             }
             item {
                 when (items.loadState.append) {
