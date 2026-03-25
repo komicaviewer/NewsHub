@@ -2,6 +2,7 @@ package tw.kevinzhang.newshub.ui.collection
 
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -39,6 +40,8 @@ class MergedTimelinePagingSource(
                 prevKey = if (page == 1) null else page - 1,
                 nextKey = if (sorted.isEmpty()) null else page + 1,
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             LoadResult.Error(e)
         }
