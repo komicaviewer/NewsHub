@@ -39,21 +39,26 @@ class MarketplaceViewModel @Inject constructor(
     fun refresh() {
         viewModelScope.launch {
             _isLoading.value = true
-            val infos = repository.fetchIndex()
-            _extensions.value = infos.map { it to repository.getInstallState(it) }
-            _isLoading.value = false
+            try {
+                val infos = repository.fetchIndex()
+                _extensions.value = infos.map { it to repository.getInstallState(it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _installError.value = "Failed to load marketplace: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
 
     fun install(info: ExtensionInfo) {
         viewModelScope.launch {
             try {
+                // Clean up any leftover APK files from previous installs
+                context.cacheDir.listFiles { f -> f.extension == "apk" }?.forEach { it.delete() }
                 val apkFile = repository.downloadApk(info.apkUrl, info.sha256)
-                try {
-                    installExtension(apkFile)
-                } finally {
-                    apkFile.delete()
-                }
+                installExtension(apkFile)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

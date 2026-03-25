@@ -28,6 +28,7 @@ class MarketplaceRepositoryImpl @Inject constructor(
     override suspend fun fetchIndex(): List<ExtensionInfo> = withContext(Dispatchers.IO) {
         if (indexUrl.isBlank()) return@withContext emptyList()
         okHttpClient.newCall(Request.Builder().url(indexUrl).build()).execute().use { response ->
+            if (!response.isSuccessful) throw IOException("Index fetch failed: HTTP ${response.code}")
             val body = response.body?.string() ?: return@withContext emptyList()
             gson.fromJson(body, ExtensionIndex::class.java).extensions
         }
@@ -46,6 +47,10 @@ class MarketplaceRepositoryImpl @Inject constructor(
             }
         }
         if (expectedSha256 != null) {
+            if (expectedSha256.length != 64 || !expectedSha256.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) {
+                destFile.delete()
+                throw IOException("Malformed sha256 in extension index for $apkUrl: '$expectedSha256'")
+            }
             val actualSha256 = destFile.readBytes().let { bytes ->
                 MessageDigest.getInstance("SHA-256")
                     .digest(bytes)
