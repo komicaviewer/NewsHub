@@ -12,7 +12,7 @@ buildscript {
                 paging: '3.0.1',
                 coroutines: '1.6.4',
                 kotlin: '1.7.0',
-                lifecycle: '2.3.1',
+                lifecycle: '2.6.2',
                 okhttp: '4.10.0',
                 jsoup: '1.12.1',
                 junit: '5.3.1',
@@ -47,4 +47,14 @@ plugins {
 
 task clean(type: Delete) {
     delete rootProject.buildDir
+}
+
+subprojects {
+    configurations.all {
+        resolutionStrategy {
+            force "org.jetbrains.kotlin:kotlin-stdlib:1.8.10"
+            force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.10"
+            force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.10"
+        }
+    }
 }

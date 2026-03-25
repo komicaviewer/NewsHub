@@ -23,8 +23,9 @@ import androidx.compose.material3.SmallTopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.dimensionResource
@@ -42,8 +43,8 @@ fun ThreadDetailScreen(
     onNavigateUp: () -> Unit,
     viewModel: ThreadDetailViewModel = hiltViewModel(),
 ) {
-    val thread by viewModel.thread.collectAsState()
-    val previewPost by viewModel.previewPost.collectAsState()
+    val thread by viewModel.thread.collectAsStateWithLifecycle()
+    val previewPost by viewModel.previewPost.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -68,11 +69,12 @@ fun ThreadDetailScreen(
                 contentAlignment = Alignment.Center,
             ) { CircularProgressIndicator() }
         } else {
+            val onReplyToClick = remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
             LazyColumn(modifier = Modifier.padding(padding)) {
-                items(thread!!.posts) { post ->
+                items(thread!!.posts, key = { it.id }) { post ->
                     ExtPostCard(
                         post = post,
-                        onReplyToClick = { viewModel.onReplyToClick(it) },
+                        onReplyToClick = onReplyToClick,
                     )
                 }
             }

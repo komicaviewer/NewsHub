@@ -30,7 +30,7 @@ fun CollectionsScreen(
         }
     } else {
         LazyColumn {
-            items(collections) { collection ->
+            items(collections, key = { it.id }) { collection ->
                 ListItem(
                     headlineText = { Text(collection.name) },
                     modifier = Modifier.clickable { onCollectionClick(collection) },

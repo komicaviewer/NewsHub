@@ -101,5 +101,5 @@ private fun PreviewDrawer() {
 
 @Composable
 fun NavItemText(item: NavItems) {
-    Text(text = item.resourceId?.takeIf { it != 0 }?.let { stringResource(id = it) } ?: item.title!!)
+    Text(text = item.resourceId?.takeIf { it != 0 }?.let { stringResource(id = it) } ?: item.title ?: item.route)
 }
