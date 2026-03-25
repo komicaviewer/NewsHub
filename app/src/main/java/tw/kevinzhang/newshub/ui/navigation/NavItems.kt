@@ -9,6 +9,18 @@ open class NavItems(
     open val title: String? = null,
 )
 
+sealed class MainNavItems(
+    override val resourceId: Int,
+    override val icon: Int,
+    override val route: String,
+) : NavItems(resourceId = resourceId, icon = icon, route = route) {
+    object Collections : MainNavItems(R.string.preset, R.drawable.ic_outline_home_24, "collections")
+    object Extensions : MainNavItems(R.string.home, R.drawable.ic_outline_globe_24, "extensions")
+    object Settings : MainNavItems(R.string.history, R.drawable.ic_outline_settings_24, "settings")
+}
+
+fun mainNavItems() = listOf(MainNavItems.Collections, MainNavItems.Extensions, MainNavItems.Settings)
+
 sealed class DrawerNavItems(
     override val resourceId: Int,
     override val icon: Int,
