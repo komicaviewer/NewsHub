@@ -9,7 +9,9 @@ import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extensions_builtin.toExtParagraph
 import tw.kevinzhang.hub_server.data.Host
+import tw.kevinzhang.hub_server.data.Paragraph
 import tw.kevinzhang.hub_server.data.board.BoardRepositoryImpl
+import tw.kevinzhang.hub_server.data.comment.gamer.GamerCommentRepositoryImpl
 import tw.kevinzhang.hub_server.data.news.gamer.GamerNewsRepositoryImpl
 import tw.kevinzhang.hub_server.data.post.gamer.GamerThreadRepositoryImpl
 import javax.inject.Inject
@@ -19,6 +21,7 @@ class GamerSource @Inject constructor(
     private val boardRepo: BoardRepositoryImpl,
     private val newsRepo: GamerNewsRepositoryImpl,
     private val threadRepo: GamerThreadRepositoryImpl,
+    private val commentRepo: GamerCommentRepositoryImpl,
 ) : Source {
     override val id = "tw.kevinzhang.gamer"
     override val name = "Gamer 巴哈姆特"
@@ -48,7 +51,7 @@ class GamerSource @Inject constructor(
                 author = news.posterName,
                 createdAt = null,
                 replyCount = news.interactions,
-                thumbnail = null,
+                thumbnail = news.content.filterIsInstance<Paragraph.ImageInfo>().firstOrNull()?.thumb,
                 previewContent = news.content.map { it.toExtParagraph() },
             )
         }
@@ -61,13 +64,21 @@ class GamerSource @Inject constructor(
             id = summary.id,
             title = summary.title,
             posts = posts.map { post ->
+                val gamerComments = commentRepo.getAllComments(post.commentsUrl, 1, hubBoard)
                 Post(
                     id = post.id,
                     author = post.posterName,
                     createdAt = post.createdAt,
                     thumbnail = null,
                     content = post.content.map { it.toExtParagraph() },
-                    comments = emptyList(),
+                    comments = gamerComments.map { comment ->
+                        Comment(
+                            id = comment.id,
+                            author = comment.posterName,
+                            createdAt = comment.createdAt,
+                            content = comment.content.map { it.toExtParagraph() },
+                        )
+                    },
                 )
             },
         )
