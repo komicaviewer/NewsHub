@@ -19,12 +19,14 @@ class MergedTimelinePagingSource(
 
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, ThreadSummary> {
         val page = params.key ?: 1
+        // Note: if any single source throws, the entire page load fails (all-or-nothing).
+        // This is intentional — partial results from a failing source could confuse timeline ordering.
         return try {
             val results = coroutineScope {
                 subscriptions
                     .mapNotNull { sub ->
                         val source = sourceResolver(sub.sourceId) ?: return@mapNotNull null
-                        val board = Board(sub.sourceId, sub.boardUrl, sub.boardName)
+                        val board = Board(sourceId = sub.sourceId, url = sub.boardUrl, name = sub.boardName)
                         async { source.getThreadSummaries(board, page) }
                     }
                     .awaitAll()
