@@ -23,13 +23,17 @@ class ExtensionsViewModel @Inject constructor(
     private val _sources = MutableStateFlow<List<SourceWithBoards>>(emptyList())
     val sources = _sources.asStateFlow()
 
+    private val _isLoading = MutableStateFlow(true)
+    val isLoading = _isLoading.asStateFlow()
+
     val collections = collectionRepo.observeCollections()
 
     init {
         viewModelScope.launch {
             _sources.value = extensionLoader.getAllSources().map { source ->
-                SourceWithBoards(source = source, boards = source.getBoards())
+                SourceWithBoards(source = source, boards = runCatching { source.getBoards() }.getOrDefault(emptyList()))
             }
+            _isLoading.value = false
         }
     }
 

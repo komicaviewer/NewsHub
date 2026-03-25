@@ -9,6 +9,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import tw.kevinzhang.marketplace.MarketplaceRepository
 import tw.kevinzhang.marketplace.data.ExtensionInfo
@@ -28,6 +29,9 @@ class MarketplaceViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
 
+    private val _installError = MutableStateFlow<String?>(null)
+    val installError = _installError.asStateFlow()
+
     init {
         refresh()
     }
@@ -43,10 +47,18 @@ class MarketplaceViewModel @Inject constructor(
 
     fun install(info: ExtensionInfo) {
         viewModelScope.launch {
-            val apkFile = repository.downloadApk(info.apkUrl)
-            installExtension(apkFile)
+            try {
+                val apkFile = repository.downloadApk(info.apkUrl)
+                installExtension(apkFile)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _installError.value = "Failed to install ${info.name}: ${e.message}"
+            }
         }
     }
+
+    fun clearInstallError() { _installError.value = null }
 
     private fun installExtension(apkFile: File) {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", apkFile)

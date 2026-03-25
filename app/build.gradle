@@ -9,7 +9,7 @@ android {
     compileSdk 33
 
     defaultConfig {
-        applicationId "dev.zlong.newshub"
+        applicationId "tw.kevinzhang.newshub"
         minSdk 21
         targetSdk 33
         versionCode 1

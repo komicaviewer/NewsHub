@@ -22,6 +22,7 @@ fun ExtensionsScreen(
 ) {
     val sources by viewModel.sources.collectAsStateWithLifecycle()
     val collections by viewModel.collections.collectAsStateWithLifecycle(emptyList())
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Marketplace entry point
@@ -34,12 +35,14 @@ fun ExtensionsScreen(
             Text("Browse Marketplace")
         }
 
-        if (sources.isEmpty()) {
-            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+        when {
+            isLoading -> Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
-        } else {
-            LazyColumn(modifier = Modifier.weight(1f)) {
+            sources.isEmpty() -> Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Text("No extensions installed. Browse the Marketplace to install some.")
+            }
+            else -> LazyColumn(modifier = Modifier.weight(1f)) {
                 sources.forEach { (source, boards) ->
                     item(key = source.id) {
                         Text(

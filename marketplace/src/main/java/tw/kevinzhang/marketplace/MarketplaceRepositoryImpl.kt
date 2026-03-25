@@ -13,6 +13,7 @@ import tw.kevinzhang.marketplace.data.ExtensionIndex
 import tw.kevinzhang.marketplace.data.ExtensionInfo
 import tw.kevinzhang.marketplace.data.InstallState
 import java.io.File
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Named
 
@@ -35,7 +36,8 @@ class MarketplaceRepositoryImpl @Inject constructor(
         val request = Request.Builder().url(apkUrl).build()
         val destFile = File(context.cacheDir, apkUrl.substringAfterLast('/'))
         okHttpClient.newCall(request).execute().use { response ->
-            response.body!!.byteStream().use { input ->
+            val body = response.body ?: throw IOException("Empty response body for APK: $apkUrl")
+            body.byteStream().use { input ->
                 destFile.outputStream().use { output -> input.copyTo(output) }
             }
         }
