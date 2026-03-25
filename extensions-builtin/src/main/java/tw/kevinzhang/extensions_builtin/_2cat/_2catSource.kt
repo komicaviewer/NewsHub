@@ -2,7 +2,6 @@ package tw.kevinzhang.extensions_builtin._2cat
 
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Board as ExtBoard
-import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
