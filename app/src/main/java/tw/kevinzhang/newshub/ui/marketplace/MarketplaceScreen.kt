@@ -26,10 +26,9 @@ fun MarketplaceScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(installError) {
-        if (installError != null) {
-            snackbarHostState.showSnackbar(installError!!)
-            viewModel.clearInstallError()
-        }
+        val error = installError ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(error)
+        viewModel.clearInstallError()
     }
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { innerPadding ->

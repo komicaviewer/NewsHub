@@ -7,5 +7,5 @@ import java.io.File
 interface MarketplaceRepository {
     suspend fun fetchIndex(): List<ExtensionInfo>
     fun getInstallState(info: ExtensionInfo): InstallState
-    suspend fun downloadApk(apkUrl: String): File
+    suspend fun downloadApk(apkUrl: String, expectedSha256: String?): File
 }

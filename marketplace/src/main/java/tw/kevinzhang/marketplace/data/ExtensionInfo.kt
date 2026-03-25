@@ -8,6 +8,7 @@ data class ExtensionInfo(
     val language: String,
     val iconUrl: String?,
     val apkUrl: String,
+    val sha256: String? = null,
 )
 
 // index.json root

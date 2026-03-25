@@ -48,8 +48,12 @@ class MarketplaceViewModel @Inject constructor(
     fun install(info: ExtensionInfo) {
         viewModelScope.launch {
             try {
-                val apkFile = repository.downloadApk(info.apkUrl)
-                installExtension(apkFile)
+                val apkFile = repository.downloadApk(info.apkUrl, info.sha256)
+                try {
+                    installExtension(apkFile)
+                } finally {
+                    apkFile.delete()
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -33,17 +33,27 @@ class MarketplaceRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun downloadApk(apkUrl: String): File = withContext(Dispatchers.IO) {
+    override suspend fun downloadApk(apkUrl: String, expectedSha256: String?): File = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(apkUrl).build()
         val safeFilename = MessageDigest.getInstance("SHA-256")
             .digest(apkUrl.toByteArray())
-            .joinToString("") { "%02x".format(it) }
-            .take(16) + ".apk"
+            .joinToString("") { "%02x".format(it) } + ".apk"
         val destFile = File(context.cacheDir, safeFilename)
         okHttpClient.newCall(request).execute().use { response ->
             val body = response.body ?: throw IOException("Empty response body for APK: $apkUrl")
             body.byteStream().use { input ->
                 destFile.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+        if (expectedSha256 != null) {
+            val actualSha256 = destFile.readBytes().let { bytes ->
+                MessageDigest.getInstance("SHA-256")
+                    .digest(bytes)
+                    .joinToString("") { "%02x".format(it) }
+            }
+            if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
+                destFile.delete()
+                throw IOException("APK integrity check failed: expected $expectedSha256 but got $actualSha256")
             }
         }
         destFile
