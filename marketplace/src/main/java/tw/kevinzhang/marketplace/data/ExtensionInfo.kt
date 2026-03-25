@@ -8,6 +8,7 @@ data class ExtensionInfo(
     val language: String,
     val iconUrl: String?,
     val apkUrl: String,
+    /** SHA-256 hex digest of the APK. When present, verified after download. Null for legacy index entries (integrity not enforced). */
     val sha256: String? = null,
 )
 

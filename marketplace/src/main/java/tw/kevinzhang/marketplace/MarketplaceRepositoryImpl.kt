@@ -41,6 +41,7 @@ class MarketplaceRepositoryImpl @Inject constructor(
             .joinToString("") { "%02x".format(it) } + ".apk"
         val destFile = File(context.cacheDir, safeFilename)
         okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw IOException("APK download failed: HTTP ${response.code} for $apkUrl")
             val body = response.body ?: throw IOException("Empty response body for APK: $apkUrl")
             body.byteStream().use { input ->
                 destFile.outputStream().use { output -> input.copyTo(output) }
