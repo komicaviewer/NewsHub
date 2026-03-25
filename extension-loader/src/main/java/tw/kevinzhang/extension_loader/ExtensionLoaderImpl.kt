@@ -3,15 +3,17 @@ package tw.kevinzhang.extension_loader
 import android.content.Context
 import android.content.pm.PackageManager
 import dalvik.system.PathClassLoader
+import dagger.hilt.android.qualifiers.ApplicationContext
 import tw.kevinzhang.extension_api.Source
 import javax.inject.Inject
+import javax.inject.Named
 
 private const val EXTENSION_META_KEY = "newshub.extension"
 private const val SOURCE_CLASS_KEY = "newshub.extension.source_class"
 
 class ExtensionLoaderImpl @Inject constructor(
-    private val builtInSources: List<Source>,
-    private val context: Context,
+    @Named("builtInSources") private val builtInSources: List<@JvmSuppressWildcards Source>,
+    @ApplicationContext private val context: Context,
 ) : ExtensionLoader {
 
     override fun getAllSources(): List<Source> =

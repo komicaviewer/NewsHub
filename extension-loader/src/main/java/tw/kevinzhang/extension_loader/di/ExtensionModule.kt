@@ -11,6 +11,7 @@ import tw.kevinzhang.extension_loader.ExtensionLoaderImpl
 import tw.kevinzhang.extensions_builtin._2cat._2catSource
 import tw.kevinzhang.extensions_builtin.gamer.GamerSource
 import tw.kevinzhang.extensions_builtin.sora.SoraSource
+import javax.inject.Named
 import javax.inject.Singleton
 
 @Module
@@ -24,6 +25,7 @@ abstract class ExtensionModule {
     companion object {
         @Provides
         @Singleton
+        @Named("builtInSources")
         fun provideBuiltInSources(
             gamer: GamerSource,
             sora: SoraSource,
