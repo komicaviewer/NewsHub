@@ -69,7 +69,7 @@ class GamerSource @Inject constructor(
                     id = post.id,
                     author = post.posterName,
                     createdAt = post.createdAt,
-                    thumbnail = null,
+                    thumbnail = post.content.filterIsInstance<Paragraph.ImageInfo>().firstOrNull()?.thumb,
                     content = post.content.map { it.toExtParagraph() },
                     comments = gamerComments.map { comment ->
                         Comment(
