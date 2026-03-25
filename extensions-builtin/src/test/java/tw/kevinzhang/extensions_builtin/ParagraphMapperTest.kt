@@ -17,6 +17,7 @@ class ParagraphMapperTest {
     @Test fun `KReplyTo maps to Paragraph ReplyTo`() {
         val result = KReplyTo(">>123").toExtParagraph()
         assertTrue(result is ExtParagraph.ReplyTo)
+        assertEquals(">>123", (result as ExtParagraph.ReplyTo).id)
     }
 
     @Test fun `GText maps to Paragraph Text`() {
