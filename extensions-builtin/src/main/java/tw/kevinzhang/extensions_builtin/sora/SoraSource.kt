@@ -6,18 +6,15 @@ import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extensions_builtin.toExtParagraph
-import tw.kevinzhang.hub_server.data.Host
-import tw.kevinzhang.hub_server.data.Paragraph
-import tw.kevinzhang.hub_server.data.news.komica.KomicaNewsRepositoryImpl
-import tw.kevinzhang.hub_server.data.post.komica.KomicaThreadRepositoryImpl
+import tw.kevinzhang.komica_api.KomicaApi
 import tw.kevinzhang.komica_api.model.KBoard
+import tw.kevinzhang.komica_api.model.KImageInfo
 import tw.kevinzhang.komica_api.model.boards
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import javax.inject.Inject
-import tw.kevinzhang.hub_server.data.board.Board as HubBoard
 
 class SoraSource @Inject constructor(
-    private val newsRepo: KomicaNewsRepositoryImpl,
-    private val threadRepo: KomicaThreadRepositoryImpl,
+    private val api: KomicaApi,
 ) : Source {
     override val id = "tw.kevinzhang.komica-sora"
     override val name = "Sora Komica"
@@ -31,35 +28,41 @@ class SoraSource @Inject constructor(
             .map { kBoard -> ExtBoard(sourceId = id, url = kBoard.url, name = kBoard.name) }
 
     override suspend fun getThreadSummaries(board: ExtBoard, page: Int): List<ThreadSummary> {
-        val hubBoard = HubBoard(url = board.url, name = board.name, host = Host.KOMICA)
-        return newsRepo.getAllNews(hubBoard, page).map { news ->
+        val kBoard = boards().first { it.url == board.url }
+        val req = api.getBoardRequestBuilder(kBoard)
+            .setPage(page)
+            .build()
+        return api.getAllPost(req).map { kPost ->
             ThreadSummary(
                 sourceId = id,
                 boardUrl = board.url,
-                id = news.threadUrl,
-                title = news.title,
-                author = news.poster,
-                createdAt = news.createdAt,
-                replyCount = news.replies,
-                thumbnail = news.content.filterIsInstance<Paragraph.ImageInfo>().firstOrNull()?.thumb,
-                previewContent = news.content.map { it.toExtParagraph() },
+                id = kPost.url,
+                title = kPost.title,
+                author = kPost.poster,
+                createdAt = kPost.createdAt,
+                replyCount = kPost.replies,
+                thumbnail = kPost.content.filterIsInstance<KImageInfo>().firstOrNull()?.thumb,
+                previewContent = kPost.content.map { it.toExtParagraph() },
             )
         }
     }
 
     override suspend fun getThread(summary: ThreadSummary): Thread {
-        val hubBoard = HubBoard(url = summary.boardUrl, name = "", host = Host.KOMICA)
-        val posts = threadRepo.getPostThread(summary.id, 1, hubBoard)
+        val kBoard = boards().first { it.url == summary.boardUrl }
+        val req = api.getThreadRequestBuilder(kBoard)
+            .setUrl(summary.id.toHttpUrl())
+            .build()
+        val posts = api.getAllPost(req)
         return Thread(
             id = summary.id,
             title = summary.title,
-            posts = posts.map { post ->
+            posts = posts.map { kPost ->
                 Post(
-                    id = post.id,
-                    author = post.poster,
-                    createdAt = post.createdAt,
-                    thumbnail = post.content.filterIsInstance<Paragraph.ImageInfo>().firstOrNull()?.thumb,
-                    content = post.content.map { it.toExtParagraph() },
+                    id = kPost.id,
+                    author = kPost.poster,
+                    createdAt = kPost.createdAt,
+                    thumbnail = kPost.content.filterIsInstance<KImageInfo>().firstOrNull()?.thumb,
+                    content = kPost.content.map { it.toExtParagraph() },
                     comments = emptyList(),
                 )
             },

@@ -1,6 +1,5 @@
 package tw.kevinzhang.extensions_builtin.gamer
 
-import kotlinx.coroutines.flow.first
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.Comment
@@ -8,20 +7,14 @@ import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extensions_builtin.toExtParagraph
-import tw.kevinzhang.hub_server.data.Host
-import tw.kevinzhang.hub_server.data.Paragraph
-import tw.kevinzhang.hub_server.data.board.BoardRepositoryImpl
-import tw.kevinzhang.hub_server.data.comment.gamer.GamerCommentRepositoryImpl
-import tw.kevinzhang.hub_server.data.news.gamer.GamerNewsRepositoryImpl
-import tw.kevinzhang.hub_server.data.post.gamer.GamerThreadRepositoryImpl
+import tw.kevinzhang.gamer_api.GamerApi
+import tw.kevinzhang.gamer_api.model.GImageInfo
+import tw.kevinzhang.gamer_api.model.GText
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import javax.inject.Inject
-import tw.kevinzhang.hub_server.data.board.Board as HubBoard
 
 class GamerSource @Inject constructor(
-    private val boardRepo: BoardRepositoryImpl,
-    private val newsRepo: GamerNewsRepositoryImpl,
-    private val threadRepo: GamerThreadRepositoryImpl,
-    private val commentRepo: GamerCommentRepositoryImpl,
+    private val gamerApi: GamerApi,
 ) : Source {
     override val id = "tw.kevinzhang.gamer"
     override val name = "Gamer 巴哈姆特"
@@ -30,55 +23,74 @@ class GamerSource @Inject constructor(
     override val iconUrl: String? = null
 
     override suspend fun getBoards(): List<Board> =
-        boardRepo.getAllBoards().first()
-            .filter { it.host == Host.GAMER }
-            .map { board ->
-                Board(
-                    sourceId = id,
-                    url = board.url,
-                    name = board.name,
-                )
-            }
+        gamerApi.getAllBoard().map { gBoard ->
+            Board(
+                sourceId = id,
+                url = gBoard.url,
+                name = gBoard.name,
+            )
+        }
 
     override suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary> {
-        val hubBoard = HubBoard(url = board.url, name = board.name, host = Host.GAMER)
-        return newsRepo.getAllNews(hubBoard, page).map { news ->
+        val req = gamerApi.getRequestBuilder()
+            .setUrl(board.url.toHttpUrl())
+            .setPage(page.takeIf { it != 0 })
+            .build()
+        return gamerApi.getAllNews(req).map { gNews ->
             ThreadSummary(
                 sourceId = id,
                 boardUrl = board.url,
-                id = news.threadUrl,
-                title = news.title,
-                author = news.posterName,
+                id = gNews.url,
+                title = gNews.title,
+                author = gNews.posterName,
                 createdAt = null,
-                replyCount = news.interactions,
-                thumbnail = news.content.filterIsInstance<Paragraph.ImageInfo>().firstOrNull()?.thumb,
-                previewContent = news.content.map { it.toExtParagraph() },
+                replyCount = gNews.interactions,
+                thumbnail = gNews.thumb,
+                previewContent = listOf(
+                    tw.kevinzhang.extension_api.model.Paragraph.Text(gNews.preview)
+                ),
             )
         }
     }
 
     override suspend fun getThread(summary: ThreadSummary): Thread {
-        val hubBoard = HubBoard(url = summary.boardUrl, name = "", host = Host.GAMER)
-        val posts = threadRepo.getPostThread(summary.id, 1, hubBoard)
+        val req = gamerApi.getRequestBuilder()
+            .setUrl(summary.id.toHttpUrl())
+            .setPage(1)
+            .build()
+        val gPosts = gamerApi.getAllPost(req)
         return Thread(
             id = summary.id,
             title = summary.title,
-            posts = posts.map { post ->
-                val gamerComments = commentRepo.getAllComments(post.commentsUrl, 1, hubBoard)
+            posts = gPosts.map { gPost ->
+                val comments = if (gPost.commentsUrl.isNotBlank()) {
+                    try {
+                        val commentReq = gamerApi.getRequestBuilder()
+                            .setUrl(gPost.commentsUrl.toHttpUrl())
+                            .build()
+                        gamerApi.getAllComment(commentReq).map { gComment ->
+                            Comment(
+                                id = gComment.sn,
+                                author = gComment.nick,
+                                createdAt = gComment.wtime.toLongOrNull()?.times(1000),
+                                content = listOf(
+                                    tw.kevinzhang.extension_api.model.Paragraph.Text(gComment.content)
+                                ),
+                            )
+                        }
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                } else {
+                    emptyList()
+                }
                 Post(
-                    id = post.id,
-                    author = post.posterName,
-                    createdAt = post.createdAt,
-                    thumbnail = post.content.filterIsInstance<Paragraph.ImageInfo>().firstOrNull()?.thumb,
-                    content = post.content.map { it.toExtParagraph() },
-                    comments = gamerComments.map { comment ->
-                        Comment(
-                            id = comment.id,
-                            author = comment.posterName,
-                            createdAt = comment.createdAt,
-                            content = comment.content.map { it.toExtParagraph() },
-                        )
-                    },
+                    id = gPost.id,
+                    author = gPost.posterName,
+                    createdAt = gPost.createdAt,
+                    thumbnail = gPost.content.filterIsInstance<GImageInfo>().firstOrNull()?.thumb,
+                    content = gPost.content.map { it.toExtParagraph() },
+                    comments = comments,
                 )
             },
         )

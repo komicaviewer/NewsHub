@@ -1,4 +1,4 @@
-package tw.kevinzhang.hub_server.di
+package tw.kevinzhang.newshub.di
 
 import dagger.Module
 import dagger.Provides
@@ -7,14 +7,14 @@ import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import tw.kevinzhang.gamer_api.GamerApi
-import tw.kevinzhang.hub_server.BuildConfig
 import tw.kevinzhang.komica_api.KomicaApi
+import tw.kevinzhang.newshub.BuildConfig
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @InstallIn(SingletonComponent::class)
 @Module
-object ApiModule {
+object NetworkModule {
 
     @Provides
     @Singleton
@@ -32,7 +32,7 @@ object ApiModule {
 
     @Provides
     @Singleton
-    fun provideKomicaNewsApi(client: OkHttpClient) = KomicaApi(client)
+    fun provideKomicaApi(client: OkHttpClient) = KomicaApi(client)
 
     @Provides
     @Singleton

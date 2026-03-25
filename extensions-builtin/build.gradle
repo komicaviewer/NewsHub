@@ -33,9 +33,9 @@ android {
 
 dependencies {
     implementation project(':extension-api')
-    implementation project(':hub-server')
     implementation project(':gamer-api')
     implementation project(':komica-api')
+    implementation "com.squareup.okhttp3:okhttp:4.9.3"
     // hilt
     implementation "com.google.dagger:hilt-android:$versions.hilt"
     kapt "com.google.dagger:hilt-android-compiler:$versions.hilt"
