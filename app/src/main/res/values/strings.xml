@@ -13,4 +13,7 @@
     <string name="hot">熱門</string>
     <string name="preset">預設</string>
     <string name="add_board">新增</string>
+    <string name="collections">Collections</string>
+    <string name="extensions">Extensions</string>
+    <string name="settings">Settings</string>
 </resources>
