@@ -8,6 +8,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.dimensionResource
+import tw.kevinzhang.newshub.R
 import androidx.compose.ui.tooling.preview.Preview
 import tw.kevinzhang.hub_server.data.Paragraph
 import tw.kevinzhang.hub_server.data.comment.gamer.GamerComment

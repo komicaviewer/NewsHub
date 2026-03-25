@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.dimensionResource
+import tw.kevinzhang.newshub.R
 import tw.kevinzhang.hub_server.data.Paragraph
 import tw.kevinzhang.newshub.*
 import tw.kevinzhang.newshub.ui.component.LinkParagraph
