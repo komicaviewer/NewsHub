@@ -33,6 +33,7 @@ android {
 
 dependencies {
     implementation project(':extension-api')
+    implementation project(':hub-server')
     implementation project(':gamer-api')
     implementation project(':komica-api')
     // hilt
