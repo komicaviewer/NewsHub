@@ -9,6 +9,7 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import tw.kevinzhang.collection.CollectionRepository
 import tw.kevinzhang.extension_api.model.ThreadSummary
@@ -28,6 +29,7 @@ class CollectionTimelineViewModel @Inject constructor(
 
     val timelinePager: Flow<PagingData<ThreadSummary>> =
         collectionRepo.observeSubscriptions(collectionId)
+            .distinctUntilChanged()
             .flatMapLatest { subs ->
                 Pager(PagingConfig(pageSize = 20, enablePlaceholders = false)) {
                     MergedTimelinePagingSource(

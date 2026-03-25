@@ -43,7 +43,7 @@ fun CollectionTimelineScreen(
                 ThreadSummaryCard(summary = summary, onClick = { onThreadClick(summary) })
             }
             item {
-                when (items.loadState.append) {
+                when (val appendState = items.loadState.append) {
                     is LoadState.Loading -> Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -51,19 +51,17 @@ fun CollectionTimelineScreen(
                         contentAlignment = Alignment.Center,
                     ) { CircularProgressIndicator() }
                     is LoadState.Error -> {
-                        val error = (items.loadState.append as LoadState.Error).error
-                        Log.e("CollectionTimeline", "Append load failed", error)
+                        Log.e("CollectionTimeline", "Append load failed", appendState.error)
                         Text("Failed to load more")
                     }
                     else -> {}
                 }
             }
         }
-        when (items.loadState.refresh) {
+        when (val refreshState = items.loadState.refresh) {
             is LoadState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             is LoadState.Error -> {
-                val error = (items.loadState.refresh as LoadState.Error).error
-                Log.e("CollectionTimeline", "Refresh failed", error)
+                Log.e("CollectionTimeline", "Refresh failed", refreshState.error)
                 Text("Error loading timeline", modifier = Modifier.align(Alignment.Center))
             }
             else -> {}
