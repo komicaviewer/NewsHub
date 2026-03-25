@@ -31,7 +31,7 @@ class ExtensionsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             _sources.value = extensionLoader.getAllSources().map { source ->
-                SourceWithBoards(source = source, boards = runCatching { source.getBoards() }.getOrDefault(emptyList()))
+                SourceWithBoards(source = source, boards = runCatching { source.getBoards() }.getOrDefault(emptyList()).distinctBy { it.url })
             }
             _isLoading.value = false
         }
