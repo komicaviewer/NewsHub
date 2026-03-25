@@ -112,5 +112,38 @@ Browse between multiple forums.
     - [Komica20160704/homu-api](https://homu.homu-api.com/api) and [Repository](https://github.com/Komica20160704/homu-api)
     - [Komica+](https://github.com/TakumaMochizuki/Komica)
     
-## Guide
-BoardList > Board > NewsList > News > Thread(PostList) > HeadPost、RePostList > CommentList > Comment
+## Architecture
+
+```mermaid
+graph BT
+    komica-api[":komica-api"]
+    gamer-api[":gamer-api"]
+    extension-api[":extension-api"]
+    extensions-builtin[":extensions-builtin"]
+    extension-loader[":extension-loader"]
+    collection[":collection"]
+    marketplace[":marketplace"]
+    app[":app"]
+
+    komica-api --> extensions-builtin
+    gamer-api --> extensions-builtin
+    extension-api --> extensions-builtin
+    extensions-builtin --> extension-loader
+    extension-api --> extension-loader
+    extension-api --> collection
+    extension-loader --> app
+    collection --> app
+    marketplace --> app
+    extension-api --> app
+```
+
+| Module | Description |
+|---|---|
+| `:extension-api` | Public contract: `Source` interface, data models (`Board`, `ThreadSummary`, `Post`, `Paragraph`, …) |
+| `:extensions-builtin` | Built-in `Source` implementations for Komica (Sora, 2cat) and Gamer (巴哈姆特) |
+| `:komica-api` | Komica HTML parser + HTTP client |
+| `:gamer-api` | Gamer HTML parser + HTTP client |
+| `:extension-loader` | Loads built-in and APK-based extensions at runtime, provides `ExtensionLoader` |
+| `:collection` | Room DB for user-defined Collections and board subscriptions |
+| `:marketplace` | GitHub-based extension marketplace: index fetch, APK download, install-state tracking |
+| `:app` | UI (Jetpack Compose), navigation, Hilt wiring |

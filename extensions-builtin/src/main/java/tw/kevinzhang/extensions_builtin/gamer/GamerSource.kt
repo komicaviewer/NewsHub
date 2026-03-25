@@ -6,10 +6,10 @@ import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
+import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extensions_builtin.toExtParagraph
 import tw.kevinzhang.gamer_api.GamerApi
 import tw.kevinzhang.gamer_api.model.GImageInfo
-import tw.kevinzhang.gamer_api.model.GText
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import javax.inject.Inject
 
@@ -43,11 +43,11 @@ class GamerSource @Inject constructor(
                 id = gNews.url,
                 title = gNews.title,
                 author = gNews.posterName,
-                createdAt = null,
+                createdAt = null, // GNews does not expose a creation timestamp
                 replyCount = gNews.interactions,
                 thumbnail = gNews.thumb,
                 previewContent = listOf(
-                    tw.kevinzhang.extension_api.model.Paragraph.Text(gNews.preview)
+                    Paragraph.Text(gNews.preview)
                 ),
             )
         }
@@ -74,7 +74,7 @@ class GamerSource @Inject constructor(
                                 author = gComment.nick,
                                 createdAt = gComment.wtime.toLongOrNull()?.times(1000),
                                 content = listOf(
-                                    tw.kevinzhang.extension_api.model.Paragraph.Text(gComment.content)
+                                    Paragraph.Text(gComment.content)
                                 ),
                             )
                         }
