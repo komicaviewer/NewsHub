@@ -24,9 +24,10 @@ class MarketplaceRepositoryImpl @Inject constructor(
 
     override suspend fun fetchIndex(): List<ExtensionInfo> = withContext(Dispatchers.IO) {
         if (indexUrl.isBlank()) return@withContext emptyList()
-        val response = okHttpClient.newCall(Request.Builder().url(indexUrl).build()).execute()
-        val body = response.body?.string() ?: return@withContext emptyList()
-        gson.fromJson(body, ExtensionIndex::class.java).extensions
+        okHttpClient.newCall(Request.Builder().url(indexUrl).build()).execute().use { response ->
+            val body = response.body?.string() ?: return@withContext emptyList()
+            gson.fromJson(body, ExtensionIndex::class.java).extensions
+        }
     }
 
     override fun getInstallState(info: ExtensionInfo): InstallState {
@@ -35,7 +36,7 @@ class MarketplaceRepositoryImpl @Inject constructor(
         } catch (e: PackageManager.NameNotFoundException) {
             return InstallState.NOT_INSTALLED
         }
-        val installedVersion = PackageInfoCompat.getLongVersionCode(pkg).toInt()
+        val installedVersion = PackageInfoCompat.getLongVersionCode(pkg)
         return if (installedVersion < info.version) InstallState.UPDATE_AVAILABLE
         else InstallState.INSTALLED
     }

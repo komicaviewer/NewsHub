@@ -13,6 +13,6 @@ class ExtensionInfoTest {
         val index = Gson().fromJson(json, ExtensionIndex::class.java)
         assertEquals(1, index.extensions.size)
         assertEquals("tw.a", index.extensions[0].id)
-        assertEquals(2, index.extensions[0].version)
+        assertEquals(2L, index.extensions[0].version)
     }
 }

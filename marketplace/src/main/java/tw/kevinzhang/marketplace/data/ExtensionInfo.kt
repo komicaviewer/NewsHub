@@ -3,7 +3,7 @@ package tw.kevinzhang.marketplace.data
 data class ExtensionInfo(
     val id: String,
     val name: String,
-    val version: Int,
+    val version: Long,
     val versionName: String,
     val language: String,
     val iconUrl: String?,
