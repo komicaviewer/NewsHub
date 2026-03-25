@@ -20,33 +20,3 @@ sealed class MainNavItems(
 }
 
 fun mainNavItems() = listOf(MainNavItems.Collections, MainNavItems.Extensions, MainNavItems.Settings)
-
-sealed class DrawerNavItems(
-    override val resourceId: Int,
-    override val icon: Int,
-    override val route: String,
-): NavItems(resourceId, icon, route) {
-    object Home : DrawerNavItems(R.string.home, R.drawable.ic_outline_home_24, "home")
-    object History : DrawerNavItems(R.string.history, R.drawable.ic_outline_history_24, "history")
-}
-
-fun drawerNavItems() = listOf(
-    DrawerNavItems.Home,
-    DrawerNavItems.History,
-)
-
-sealed class BottomNavItems(
-    override val resourceId: Int,
-    override val icon: Int,
-    override val route: String
-): NavItems(resourceId, icon, route) {
-    object Default : BottomNavItems(R.string.preset, R.drawable.ic_outline_globe_24, "preset")
-    object Newest : BottomNavItems(R.string.newest, R.drawable.ic_outline_flash_on_24, "newest")
-    object Hot : BottomNavItems(R.string.hot, R.drawable.ic_outline_whatshot_24, "hot")
-}
-
-fun bottomNavItems() = listOf(
-    BottomNavItems.Default,
-    BottomNavItems.Newest,
-    BottomNavItems.Hot,
-)

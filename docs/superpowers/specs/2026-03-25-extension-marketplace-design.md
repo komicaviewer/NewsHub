@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-25
 **Status:** Approved
-**Branch:** gamer/feat/comment
+**Branch:** v2
 
 ---
 

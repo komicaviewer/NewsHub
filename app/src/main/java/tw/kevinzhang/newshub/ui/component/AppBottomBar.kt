@@ -25,7 +25,7 @@ fun AppBottomBar(
                 },
                 selected = selectedItem == item,
                 onClick = { onNavItemClick(item) },
-                label = { NavItemText(item = item) }
+                label = { item.resourceId?.let { Text(androidx.compose.ui.res.stringResource(it)) } }
             )
         }
     }
@@ -36,7 +36,7 @@ fun AppBottomBar(
 fun PreviewAppBottomBar() {
     NewshubTheme {
         AppBottomBar(
-            navItems = bottomNavItems(),
+            navItems = mainNavItems(),
         )
     }
 }

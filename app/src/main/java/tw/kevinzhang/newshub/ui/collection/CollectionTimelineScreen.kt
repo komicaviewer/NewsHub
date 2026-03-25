@@ -26,9 +26,6 @@ import coil.compose.AsyncImage
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.newshub.R
 import tw.kevinzhang.newshub.ui.component.AppCard
-import tw.kevinzhang.newshub.ui.news.CardHeadRepliesBlock
-import tw.kevinzhang.newshub.ui.news.CardHeadTextBlock
-import tw.kevinzhang.newshub.ui.news.CardHeadTimeBlock
 
 @Composable
 fun CollectionTimelineScreen(
@@ -83,12 +80,26 @@ private fun ThreadSummaryCard(summary: ThreadSummary, onClick: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Row {
-                    CardHeadTimeBlock(summary.createdAt)
-                    CardHeadTextBlock(summary.author)
+                    summary.createdAt?.let {
+                        Text(
+                            text = android.text.format.DateUtils.getRelativeTimeSpanString(it).toString(),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(end = dimensionResource(R.dimen.space_4)),
+                        )
+                    }
+                    summary.author?.let {
+                        Text(text = it, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
                 Row {
-                    CardHeadTextBlock(summary.sourceId)
-                    CardHeadRepliesBlock(summary.replyCount, showZero = false)
+                    Text(
+                        text = summary.sourceId,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(end = dimensionResource(R.dimen.space_4)),
+                    )
+                    summary.replyCount?.takeIf { it > 0 }?.let {
+                        Text(text = "$it", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
             summary.title?.let { title ->

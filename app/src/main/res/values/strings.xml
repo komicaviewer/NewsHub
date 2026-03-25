@@ -1,18 +1,5 @@
 <resources>
     <string name="app_name">NewsHub</string>
-    <string name="home">Home</string>
-    <string name="square">廣場</string>
-    <string name="movie">電影</string>
-    <string name="komica">Komica</string>
-    <string name="gamer">巴哈姆特</string>
-    <string name="subscription">訂閱</string>
-    <string name="history">歷史</string>
-    <string name="my_post">發表</string>
-    <string name="search">搜尋</string>
-    <string name="newest">最新</string>
-    <string name="hot">熱門</string>
-    <string name="preset">預設</string>
-    <string name="add_board">新增</string>
     <string name="collections">Collections</string>
     <string name="extensions">Extensions</string>
     <string name="settings">Settings</string>
