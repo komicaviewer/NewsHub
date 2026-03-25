@@ -23,6 +23,7 @@ import tw.kevinzhang.newshub.ui.collection.CollectionTimelineScreen
 import tw.kevinzhang.newshub.ui.collection.CollectionsScreen
 import tw.kevinzhang.newshub.ui.component.AppBottomBar
 import tw.kevinzhang.newshub.ui.extensions.ExtensionsScreen
+import tw.kevinzhang.newshub.ui.marketplace.MarketplaceScreen
 import tw.kevinzhang.newshub.ui.navigation.MainNavItems
 import tw.kevinzhang.newshub.ui.navigation.mainNavItems
 import tw.kevinzhang.newshub.ui.theme.NewshubTheme
@@ -101,7 +102,10 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     ThreadDetailScreen(onNavigateUp = { navController.navigateUp() })
                 }
                 composable("extensions") {
-                    ExtensionsScreen()
+                    ExtensionsScreen(onNavigateToMarketplace = { navController.navigate("marketplace") })
+                }
+                composable("marketplace") {
+                    MarketplaceScreen()
                 }
                 composable("settings") {
                     Box(

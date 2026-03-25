@@ -12,6 +12,7 @@ import okhttp3.Request
 import tw.kevinzhang.marketplace.data.ExtensionIndex
 import tw.kevinzhang.marketplace.data.ExtensionInfo
 import tw.kevinzhang.marketplace.data.InstallState
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Named
 
@@ -28,6 +29,17 @@ class MarketplaceRepositoryImpl @Inject constructor(
             val body = response.body?.string() ?: return@withContext emptyList()
             gson.fromJson(body, ExtensionIndex::class.java).extensions
         }
+    }
+
+    override suspend fun downloadApk(apkUrl: String): File = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url(apkUrl).build()
+        val destFile = File(context.cacheDir, apkUrl.substringAfterLast('/'))
+        okHttpClient.newCall(request).execute().use { response ->
+            response.body!!.byteStream().use { input ->
+                destFile.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+        destFile
     }
 
     override fun getInstallState(info: ExtensionInfo): InstallState {

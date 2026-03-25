@@ -6,7 +6,6 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import okhttp3.OkHttpClient
 import tw.kevinzhang.marketplace.MarketplaceRepository
 import tw.kevinzhang.marketplace.MarketplaceRepositoryImpl
 import javax.inject.Named
@@ -21,10 +20,6 @@ abstract class MarketplaceModule {
     abstract fun bindMarketplaceRepository(impl: MarketplaceRepositoryImpl): MarketplaceRepository
 
     companion object {
-        @Provides
-        @Singleton
-        fun provideOkHttpClient(): OkHttpClient = OkHttpClient()
-
         @Provides
         @Singleton
         fun provideGson(): Gson = Gson()
