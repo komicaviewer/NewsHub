@@ -28,6 +28,7 @@ class CollectionRepositoryImpl @Inject constructor(
 
     override suspend fun deleteCollection(id: String) {
         val entity = dao.getById(id) ?: return
+        dao.deleteSubscriptionsByCollection(id)
         dao.deleteCollection(entity)
     }
 

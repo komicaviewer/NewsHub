@@ -31,4 +31,7 @@ interface CollectionDao {
 
     @Query("DELETE FROM board_subscriptions WHERE id = :id")
     suspend fun deleteSubscriptionById(id: String)
+
+    @Query("DELETE FROM board_subscriptions WHERE collectionId = :collectionId")
+    suspend fun deleteSubscriptionsByCollection(collectionId: String)
 }
