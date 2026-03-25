@@ -1,5 +1,6 @@
 package tw.kevinzhang.newshub.ui.collection
 
+import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,7 +38,7 @@ fun CollectionTimelineScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn {
-            items(count = items.itemCount) { index ->
+            items(count = items.itemCount, key = { index -> items.peek(index)?.id ?: index }) { index ->
                 val summary = items[index] ?: return@items
                 ThreadSummaryCard(summary = summary, onClick = { onThreadClick(summary) })
             }
@@ -49,14 +50,22 @@ fun CollectionTimelineScreen(
                             .padding(dimensionResource(R.dimen.space_8)),
                         contentAlignment = Alignment.Center,
                     ) { CircularProgressIndicator() }
-                    is LoadState.Error -> Text("Failed to load more")
+                    is LoadState.Error -> {
+                        val error = (items.loadState.append as LoadState.Error).error
+                        Log.e("CollectionTimeline", "Append load failed", error)
+                        Text("Failed to load more")
+                    }
                     else -> {}
                 }
             }
         }
         when (items.loadState.refresh) {
             is LoadState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            is LoadState.Error -> Text("Error loading timeline", modifier = Modifier.align(Alignment.Center))
+            is LoadState.Error -> {
+                val error = (items.loadState.refresh as LoadState.Error).error
+                Log.e("CollectionTimeline", "Refresh failed", error)
+                Text("Error loading timeline", modifier = Modifier.align(Alignment.Center))
+            }
             else -> {}
         }
     }

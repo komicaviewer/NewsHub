@@ -22,7 +22,9 @@ class CollectionTimelineViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    private val collectionId: String = checkNotNull(savedStateHandle["collectionId"])
+    private val collectionId: String = checkNotNull(savedStateHandle["collectionId"]) {
+        "CollectionTimelineViewModel requires 'collectionId' in SavedStateHandle. Check navigation setup."
+    }
 
     val timelinePager: Flow<PagingData<ThreadSummary>> =
         collectionRepo.observeSubscriptions(collectionId)
