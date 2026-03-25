@@ -15,6 +15,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.dimensionResource
@@ -51,7 +52,9 @@ fun CollectionTimelineScreen(
                         contentAlignment = Alignment.Center,
                     ) { CircularProgressIndicator() }
                     is LoadState.Error -> {
-                        Log.e("CollectionTimeline", "Append load failed", appendState.error)
+                        LaunchedEffect(appendState.error) {
+                            Log.e("CollectionTimeline", "Append load failed", appendState.error)
+                        }
                         Text("Failed to load more")
                     }
                     else -> {}
@@ -61,7 +64,9 @@ fun CollectionTimelineScreen(
         when (val refreshState = items.loadState.refresh) {
             is LoadState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             is LoadState.Error -> {
-                Log.e("CollectionTimeline", "Refresh failed", refreshState.error)
+                LaunchedEffect(refreshState.error) {
+                    Log.e("CollectionTimeline", "Refresh failed", refreshState.error)
+                }
                 Text("Error loading timeline", modifier = Modifier.align(Alignment.Center))
             }
             else -> {}
