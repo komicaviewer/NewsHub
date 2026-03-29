@@ -9,8 +9,12 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import tw.kevinzhang.collection.CollectionRepository
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extension_loader.ExtensionLoader
@@ -26,6 +30,10 @@ class CollectionTimelineViewModel @Inject constructor(
     private val collectionId: String = checkNotNull(savedStateHandle["collectionId"]) {
         "CollectionTimelineViewModel requires 'collectionId' in SavedStateHandle. Check navigation setup."
     }
+
+    val collectionName: StateFlow<String> = collectionRepo.observeCollections()
+        .map { list -> list.firstOrNull { it.id == collectionId }?.name ?: "" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
     val timelinePager: Flow<PagingData<ThreadSummary>> =
         collectionRepo.observeSubscriptions(collectionId)

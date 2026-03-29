@@ -1,6 +1,5 @@
 package tw.kevinzhang.newshub.ui.collection
 
-import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,62 +10,103 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.dimensionResource
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
+import com.orhanobut.logger.Logger
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.newshub.R
 import tw.kevinzhang.newshub.ui.component.AppCard
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CollectionTimelineScreen(
+    onOpenDrawer: () -> Unit,
     onThreadClick: (ThreadSummary) -> Unit,
     viewModel: CollectionTimelineViewModel = hiltViewModel(),
 ) {
     val items = viewModel.timelinePager.collectAsLazyPagingItems()
+    val collectionName by viewModel.collectionName.collectAsStateWithLifecycle()
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn {
-            items(count = items.itemCount, key = { index -> items.peek(index)?.id ?: index }) { index ->
-                val summary = items[index] ?: return@items
-                ThreadSummaryCard(summary = summary, onClick = { onThreadClick(summary) })
-            }
-            item {
-                when (val appendState = items.loadState.append) {
-                    is LoadState.Loading -> Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(dimensionResource(R.dimen.space_8)),
-                        contentAlignment = Alignment.Center,
-                    ) { CircularProgressIndicator() }
-                    is LoadState.Error -> {
-                        LaunchedEffect(appendState.error) {
-                            Log.e("CollectionTimeline", "Append load failed", appendState.error)
-                        }
-                        Text("Failed to load more")
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(collectionName) },
+                navigationIcon = {
+                    IconButton(onClick = onOpenDrawer) {
+                        Icon(Icons.Default.Menu, contentDescription = "Open drawer")
                     }
-                    else -> {}
-                }
-            }
+                },
+            )
         }
-        when (val refreshState = items.loadState.refresh) {
-            is LoadState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            is LoadState.Error -> {
-                LaunchedEffect(refreshState.error) {
-                    Log.e("CollectionTimeline", "Refresh failed", refreshState.error)
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            LazyColumn {
+                items(
+                    count = items.itemCount,
+                    key = { index -> items.peek(index)?.id ?: index }) { index ->
+                    val summary = items[index] ?: return@items
+                    ThreadSummaryCard(summary = summary, onClick = { onThreadClick(summary) })
                 }
-                Text("Error loading timeline", modifier = Modifier.align(Alignment.Center))
+                item {
+                    when (val appendState = items.loadState.append) {
+                        is LoadState.Loading -> Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(dimensionResource(R.dimen.space_8)),
+                            contentAlignment = Alignment.Center,
+                        ) { CircularProgressIndicator() }
+
+                        is LoadState.Error -> {
+                            LaunchedEffect(appendState.error) {
+                                Logger.e(appendState.error, "Append load failed")
+                            }
+                            Text("Failed to load more")
+                        }
+
+                        else -> {}
+                    }
+                }
             }
-            else -> {}
+            when (val refreshState = items.loadState.refresh) {
+                is LoadState.Loading -> if (items.itemCount == 0) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
+                is LoadState.Error -> {
+                    LaunchedEffect(refreshState.error) {
+                        Logger.e(refreshState.error, "Refresh failed")
+                    }
+                    if (items.itemCount == 0) {
+                        Text(
+                            text = "Error loading timeline",
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
+                }
+                else -> {}
+            }
         }
     }
 }
@@ -82,7 +122,8 @@ private fun ThreadSummaryCard(summary: ThreadSummary, onClick: () -> Unit) {
                 Row {
                     summary.createdAt?.let {
                         Text(
-                            text = android.text.format.DateUtils.getRelativeTimeSpanString(it).toString(),
+                            text = android.text.format.DateUtils.getRelativeTimeSpanString(it)
+                                .toString(),
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(end = dimensionResource(R.dimen.space_4)),
                         )

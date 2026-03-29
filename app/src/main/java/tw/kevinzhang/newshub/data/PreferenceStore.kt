@@ -2,6 +2,7 @@ package tw.kevinzhang.newshub.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -20,7 +21,7 @@ class PreferenceStore @Inject constructor(
     @ApplicationContext appContext: Context
 ) {
     private object Keys {
-        val KEY_OF_DEFAULT_TOPIC = stringPreferencesKey("default_topic")
+        val KEY_DEFAULT_COLLECTION_ID = stringPreferencesKey("default_collection_id")
     }
 
     private val dataStore = appContext.dataStore
@@ -37,13 +38,19 @@ class PreferenceStore @Inject constructor(
             mapPreference(preferences)
         }
 
+    suspend fun setDefaultCollectionId(id: String) {
+        dataStore.edit { prefs ->
+            prefs[Keys.KEY_DEFAULT_COLLECTION_ID] = id
+        }
+    }
+
     private fun mapPreference(preferences: Preferences): Preference {
         return Preference(
-            preferences[Keys.KEY_OF_DEFAULT_TOPIC] ?: "",
+            defaultCollectionId = preferences[Keys.KEY_DEFAULT_COLLECTION_ID],
         )
     }
 
     data class Preference(
-        val defaultTopic: String,
+        val defaultCollectionId: String?,
     )
 }
