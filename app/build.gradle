@@ -6,12 +6,12 @@ plugins {
 }
 
 android {
-    compileSdk 33
+    compileSdk 34
 
     defaultConfig {
         applicationId "tw.kevinzhang.newshub"
         minSdk 21
-        targetSdk 33
+        targetSdk 34
         versionCode 1
         versionName "1.0"
 
@@ -38,7 +38,7 @@ android {
         compose true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion "1.2.0"
+        kotlinCompilerExtensionVersion "1.5.14"
     }
     packagingOptions {
         resources {
@@ -50,6 +50,7 @@ android {
         exclude "META-INF/AL2.0"
         exclude "META-INF/LGPL2.1"
     }
+    namespace 'tw.kevinzhang.newshub'
 }
 
 dependencies {
@@ -69,8 +70,6 @@ dependencies {
     implementation "androidx.compose.ui:ui-tooling-preview:$versions.compose"
     implementation "androidx.activity:activity-compose:$versions.compose_activity"
     implementation "androidx.navigation:navigation-compose:$versions.compose_navigation"
-    implementation "com.google.accompanist:accompanist-swiperefresh:$versions.compose_accompanist"
-    implementation "com.google.accompanist:accompanist-pager:$versions.compose_accompanist"
     implementation "com.google.accompanist:accompanist-systemuicontroller:$versions.compose_accompanist"
     // paging
     implementation "androidx.paging:paging-runtime:$versions.paging"
@@ -87,9 +86,9 @@ dependencies {
     implementation "androidx.hilt:hilt-navigation-fragment:$versions.androidx_hilt"
 
     // other
-    implementation "androidx.core:core-ktx:$versions.kotlin"
+    implementation "androidx.core:core-ktx:$versions.core_ktx"
     implementation "androidx.appcompat:appcompat:$versions.appcompat"
-    implementation 'androidx.navigation:navigation-runtime-ktx:2.5.1'
+    implementation "androidx.navigation:navigation-runtime-ktx:$versions.compose_navigation"
     implementation "androidx.lifecycle:lifecycle-runtime-ktx:$versions.lifecycle"
     implementation "androidx.lifecycle:lifecycle-runtime-compose:$versions.lifecycle"
     implementation "com.google.code.gson:gson:$versions.gson"

@@ -5,20 +5,21 @@ plugins {
     id 'dagger.hilt.android.plugin'
 }
 android {
-    compileSdk 33
+    compileSdk 34
     defaultConfig { minSdk 21 }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
     kotlinOptions { jvmTarget = '1.8' }
+    namespace 'tw.kevinzhang.marketplace'
 }
 dependencies {
     implementation "com.google.dagger:hilt-android:$versions.hilt"
     kapt "com.google.dagger:hilt-android-compiler:$versions.hilt"
     implementation "com.squareup.okhttp3:okhttp:$versions.okhttp"
     implementation "com.google.code.gson:gson:$versions.gson"
-    implementation "androidx.core:core-ktx:$versions.kotlin"
+    implementation "androidx.core:core-ktx:$versions.core_ktx"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$versions.coroutines"
     testImplementation 'junit:junit:4.13.2'
 }
