@@ -15,6 +15,7 @@ import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.newshub.R
 import tw.kevinzhang.newshub.ui.component.AppCard
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExtensionsScreen(
     onNavigateToMarketplace: () -> Unit,
@@ -24,41 +25,48 @@ fun ExtensionsScreen(
     val collections by viewModel.collections.collectAsStateWithLifecycle(emptyList())
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Marketplace entry point
-        Button(
-            onClick = onNavigateToMarketplace,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(dimensionResource(R.dimen.space_8)),
-        ) {
-            Text("Browse Marketplace")
-        }
-
-        when {
-            isLoading -> Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-            sources.isEmpty() -> Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                Text("No extensions installed. Browse the Marketplace to install some.")
-            }
-            else -> LazyColumn(modifier = Modifier.weight(1f)) {
-                sources.forEach { (source, boards) ->
-                    item(key = source.id) {
-                        Text(
-                            text = source.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(dimensionResource(R.dimen.space_8)),
-                        )
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Extensions") },
+                actions = {
+                    TextButton(onClick = onNavigateToMarketplace) {
+                        Text("Marketplace")
                     }
-                    items(boards, key = { "${source.id}:${it.url}" }) { board ->
-                        BoardRow(
-                            board = board,
-                            collections = collections,
-                            onAddToCollection = { collectionId ->
-                                viewModel.addBoardToCollection(collectionId, board, source)
-                            },
-                        )
+                },
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            when {
+                isLoading -> Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+                sources.isEmpty() -> Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Text("No extensions installed. Browse the Marketplace to install some.")
+                }
+                else -> LazyColumn(modifier = Modifier.weight(1f)) {
+                    sources.forEach { (source, boards) ->
+                        item(key = source.id) {
+                            Text(
+                                text = source.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(dimensionResource(R.dimen.space_8)),
+                            )
+                        }
+                        items(boards, key = { "${source.id}:${it.url}" }) { board ->
+                            BoardRow(
+                                board = board,
+                                collections = collections,
+                                onAddToCollection = { collectionId ->
+                                    viewModel.addBoardToCollection(collectionId, board, source)
+                                },
+                            )
+                        }
                     }
                 }
             }
