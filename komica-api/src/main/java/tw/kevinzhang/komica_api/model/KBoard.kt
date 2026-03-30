@@ -4,8 +4,6 @@ sealed class KBoard(val name: String, val url: String) {
     sealed class Sora(name: String, url: String) : KBoard(name, url) {
         object 綜合 : Sora("綜合", "https://gita.komica1.org/00b")
         object 男性角色 : Sora("男性角色", "https://gaia.komica1.org/38")
-        object 短片2 : Sora("短片2", "https://404.komica1.org/69")
-        object 寫真 : Sora("寫真", "https://404.komica1.org/16")
         object 女性角色 : Sora("女性角色", "https://gaia.komica1.org/19")
         object 歡樂惡搞 : Sora("歡樂惡搞", "https://iris.komica1.org/12")
         object Vtuber : Sora("Vtuber", "https://gaia.komica1.org/74")
@@ -13,20 +11,12 @@ sealed class KBoard(val name: String, val url: String) {
         object 蘿蔔 : Sora("蘿蔔", "https://gaia.komica1.org/15")
         object 模型 : Sora("模型", "https://gaia.komica1.org/09")
         object 鋼普拉 : Sora("鋼普拉", "https://iris.komica1.org/61")
-        object 飲食 : Sora("飲食", "https://404.komica1.org/58")
         object 特攝 : Sora("特攝", "https://gaia.komica1.org/13")
         object 小說 : Sora("小說", "https://iris.komica1.org/35")
-        object 遊戲速報 : Sora("遊戲速報", "https://404.komica1.org/27")
         object `奇幻-科幻` : Sora("奇幻/科幻", "https://gaia.komica1.org/60")
         object 軍武 : Sora("軍武", "https://gaia.komica1.org/17")
         object 遊戲王 : Sora("遊戲王", "https://iris.komica1.org/73")
-        object `電腦-消費電子` : Sora("電腦/消費電子", "https://404.komica1.org/37")
-        object 中性角色 : Sora("中性角色", "https://404.komica1.org/57")
         object 影視 : Sora("影視", "https://TODO.komica1.org/04")
-        object 塗鴉王國 : Sora("塗鴉王國", "https://404.komica1.org/30")
-        object 新聞 : Sora("新聞", "https://404.komica1.org/25")
-        object 布袋戲 : Sora("布袋戲", "https://404.komica1.org/46")
-        object 紙牌 : Sora("紙牌", "https://404.komica1.org/10")
         object 網路遊戲 : Sora("網路遊戲", "https://iris.komica1.org/52")
         object 四格 : Sora("四格", "https://gaia.komica1.org/42")
     }
@@ -66,8 +56,6 @@ fun boards() =
     listOf(
         KBoard.Sora.綜合,
         KBoard.Sora.男性角色,
-        KBoard.Sora.短片2,
-        KBoard.Sora.寫真,
         KBoard.Sora.女性角色,
         KBoard.Sora.歡樂惡搞,
         KBoard.Sora.Vtuber,
@@ -76,20 +64,12 @@ fun boards() =
         KBoard.Sora.模型,
         KBoard.Sora.鋼普拉,
         KBoard.Sora.蘿蔔,
-        KBoard.Sora.飲食,
         KBoard.Sora.特攝,
         KBoard.Sora.小說,
-        KBoard.Sora.遊戲速報,
         KBoard.Sora.`奇幻-科幻`,
         KBoard.Sora.軍武,
         KBoard.Sora.遊戲王,
-        KBoard.Sora.`電腦-消費電子`,
-        KBoard.Sora.中性角色,
         KBoard.Sora.影視,
-        KBoard.Sora.塗鴉王國,
-        KBoard.Sora.新聞,
-        KBoard.Sora.布袋戲,
-        KBoard.Sora.紙牌,
         KBoard.Sora.網路遊戲,
         KBoard.Sora.四格,
         KBoard._2catKomica.新番實況,
