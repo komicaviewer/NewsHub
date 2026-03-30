@@ -37,7 +37,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
-import com.orhanobut.logger.Logger
 import kotlinx.coroutines.launch
 import tw.kevinzhang.newshub.encode
 import tw.kevinzhang.newshub.ui.collection.CollectionTimelineScreen

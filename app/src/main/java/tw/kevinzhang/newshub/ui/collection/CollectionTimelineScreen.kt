@@ -1,5 +1,6 @@
 package tw.kevinzhang.newshub.ui.collection
 
+import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +32,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
-import com.orhanobut.logger.Logger
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.newshub.R
 import tw.kevinzhang.newshub.ui.component.AppCard
@@ -81,7 +81,7 @@ fun CollectionTimelineScreen(
 
                         is LoadState.Error -> {
                             LaunchedEffect(appendState.error) {
-                                Logger.e(appendState.error, "Append load failed")
+                                Log.e("CollectionTimeline", "Append load failed", appendState.error)
                             }
                             Text("Failed to load more")
                         }
@@ -94,9 +94,10 @@ fun CollectionTimelineScreen(
                 is LoadState.Loading -> if (items.itemCount == 0) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
+
                 is LoadState.Error -> {
                     LaunchedEffect(refreshState.error) {
-                        Logger.e(refreshState.error, "Refresh failed")
+                        Log.e("CollectionTimeline", "Refresh failed", refreshState.error)
                     }
                     if (items.itemCount == 0) {
                         Text(
@@ -105,6 +106,7 @@ fun CollectionTimelineScreen(
                         )
                     }
                 }
+
                 else -> {}
             }
         }
