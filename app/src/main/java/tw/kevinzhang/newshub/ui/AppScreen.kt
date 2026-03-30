@@ -96,8 +96,8 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     onCollectionClick = { collection ->
                         appViewModel.selectCollection(collection.id)
                         navController.navigate("collection/${collection.id}") {
-                            popUpTo("home") { inclusive = false }
-                            launchSingleTop = true
+                            popUpTo("collection/{collectionId}") { inclusive = true }
+                            launchSingleTop = false
                         }
                         coroutineScope.launch { drawerState.close() }
                     },
