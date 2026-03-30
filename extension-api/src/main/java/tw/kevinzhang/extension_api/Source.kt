@@ -14,4 +14,7 @@ interface Source {
     suspend fun getBoards(): List<Board>
     suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary>
     suspend fun getThread(summary: ThreadSummary): Thread
+
+    /** Returns the publicly accessible web URL for this thread, or null if login is required. */
+    fun getWebUrl(summary: ThreadSummary): String? = null
 }

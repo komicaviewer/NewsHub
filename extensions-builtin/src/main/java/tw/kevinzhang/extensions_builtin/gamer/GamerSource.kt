@@ -1,16 +1,16 @@
 package tw.kevinzhang.extensions_builtin.gamer
 
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.Comment
+import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
-import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extensions_builtin.toExtParagraph
 import tw.kevinzhang.gamer_api.GamerApi
 import tw.kevinzhang.gamer_api.model.GImageInfo
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import javax.inject.Inject
 
 class GamerSource @Inject constructor(
@@ -61,6 +61,7 @@ class GamerSource @Inject constructor(
         val gPosts = gamerApi.getAllPost(req)
         return Thread(
             id = summary.id,
+            url = getWebUrl(summary),
             title = summary.title,
             posts = gPosts.map { gPost ->
                 val comments = if (gPost.commentsUrl.isNotBlank()) {
@@ -95,4 +96,6 @@ class GamerSource @Inject constructor(
             },
         )
     }
+
+    override fun getWebUrl(summary: ThreadSummary): String = summary.id
 }

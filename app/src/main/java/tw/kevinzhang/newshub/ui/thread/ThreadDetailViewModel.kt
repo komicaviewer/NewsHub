@@ -5,7 +5,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.Post
@@ -32,6 +36,10 @@ class ThreadDetailViewModel @Inject constructor(
 
     private val _thread = MutableStateFlow<Thread?>(null)
     val thread = _thread.asStateFlow()
+
+    val threadUrl: StateFlow<String?> = _thread
+        .map { it?.url }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val previewPost = MutableStateFlow<Post?>(null)
 

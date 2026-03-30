@@ -55,6 +55,7 @@ class _2catSource @Inject constructor(
         val posts = api.getAllPost(req)
         return Thread(
             id = summary.id,
+            url = getWebUrl(summary),
             title = summary.title,
             posts = posts.map { kPost ->
                 Post(

@@ -71,6 +71,7 @@ dependencies {
     implementation "androidx.activity:activity-compose:$versions.compose_activity"
     implementation "androidx.navigation:navigation-compose:$versions.compose_navigation"
     implementation "com.google.accompanist:accompanist-systemuicontroller:$versions.compose_accompanist"
+    implementation "androidx.compose.material:material-icons-extended:$versions.compose"
     // paging
     implementation "androidx.paging:paging-runtime:$versions.paging"
     implementation "androidx.paging:paging-compose:$versions.compose_paging"

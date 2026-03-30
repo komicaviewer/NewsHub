@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -19,18 +20,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SmallTopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
@@ -41,14 +42,16 @@ import tw.kevinzhang.newshub.ui.component.AppCard
 @Composable
 fun ThreadDetailScreen(
     onNavigateUp: () -> Unit,
+    onOpenWebClick: (url: String) -> Unit,
     viewModel: ThreadDetailViewModel = hiltViewModel(),
 ) {
     val thread by viewModel.thread.collectAsStateWithLifecycle()
+    val threadUrl by viewModel.threadUrl.collectAsStateWithLifecycle()
     val previewPost by viewModel.previewPost.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
-            SmallTopAppBar(
+            TopAppBar(
                 title = { Text(thread?.title ?: "") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateUp) {
@@ -58,6 +61,16 @@ fun ThreadDetailScreen(
                         )
                     }
                 },
+                actions = {
+                    if (threadUrl != null) {
+                        IconButton(onClick = { onOpenWebClick(threadUrl!!) }) {
+                            Icon(
+                                imageVector = Icons.Default.OpenInBrowser,
+                                contentDescription = "Open in browser",
+                            )
+                        }
+                    }
+                }
             )
         },
     ) { padding ->
@@ -69,7 +82,8 @@ fun ThreadDetailScreen(
                 contentAlignment = Alignment.Center,
             ) { CircularProgressIndicator() }
         } else {
-            val onReplyToClick = remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
+            val onReplyToClick =
+                remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
             LazyColumn(modifier = Modifier.padding(padding)) {
                 items(thread!!.posts, key = { it.id }) { post ->
                     ExtPostCard(
@@ -99,6 +113,7 @@ fun ThreadDetailScreen(
                             is Paragraph.ImageInfo -> paragraph.thumb?.let { url ->
                                 AsyncImage(model = url, contentDescription = null)
                             }
+
                             is Paragraph.VideoInfo -> Text("[video]")
                         }
                     }
@@ -124,14 +139,17 @@ private fun ExtPostCard(
                         "> ${paragraph.content}",
                         style = MaterialTheme.typography.bodySmall,
                     )
+
                     is Paragraph.ReplyTo -> TextButton(
                         onClick = { onReplyToClick(paragraph.id) },
                         contentPadding = PaddingValues(0.dp),
                     ) { Text(">> ${paragraph.id}") }
+
                     is Paragraph.Link -> Text(
                         paragraph.content,
                         color = MaterialTheme.colorScheme.primary,
                     )
+
                     is Paragraph.ImageInfo -> paragraph.thumb?.let { url ->
                         AsyncImage(
                             model = url,
@@ -139,6 +157,7 @@ private fun ExtPostCard(
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
+
                     is Paragraph.VideoInfo -> Text("[video: ${paragraph.url}]")
                 }
             }

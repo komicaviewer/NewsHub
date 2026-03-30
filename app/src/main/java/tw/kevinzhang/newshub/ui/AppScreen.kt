@@ -1,5 +1,7 @@
 package tw.kevinzhang.newshub.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
@@ -24,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -34,6 +37,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
+import com.orhanobut.logger.Logger
 import kotlinx.coroutines.launch
 import tw.kevinzhang.newshub.encode
 import tw.kevinzhang.newshub.ui.collection.CollectionTimelineScreen
@@ -103,7 +107,8 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             scrollBehavior = scrollBehavior,
                             selectedItem = selectedTab,
                             onNavItemClick = { item ->
-                                val route = if (item == MainNavItems.Collections) "home" else item.route
+                                val route =
+                                    if (item == MainNavItems.Collections) "home" else item.route
                                 navController.navigate(route) {
                                     popUpTo("home") { saveState = true }
                                     launchSingleTop = true
@@ -153,7 +158,9 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     }
                     composable(
                         route = "collection/{collectionId}",
-                        arguments = listOf(navArgument("collectionId") { type = NavType.StringType }),
+                        arguments = listOf(navArgument("collectionId") {
+                            type = NavType.StringType
+                        }),
                     ) {
                         CollectionTimelineScreen(
                             onOpenDrawer = { openDrawer() },
@@ -181,7 +188,13 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             },
                         ),
                     ) {
-                        ThreadDetailScreen(onNavigateUp = { navController.navigateUp() })
+                        val context = LocalContext.current
+                        ThreadDetailScreen(
+                            onNavigateUp = { navController.navigateUp() },
+                            onOpenWebClick = { url ->
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            },
+                        )
                     }
                     composable("extensions") {
                         ExtensionsScreen(onNavigateToMarketplace = { navController.navigate("marketplace") })
