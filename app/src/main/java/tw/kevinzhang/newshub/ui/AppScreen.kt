@@ -5,6 +5,7 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.BottomAppBarDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -22,6 +23,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -69,6 +71,8 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     val coroutineScope = rememberCoroutineScope()
     val openDrawer = { coroutineScope.launch { drawerState.open() } }
 
+    val scrollBehavior = BottomAppBarDefaults.exitAlwaysScrollBehavior()
+
     NewshubTheme {
         val systemUiController = rememberSystemUiController()
         val backgroundColor = MaterialTheme.colorScheme.background
@@ -96,6 +100,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     if (showBottomBar) {
                         AppBottomBar(
                             navItems = mainNavItems(),
+                            scrollBehavior = scrollBehavior,
                             selectedItem = selectedTab,
                             onNavItemClick = { item ->
                                 val route = if (item == MainNavItems.Collections) "home" else item.route
@@ -112,7 +117,9 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                 NavHost(
                     navController = navController,
                     startDestination = "home",
-                    modifier = Modifier.padding(padding),
+                    modifier = Modifier
+                        .padding(padding)
+                        .nestedScroll(scrollBehavior.nestedScrollConnection),
                     enterTransition = { EnterTransition.None },
                     exitTransition = { ExitTransition.None },
                     popEnterTransition = { EnterTransition.None },
