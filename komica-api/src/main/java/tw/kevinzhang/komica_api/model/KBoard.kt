@@ -22,7 +22,7 @@ sealed class KBoard(val name: String, val url: String) {
     }
 
     sealed class _2catKomica(name: String, url: String) : KBoard(name, url) {
-        object 新番實況 : _2catKomica("新番實況", "https://gaia.komica1.org/78/index.htm")
+        object 新番實況 : _2catKomica("新番實況", "https://gaia.komica1.org/78")
         object 新番捏他 : _2catKomica("新番捏他", "https://gaia.komica1.org/79")
         object 漫畫 : _2catKomica("漫畫", "https://gaia.komica1.org/81/")
         object 動畫 : _2catKomica("動畫", "https://gaia.komica1.org/80/")

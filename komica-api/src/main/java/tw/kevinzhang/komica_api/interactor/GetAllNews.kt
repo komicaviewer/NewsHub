@@ -5,16 +5,21 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import ru.gildor.coroutines.okhttp.await
-import tw.kevinzhang.komica_api.model.KPost
 import tw.kevinzhang.komica_api.model.KBoard
+import tw.kevinzhang.komica_api.model.KPost
 import tw.kevinzhang.komica_api.parser._2cat._2catBoardParser
 import tw.kevinzhang.komica_api.parser._2cat._2catPostHeadParser
 import tw.kevinzhang.komica_api.parser._2cat._2catPostParser
 import tw.kevinzhang.komica_api.parser._2cat._2catUrlParser
-import tw.kevinzhang.komica_api.parser.sora.*
+import tw.kevinzhang.komica_api.parser.sora.SoraBoardParser
+import tw.kevinzhang.komica_api.parser.sora.SoraPostHeadParser
+import tw.kevinzhang.komica_api.parser.sora.SoraPostParser
+import tw.kevinzhang.komica_api.parser.sora.SoraUrlParser
+import tw.kevinzhang.komica_api.parser.sora._2catSoraPostHeadParser
 import tw.kevinzhang.komica_api.request._2cat._2catRequestBuilder
 import tw.kevinzhang.komica_api.request.sora.SoraBoardRequestParser
 import tw.kevinzhang.komica_api.request.sora.SoraThreadRequestBuilder
+import tw.kevinzhang.komica_api.HttpException
 import tw.kevinzhang.komica_api.toKBoard
 
 class GetAllNews(
@@ -23,6 +28,7 @@ class GetAllNews(
     suspend fun invoke(req: Request): List<KPost> = withContext(Dispatchers.IO) {
         val board = req.url.toKBoard()
         val response = client.newCall(req).await()
+        if (!response.isSuccessful) throw HttpException(response.code, req.url.toString())
         val urlParser = GetUrlParser().invoke(board)
 
         when (board) {

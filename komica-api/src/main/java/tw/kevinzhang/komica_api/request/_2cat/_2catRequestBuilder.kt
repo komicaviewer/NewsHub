@@ -3,16 +3,18 @@ package tw.kevinzhang.komica_api.request._2cat
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
-import tw.kevinzhang.komica_api.*
+import tw.kevinzhang.komica_api.isZeroOrNull
 import tw.kevinzhang.komica_api.model.KBoard
+import tw.kevinzhang.komica_api.removeFilename
 import tw.kevinzhang.komica_api.request.BoardRequestBuilder
 import tw.kevinzhang.komica_api.request.ThreadRequestBuilder
+import tw.kevinzhang.komica_api.toKBoard
 
-class _2catRequestBuilder: BoardRequestBuilder, ThreadRequestBuilder {
+class _2catRequestBuilder : BoardRequestBuilder, ThreadRequestBuilder {
     private lateinit var builder: HttpUrl.Builder
 
     override fun setUrl(url: HttpUrl): _2catRequestBuilder {
-        this.builder= url.newBuilder()
+        this.builder = url.newBuilder()
         return this
     }
 
@@ -22,7 +24,7 @@ class _2catRequestBuilder: BoardRequestBuilder, ThreadRequestBuilder {
     }
 
     fun setRes(res: String?): _2catRequestBuilder {
-        return if(res == null) removeQuery("res")
+        return if (res == null) removeQuery("res")
         else addQuery("res", res)
     }
 
@@ -38,13 +40,13 @@ class _2catRequestBuilder: BoardRequestBuilder, ThreadRequestBuilder {
     }
 
     private fun removeQuery(queryName: String): _2catRequestBuilder {
-        if(hasQuery(queryName))
+        if (hasQuery(queryName))
             builder = builder.removeAllQueryParameters(queryName)
         return this
     }
 
     fun setFragment(reply: String?): _2catRequestBuilder {
-        return if(reply == null) removeFragment()
+        return if (reply == null) removeFragment()
         else addFragment(reply)
     }
 
@@ -60,7 +62,7 @@ class _2catRequestBuilder: BoardRequestBuilder, ThreadRequestBuilder {
     }
 
     private fun removeFragment(): _2catRequestBuilder {
-        if(hasFragment())
+        if (hasFragment())
             builder = builder.fragment(null)
         return this
     }
@@ -72,11 +74,12 @@ class _2catRequestBuilder: BoardRequestBuilder, ThreadRequestBuilder {
                     removeFilename("htm")
                 } else {
                     val _httpUrl = builder.build()
-                    val extra = _httpUrl.pathSegments - _httpUrl.toKBoard().url.toHttpUrl().pathSegments
+                    val extra =
+                        _httpUrl.pathSegments - _httpUrl.toKBoard().url.toHttpUrl().pathSegments
                     if (extra.isEmpty()) {
-                        addFilename("$page", "htm")
+                        addQuery("page", "$page")
                     } else {
-                        setFilename("${page}.htm")
+                        setQueryParameter("page", "$page")
                     }
                 }
             }
