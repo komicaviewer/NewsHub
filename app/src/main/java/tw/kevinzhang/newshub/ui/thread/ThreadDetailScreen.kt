@@ -28,9 +28,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.dimensionResource
@@ -43,6 +46,7 @@ import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.newshub.R
 import tw.kevinzhang.newshub.ui.component.AppCard
+import tw.kevinzhang.newshub.ui.component.gallery.LazyGallery
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -139,10 +143,16 @@ private fun ExtPostCard(
     onReplyToClick: (String) -> Unit,
     onLoadMoreCommentsClick: () -> Unit,
 ) {
+    val rawImages = remember(post.id) {
+        post.content.filterIsInstance<Paragraph.ImageInfo>().map { it.raw }
+    }
+    var galleryStartIndex by remember { mutableStateOf<Int?>(null) }
+
     AppCard {
         Column(modifier = Modifier.padding(dimensionResource(R.dimen.space_8))) {
             Text(text = "Post ${post.id}", style = MaterialTheme.typography.labelSmall)
             Spacer(modifier = Modifier.height(dimensionResource(R.dimen.space_4)))
+            var imageIndex = 0
             post.content.forEach { paragraph ->
                 when (paragraph) {
                     is Paragraph.Text -> Text(paragraph.content)
@@ -161,12 +171,17 @@ private fun ExtPostCard(
                         color = MaterialTheme.colorScheme.primary,
                     )
 
-                    is Paragraph.ImageInfo -> paragraph.thumb?.let { url ->
-                        AsyncImage(
-                            model = url,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                    is Paragraph.ImageInfo -> {
+                        val index = imageIndex++
+                        paragraph.thumb?.let { url ->
+                            AsyncImage(
+                                model = url,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { galleryStartIndex = index },
+                            )
+                        }
                     }
 
                     is Paragraph.VideoInfo -> Text("[video: ${paragraph.url}]")
@@ -196,6 +211,14 @@ private fun ExtPostCard(
         }
     }
     Spacer(modifier = Modifier.height(dimensionResource(R.dimen.space_8)))
+
+    galleryStartIndex?.let { startIndex ->
+        LazyGallery(
+            images = rawImages,
+            startIndex = startIndex,
+            onDismissRequest = { galleryStartIndex = null },
+        )
+    }
 }
 
 @Composable
