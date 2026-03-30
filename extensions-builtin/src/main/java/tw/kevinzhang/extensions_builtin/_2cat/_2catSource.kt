@@ -16,15 +16,15 @@ import tw.kevinzhang.extension_api.model.Board as ExtBoard
 class _2catSource @Inject constructor(
     private val api: KomicaApi,
 ) : Source {
-    override val id = "tw.kevinzhang.komica-2cat"
-    override val name = "2cat Komica"
+    override val id = "tw.kevinzhang.2cat"
+    override val name = "2cat"
     override val language = "zh-TW"
     override val version = 1
     override val iconUrl: String? = null
 
     override suspend fun getBoards(): List<ExtBoard> =
         boards()
-            .filter { it is KBoard._2catKomica || it is KBoard._2cat }
+            .filter { it is KBoard._2cat }
             .map { kBoard -> ExtBoard(sourceId = id, url = kBoard.url, name = kBoard.name) }
 
     override suspend fun getThreadSummaries(board: ExtBoard, page: Int): List<ThreadSummary> {
