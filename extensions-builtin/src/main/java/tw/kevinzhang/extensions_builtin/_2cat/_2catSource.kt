@@ -1,7 +1,7 @@
 package tw.kevinzhang.extensions_builtin._2cat
 
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import tw.kevinzhang.extension_api.Source
-import tw.kevinzhang.extension_api.model.Board as ExtBoard
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
@@ -10,8 +10,8 @@ import tw.kevinzhang.komica_api.KomicaApi
 import tw.kevinzhang.komica_api.model.KBoard
 import tw.kevinzhang.komica_api.model.KImageInfo
 import tw.kevinzhang.komica_api.model.boards
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import javax.inject.Inject
+import tw.kevinzhang.extension_api.model.Board as ExtBoard
 
 class _2catSource @Inject constructor(
     private val api: KomicaApi,
@@ -69,4 +69,6 @@ class _2catSource @Inject constructor(
             },
         )
     }
+
+    override fun getWebUrl(summary: ThreadSummary): String = summary.id
 }
