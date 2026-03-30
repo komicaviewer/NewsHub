@@ -191,7 +191,10 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                         ThreadDetailScreen(
                             onNavigateUp = { navController.navigateUp() },
                             onOpenWebClick = { url ->
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
                             },
                         )
                     }
