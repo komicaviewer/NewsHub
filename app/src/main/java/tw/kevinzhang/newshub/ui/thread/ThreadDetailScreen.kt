@@ -1,15 +1,20 @@
 package tw.kevinzhang.newshub.ui.thread
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.outlined.ArrowBack
@@ -33,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.newshub.R
@@ -48,6 +54,7 @@ fun ThreadDetailScreen(
     val thread by viewModel.thread.collectAsStateWithLifecycle()
     val threadUrl by viewModel.threadUrl.collectAsStateWithLifecycle()
     val previewPost by viewModel.previewPost.collectAsStateWithLifecycle()
+    val commentStates by viewModel.commentStates.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -88,7 +95,9 @@ fun ThreadDetailScreen(
                 items(thread!!.posts, key = { it.id }) { post ->
                     ExtPostCard(
                         post = post,
+                        commentUiState = commentStates[post.id],
                         onReplyToClick = onReplyToClick,
+                        onLoadMoreCommentsClick = { viewModel.loadMoreComments(post.id) },
                     )
                 }
             }
@@ -126,7 +135,9 @@ fun ThreadDetailScreen(
 @Composable
 private fun ExtPostCard(
     post: Post,
+    commentUiState: CommentUiState?,
     onReplyToClick: (String) -> Unit,
+    onLoadMoreCommentsClick: () -> Unit,
 ) {
     AppCard {
         Column(modifier = Modifier.padding(dimensionResource(R.dimen.space_8))) {
@@ -161,7 +172,67 @@ private fun ExtPostCard(
                     is Paragraph.VideoInfo -> Text("[video: ${paragraph.url}]")
                 }
             }
+            val visibleComments = commentUiState?.visibleComments.orEmpty()
+            if (visibleComments.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(dimensionResource(R.dimen.space_8)))
+                visibleComments.forEach { comment ->
+                    CommentItem(comment = comment)
+                }
+            }
+            when {
+                commentUiState?.isLoading == true ->
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(top = dimensionResource(R.dimen.space_4)),
+                        strokeWidth = 2.dp,
+                    )
+                commentUiState?.hasMore == true ->
+                    TextButton(
+                        onClick = onLoadMoreCommentsClick,
+                        contentPadding = PaddingValues(0.dp),
+                    ) { Text("載入更多留言", style = MaterialTheme.typography.labelSmall) }
+            }
         }
     }
     Spacer(modifier = Modifier.height(dimensionResource(R.dimen.space_8)))
+}
+
+@Composable
+private fun CommentItem(comment: Comment) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = dimensionResource(R.dimen.space_8), vertical = dimensionResource(R.dimen.space_4)),
+        verticalAlignment = Alignment.Top,
+    ) {
+        // 頭像佔位
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+        )
+        Spacer(modifier = Modifier.width(dimensionResource(R.dimen.space_8)))
+        Column(modifier = Modifier.weight(1f)) {
+            comment.author?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            comment.content.forEach { paragraph ->
+                when (paragraph) {
+                    is Paragraph.Text -> Text(paragraph.content, style = MaterialTheme.typography.bodySmall)
+                    is Paragraph.Quote -> Text("> ${paragraph.content}", style = MaterialTheme.typography.bodySmall)
+                    is Paragraph.ReplyTo -> Text(">> ${paragraph.id}", style = MaterialTheme.typography.bodySmall)
+                    is Paragraph.Link -> Text(paragraph.content, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    is Paragraph.ImageInfo -> paragraph.thumb?.let { url ->
+                        AsyncImage(model = url, contentDescription = null, modifier = Modifier.fillMaxWidth())
+                    }
+                    is Paragraph.VideoInfo -> Text("[video]", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
 }
