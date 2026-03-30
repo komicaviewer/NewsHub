@@ -75,6 +75,12 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     val openDrawer = { coroutineScope.launch { drawerState.open() } }
 
     val scrollBehavior = BottomAppBarDefaults.exitAlwaysScrollBehavior()
+    val isCollectionRoute = currentRoute == "collection/{collectionId}"
+
+    // Reset bar position when leaving the collection route so it stays fully visible elsewhere
+    LaunchedEffect(isCollectionRoute) {
+        if (!isCollectionRoute) scrollBehavior.state.heightOffset = 0f
+    }
 
     NewshubTheme {
         val systemUiController = rememberSystemUiController()
@@ -123,7 +129,10 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     startDestination = "home",
                     modifier = Modifier
                         .padding(padding)
-                        .nestedScroll(scrollBehavior.nestedScrollConnection),
+                        .then(
+                            if (isCollectionRoute) Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+                            else Modifier
+                        ),
                     enterTransition = { EnterTransition.None },
                     exitTransition = { ExitTransition.None },
                     popEnterTransition = { EnterTransition.None },
