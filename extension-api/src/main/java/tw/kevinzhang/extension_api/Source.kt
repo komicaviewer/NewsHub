@@ -22,6 +22,13 @@ interface Source {
      */
     val supportsCommentPagination: Boolean get() = false
 
+    /**
+     * If true, the app always displays the full-resolution [tw.kevinzhang.extension_api.model.Paragraph.ImageInfo.raw]
+     * image instead of the thumbnail. Useful for sources where thumbnails are unavailable or
+     * where the raw URL is already optimised for display.
+     */
+    val alwaysUseRawImage: Boolean get() = false
+
     suspend fun getBoards(): List<Board>
     suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary>
     suspend fun getThread(summary: ThreadSummary): Thread

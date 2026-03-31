@@ -32,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
+import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.newshub.R
 import tw.kevinzhang.newshub.ui.component.AppCard
@@ -45,6 +46,7 @@ fun CollectionTimelineScreen(
 ) {
     val items = viewModel.timelinePager.collectAsLazyPagingItems()
     val collectionName by viewModel.collectionName.collectAsStateWithLifecycle()
+    val rawImageSourceIds by viewModel.rawImageSourceIds.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -68,7 +70,11 @@ fun CollectionTimelineScreen(
                     count = items.itemCount,
                     key = { index -> items.peek(index)?.id ?: index }) { index ->
                     val summary = items[index] ?: return@items
-                    ThreadSummaryCard(summary = summary, onClick = { onThreadClick(summary) })
+                    ThreadSummaryCard(
+                        summary = summary,
+                        alwaysUseRawImage = summary.sourceId in rawImageSourceIds,
+                        onClick = { onThreadClick(summary) },
+                    )
                 }
                 item {
                     when (val appendState = items.loadState.append) {
@@ -114,7 +120,7 @@ fun CollectionTimelineScreen(
 }
 
 @Composable
-private fun ThreadSummaryCard(summary: ThreadSummary, onClick: () -> Unit) {
+private fun ThreadSummaryCard(summary: ThreadSummary, alwaysUseRawImage: Boolean, onClick: () -> Unit) {
     AppCard(onClick = onClick) {
         Column(modifier = Modifier.padding(dimensionResource(R.dimen.space_8))) {
             Row(
@@ -151,7 +157,15 @@ private fun ThreadSummaryCard(summary: ThreadSummary, onClick: () -> Unit) {
                     Text(text = title, style = MaterialTheme.typography.titleMedium)
                 }
             }
-            summary.thumbnail?.let { url ->
+
+            val imageUrl = if (alwaysUseRawImage) {
+                summary.previewContent
+                    .filterIsInstance<Paragraph.ImageInfo>()
+                    .firstOrNull()?.raw ?: summary.thumbnail
+            } else {
+                summary.thumbnail
+            }
+            imageUrl?.let { url ->
                 Spacer(modifier = Modifier.height(dimensionResource(R.dimen.space_4)))
                 AsyncImage(
                     model = url,

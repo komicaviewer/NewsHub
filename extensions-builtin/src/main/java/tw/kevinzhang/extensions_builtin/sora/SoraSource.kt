@@ -21,6 +21,8 @@ class SoraSource @Inject constructor(
     override val language = "zh-TW"
     override val version = 1
     override val iconUrl: String? = null
+    override val alwaysUseRawImage: Boolean
+        get() = true
 
     override suspend fun getBoards(): List<ExtBoard> =
         boards()

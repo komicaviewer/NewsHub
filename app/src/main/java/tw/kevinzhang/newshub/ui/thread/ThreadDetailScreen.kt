@@ -59,6 +59,7 @@ fun ThreadDetailScreen(
     val threadUrl by viewModel.threadUrl.collectAsStateWithLifecycle()
     val previewPost by viewModel.previewPost.collectAsStateWithLifecycle()
     val commentStates by viewModel.commentStates.collectAsStateWithLifecycle()
+    val alwaysUseRawImage by viewModel.alwaysUseRawImage.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -99,6 +100,7 @@ fun ThreadDetailScreen(
                 items(thread!!.posts, key = { it.id }) { post ->
                     ExtPostCard(
                         post = post,
+                        alwaysUseRawImage = alwaysUseRawImage,
                         commentUiState = commentStates[post.id],
                         onReplyToClick = onReplyToClick,
                         onLoadMoreCommentsClick = { viewModel.loadMoreComments(post.id) },
@@ -123,8 +125,9 @@ fun ThreadDetailScreen(
                             is Paragraph.Quote -> Text("> ${paragraph.content}")
                             is Paragraph.ReplyTo -> Text(">> ${paragraph.id}")
                             is Paragraph.Link -> Text(paragraph.content)
-                            is Paragraph.ImageInfo -> paragraph.thumb?.let { url ->
-                                AsyncImage(model = url, contentDescription = null)
+                            is Paragraph.ImageInfo -> {
+                                val url = if (alwaysUseRawImage) paragraph.raw else paragraph.thumb
+                                url?.let { AsyncImage(model = it, contentDescription = null) }
                             }
 
                             is Paragraph.VideoInfo -> Text("[video]")
@@ -139,6 +142,7 @@ fun ThreadDetailScreen(
 @Composable
 private fun ExtPostCard(
     post: Post,
+    alwaysUseRawImage: Boolean,
     commentUiState: CommentUiState?,
     onReplyToClick: (String) -> Unit,
     onLoadMoreCommentsClick: () -> Unit,
@@ -173,9 +177,10 @@ private fun ExtPostCard(
 
                     is Paragraph.ImageInfo -> {
                         val index = imageIndex++
-                        paragraph.thumb?.let { url ->
+                        val url = if (alwaysUseRawImage) paragraph.raw else paragraph.thumb
+                        url?.let {
                             AsyncImage(
-                                model = url,
+                                model = it,
                                 contentDescription = null,
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -191,7 +196,7 @@ private fun ExtPostCard(
             if (visibleComments.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(dimensionResource(R.dimen.space_8)))
                 visibleComments.forEach { comment ->
-                    CommentItem(comment = comment)
+                    CommentItem(comment = comment, alwaysUseRawImage = alwaysUseRawImage)
                 }
             }
             when {
@@ -222,7 +227,7 @@ private fun ExtPostCard(
 }
 
 @Composable
-private fun CommentItem(comment: Comment) {
+private fun CommentItem(comment: Comment, alwaysUseRawImage: Boolean) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -250,8 +255,9 @@ private fun CommentItem(comment: Comment) {
                     is Paragraph.Quote -> Text("> ${paragraph.content}", style = MaterialTheme.typography.bodySmall)
                     is Paragraph.ReplyTo -> Text(">> ${paragraph.id}", style = MaterialTheme.typography.bodySmall)
                     is Paragraph.Link -> Text(paragraph.content, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                    is Paragraph.ImageInfo -> paragraph.thumb?.let { url ->
-                        AsyncImage(model = url, contentDescription = null, modifier = Modifier.fillMaxWidth())
+                    is Paragraph.ImageInfo -> {
+                        val url = if (alwaysUseRawImage) paragraph.raw else paragraph.thumb
+                        url?.let { AsyncImage(model = it, contentDescription = null, modifier = Modifier.fillMaxWidth()) }
                     }
                     is Paragraph.VideoInfo -> Text("[video]", style = MaterialTheme.typography.bodySmall)
                 }

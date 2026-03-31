@@ -57,6 +57,9 @@ class ThreadDetailViewModel @Inject constructor(
 
     val previewPost = MutableStateFlow<Post?>(null)
 
+    private val _alwaysUseRawImage = MutableStateFlow(false)
+    val alwaysUseRawImage = _alwaysUseRawImage.asStateFlow()
+
     private var cachedSource: Source? = null
 
     private data class InternalCommentState(
@@ -82,6 +85,7 @@ class ThreadDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val source = extensionLoader.getSource(sourceId) ?: return@launch
             cachedSource = source
+            _alwaysUseRawImage.value = source.alwaysUseRawImage
             val summary = ThreadSummary(
                 sourceId = sourceId,
                 boardUrl = boardUrl,
