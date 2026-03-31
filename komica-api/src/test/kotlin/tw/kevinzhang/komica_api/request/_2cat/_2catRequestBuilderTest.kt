@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test
 internal class _2catRequestBuilderTest {
 
     @Test
-    fun `Test setPageReq expect successful`() {
+    fun `Test setPage expect successful`() {
         val req = _2catRequestBuilder()
             .setUrl("https://2cat.org/granblue".toHttpUrl())
             .setPage(1)
@@ -16,7 +16,7 @@ internal class _2catRequestBuilderTest {
     }
 
     @Test
-    fun `Test setPageReq with url with page setPageReq expect successful`() {
+    fun `Test setPage with url with page setPage expect successful`() {
         val req = _2catRequestBuilder()
             .setUrl("https://2cat.org/granblue?page=2".toHttpUrl())
             .setPage(1)

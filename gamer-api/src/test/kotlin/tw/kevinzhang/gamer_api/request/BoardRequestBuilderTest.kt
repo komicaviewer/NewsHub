@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test
 internal class BoardRequestBuilderTest {
 
     @Test
-    fun `Test setPageReq with url expect successful`() {
+    fun `Test setPage with url expect successful`() {
         val req = RequestBuilderImpl()
             .setUrl("https://forum.gamer.com.tw/B.php?bsn=60076".toHttpUrl())
             .setPage(1)
@@ -16,7 +16,7 @@ internal class BoardRequestBuilderTest {
     }
 
     @Test
-    fun `Test setPageReq with url with page_num expect successful`() {
+    fun `Test setPage with url with page_num expect successful`() {
         val req = RequestBuilderImpl()
             .setUrl("https://forum.gamer.com.tw/B.php?page=2&bsn=60076".toHttpUrl())
             .setPage(1)
