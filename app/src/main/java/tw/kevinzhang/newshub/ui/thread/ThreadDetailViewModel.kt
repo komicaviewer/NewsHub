@@ -95,6 +95,7 @@ class ThreadDetailViewModel @Inject constructor(
                 createdAt = null,
                 replyCount = null,
                 thumbnail = null,
+                rawImage = null,
                 previewContent = emptyList(),
             )
             val thread = source.getThread(summary)

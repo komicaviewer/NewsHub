@@ -46,6 +46,7 @@ class GamerSource @Inject constructor(
                 createdAt = null, // GNews does not expose a creation timestamp
                 replyCount = gNews.interactions,
                 thumbnail = gNews.thumb,
+                rawImage = gNews.thumb,
                 previewContent = listOf(
                     Paragraph.Text(gNews.preview)
                 ),

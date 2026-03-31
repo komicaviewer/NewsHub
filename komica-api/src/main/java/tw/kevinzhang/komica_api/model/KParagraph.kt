@@ -2,27 +2,27 @@ package tw.kevinzhang.komica_api.model
 
 interface KParagraph
 
-class KVideoInfo(
+data class KVideoInfo(
     val url: String,
 ): KParagraph
 
-class KImageInfo(
+data class KImageInfo(
     val thumb: String? = null,
     val raw: String,
 ): KParagraph
 
-class KText(
+data class KText(
     val content: String,
 ): KParagraph
 
-class KQuote(
+data class KQuote(
     val content: String,
 ): KParagraph
 
-class KReplyTo(
+data class KReplyTo(
     val content: String,
 ): KParagraph
 
-class KLink(
+data class KLink(
     val content: String,
 ): KParagraph

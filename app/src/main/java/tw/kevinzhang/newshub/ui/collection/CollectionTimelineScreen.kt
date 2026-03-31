@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +21,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -27,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
@@ -120,7 +123,11 @@ fun CollectionTimelineScreen(
 }
 
 @Composable
-private fun ThreadSummaryCard(summary: ThreadSummary, alwaysUseRawImage: Boolean, onClick: () -> Unit) {
+private fun ThreadSummaryCard(
+    summary: ThreadSummary,
+    alwaysUseRawImage: Boolean,
+    onClick: () -> Unit
+) {
     AppCard(onClick = onClick) {
         Column(modifier = Modifier.padding(dimensionResource(R.dimen.space_8))) {
             Row(
@@ -158,19 +165,35 @@ private fun ThreadSummaryCard(summary: ThreadSummary, alwaysUseRawImage: Boolean
                 }
             }
 
-            val imageUrl = if (alwaysUseRawImage) {
-                summary.previewContent
-                    .filterIsInstance<Paragraph.ImageInfo>()
-                    .firstOrNull()?.raw ?: summary.thumbnail
-            } else {
-                summary.thumbnail
+            summary.previewContent.forEach { paragraph ->
+                when (paragraph) {
+                    is Paragraph.Text -> Text(paragraph.content)
+                    is Paragraph.Quote -> Text(
+                        "> ${paragraph.content}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+
+                    is Paragraph.ReplyTo -> TextButton(
+                        onClick = { },
+                        contentPadding = PaddingValues(0.dp),
+                    ) { Text(">> ${paragraph.id}") }
+
+                    is Paragraph.Link -> Text(
+                        paragraph.content,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+
+                    else -> {}
+                }
             }
-            imageUrl?.let { url ->
-                Spacer(modifier = Modifier.height(dimensionResource(R.dimen.space_4)))
+
+            val url = if (alwaysUseRawImage) summary.rawImage else summary.thumbnail
+            url?.let {
                 AsyncImage(
-                    model = url,
+                    model = it,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
                 )
             }
         }

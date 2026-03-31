@@ -44,6 +44,7 @@ class SoraSource @Inject constructor(
                 createdAt = kPost.createdAt,
                 replyCount = kPost.replies,
                 thumbnail = kPost.content.filterIsInstance<KImageInfo>().firstOrNull()?.thumb,
+                rawImage = kPost.content.filterIsInstance<KImageInfo>().firstOrNull()?.raw,
                 previewContent = kPost.content.map { it.toExtParagraph() },
             )
         }

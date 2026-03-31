@@ -5,7 +5,6 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import tw.kevinzhang.komica_api.isZeroOrNull
 import tw.kevinzhang.komica_api.model.KBoard
-import tw.kevinzhang.komica_api.removeFilename
 import tw.kevinzhang.komica_api.request.BoardRequestBuilder
 import tw.kevinzhang.komica_api.request.ThreadRequestBuilder
 import tw.kevinzhang.komica_api.toKBoard
@@ -71,7 +70,7 @@ class _2catRequestBuilder : BoardRequestBuilder, ThreadRequestBuilder {
         builder = builder
             .apply {
                 if (page.isZeroOrNull()) {
-                    removeFilename("htm")
+                    removeQuery("page")
                 } else {
                     val _httpUrl = builder.build()
                     val extra =

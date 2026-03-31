@@ -10,6 +10,7 @@ import tw.kevinzhang.komica_api.KomicaApi
 import tw.kevinzhang.komica_api.model.KBoard
 import tw.kevinzhang.komica_api.model.KImageInfo
 import tw.kevinzhang.komica_api.model.boards
+import tw.kevinzhang.komica_api.request._2cat._2catRequestBuilder
 import javax.inject.Inject
 import tw.kevinzhang.extension_api.model.Board as ExtBoard
 
@@ -21,6 +22,8 @@ class _2catSource @Inject constructor(
     override val language = "zh-TW"
     override val version = 1
     override val iconUrl: String? = null
+    override val alwaysUseRawImage: Boolean
+        get() = true
 
     override suspend fun getBoards(): List<ExtBoard> =
         boards()
@@ -33,15 +36,22 @@ class _2catSource @Inject constructor(
             .setPage(page)
             .build()
         return api.getAllPost(req).map { kPost ->
+            val boardUrl =
+                _2catRequestBuilder().setUrl(board.url.toHttpUrl()).setPage(null)
+                    .build().url.toString()
+            val postUrl =
+                _2catRequestBuilder().setUrl(kPost.url.toHttpUrl()).setPage(null)
+                    .build().url.toString()
             ThreadSummary(
                 sourceId = id,
-                boardUrl = board.url,
-                id = kPost.url,
+                boardUrl = boardUrl,
+                id = postUrl,
                 title = kPost.title,
                 author = kPost.poster,
                 createdAt = kPost.createdAt,
                 replyCount = kPost.replies,
                 thumbnail = kPost.content.filterIsInstance<KImageInfo>().firstOrNull()?.thumb,
+                rawImage = kPost.content.filterIsInstance<KImageInfo>().firstOrNull()?.raw,
                 previewContent = kPost.content.map { it.toExtParagraph() },
             )
         }

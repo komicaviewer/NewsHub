@@ -8,6 +8,7 @@ data class ThreadSummary(
     val author: String?,
     val createdAt: Long?,
     val replyCount: Int?,
+    val rawImage: String?,
     val thumbnail: String?,
     val previewContent: List<Paragraph>,
 )

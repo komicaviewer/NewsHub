@@ -1,16 +1,21 @@
 package tw.kevinzhang.komica_api.parser._2cat
 
 import okhttp3.HttpUrl
-import org.jsoup.nodes.Element
-import org.jsoup.nodes.TextNode
-import tw.kevinzhang.komica_api.model.*
-import tw.kevinzhang.komica_api.parser.Parser
-import tw.kevinzhang.komica_api.parser.PostHeadParser
-import tw.kevinzhang.komica_api.parser.UrlParser
 import okhttp3.Request
 import okhttp3.ResponseBody
 import org.jsoup.Jsoup
-import java.util.*
+import org.jsoup.nodes.Element
+import org.jsoup.nodes.TextNode
+import tw.kevinzhang.komica_api.model.KImageInfo
+import tw.kevinzhang.komica_api.model.KLink
+import tw.kevinzhang.komica_api.model.KParagraph
+import tw.kevinzhang.komica_api.model.KPost
+import tw.kevinzhang.komica_api.model.KPostBuilder
+import tw.kevinzhang.komica_api.model.KText
+import tw.kevinzhang.komica_api.model.KVideoInfo
+import tw.kevinzhang.komica_api.parser.Parser
+import tw.kevinzhang.komica_api.parser.PostHeadParser
+import tw.kevinzhang.komica_api.parser.UrlParser
 import java.util.regex.Pattern
 
 class _2catPostParser(
@@ -56,8 +61,10 @@ class _2catPostParser(
     private fun setPicture(source: Element, url: HttpUrl) {
         source.selectFirst("a.imglink[href=#]")?.let { thumbImg ->
             val fileName = source.selectFirst("a.imglink[href=#]").attr("title")
-            val newRawLink = "http://img.2nyan.org/${urlParser.parseBoardId(url)}/src/${fileName}"
-            val newThumbLink = "http://img.2nyan.org/${urlParser.parseBoardId(url)}/thumb/${fileName}"
+            val boardId = urlParser.parseBoardId(url);
+            val newRawLink = "https://cat.2nyan.org/$boardId/src/${fileName}"
+            val newThumbLink =
+                "https://cat.2nyan.org/$boardId/thumb/${fileName.basename()}s.jpg"
             builder.addContent(
                 KImageInfo(newThumbLink, newRawLink)
             )
@@ -94,5 +101,10 @@ class _2catPostParser(
         private val WEB_URL_PATTERN = Pattern.compile("((http?|https|ftp|file)://)?((W|w){3}.)?[a-zA-Z0-9]+\\.[a-zA-Z]+")
         private val IMAGE_URL_PATTERN = Pattern.compile("(http(s?):/)(/[^/]+)+\\.(?:jpg|gif|png)")
         private val VIDEO_URL_PATTERN = Pattern.compile("(http(s?):/)(/[^/]+)+\\.(?:webm|mp4)")
+    }
+
+    private fun String.basename(): String {
+        val dotIndex = lastIndexOf('.')
+        return if (dotIndex == -1) this else substring(0, dotIndex)
     }
 }
