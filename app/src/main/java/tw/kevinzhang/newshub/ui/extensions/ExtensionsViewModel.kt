@@ -4,12 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import tw.kevinzhang.collection.CollectionRepository
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_loader.ExtensionLoader
+import tw.kevinzhang.newshub.auth.AuthRepository
+import tw.kevinzhang.newshub.auth.LoginStatus
 import javax.inject.Inject
 
 data class SourceWithBoards(val source: Source, val boards: List<Board>)
@@ -18,7 +21,10 @@ data class SourceWithBoards(val source: Source, val boards: List<Board>)
 class ExtensionsViewModel @Inject constructor(
     private val extensionLoader: ExtensionLoader,
     private val collectionRepo: CollectionRepository,
+    authRepository: AuthRepository,
 ) : ViewModel() {
+
+    val loginStatuses: StateFlow<Map<String, LoginStatus>> = authRepository.loginStatuses
 
     private val _sources = MutableStateFlow<List<SourceWithBoards>>(emptyList())
     val sources = _sources.asStateFlow()

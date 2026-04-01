@@ -5,6 +5,9 @@ import okhttp3.Request
 import okhttp3.ResponseBody
 import tw.kevinzhang.gamer_api.model.GComment
 import tw.kevinzhang.gamer_api.request.RequestBuilder
+import java.util.logging.Logger
+
+private val logger = Logger.getLogger("CommentListParser")
 
 class CommentListParser(
     private val requestBuilder: RequestBuilder,
@@ -13,10 +16,11 @@ class CommentListParser(
         val jsonString = body.string()
         val gson = Gson()
         val map = gson.fromJson(jsonString, Map::class.java)
-        return map.mapNotNull { (_, value) ->
+        return map.mapNotNull { (key, value) ->
             try {
                 gson.fromJson(gson.toJson(value), CommentRes::class.java).toGComment()
             } catch (e: Exception) {
+                logger.warning("parse: skipping comment key=$key — ${e.javaClass.simpleName}: ${e.message}")
                 null
             }
         }

@@ -1,7 +1,10 @@
 package tw.kevinzhang.extensions_builtin.gamer
 
+import android.util.Log
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import tw.kevinzhang.extension_api.AuthResult
 import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.SourceContext
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.Paragraph
@@ -9,9 +12,12 @@ import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extensions_builtin.toExtParagraph
+import tw.kevinzhang.gamer_api.AuthRequiredException
 import tw.kevinzhang.gamer_api.GamerApi
 import tw.kevinzhang.gamer_api.model.GImageInfo
 import javax.inject.Inject
+
+private const val TAG = "GamerSource"
 
 class GamerSource @Inject constructor(
     private val gamerApi: GamerApi,
@@ -21,6 +27,14 @@ class GamerSource @Inject constructor(
     override val language = "zh-TW"
     override val version = 1
     override val iconUrl: String? = null
+    override val requiresLogin = true
+    override val loginUrl = "https://user.gamer.com.tw/login.php"
+
+    private var sourceContext: SourceContext? = null
+
+    override fun onAttach(context: SourceContext) {
+        sourceContext = context
+    }
 
     override suspend fun getBoards(): List<Board> =
         gamerApi.getAllBoard().map { gBoard ->
@@ -32,11 +46,23 @@ class GamerSource @Inject constructor(
         }
 
     override suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary> {
+        return try {
+            fetchThreadSummaries(board, page)
+        } catch (e: AuthRequiredException) {
+            Log.w(TAG, "Auth required for board=${board.url}, requesting auth…")
+            val result = requestAuth()
+            if (result is AuthResult.Success) fetchThreadSummaries(board, page)
+            else emptyList()
+        }
+    }
+
+    private suspend fun fetchThreadSummaries(board: Board, page: Int): List<ThreadSummary> {
         val req = gamerApi.getRequestBuilder()
             .setUrl(board.url.toHttpUrl())
             .setPage(page.takeIf { it != 0 })
             .build()
-        return gamerApi.getAllNews(req).map { gNews ->
+        val result = gamerApi.getAllNews(req)
+        return result.map { gNews ->
             ThreadSummary(
                 sourceId = id,
                 boardUrl = board.url,
@@ -55,6 +81,17 @@ class GamerSource @Inject constructor(
     }
 
     override suspend fun getThread(summary: ThreadSummary): Thread {
+        return try {
+            fetchThread(summary)
+        } catch (e: AuthRequiredException) {
+            Log.w(TAG, "Auth required for thread=${summary.id}, requesting auth…")
+            val result = requestAuth()
+            if (result is AuthResult.Success) fetchThread(summary)
+            else Thread(id = summary.id, url = getWebUrl(summary), title = summary.title, posts = emptyList())
+        }
+    }
+
+    private suspend fun fetchThread(summary: ThreadSummary): Thread {
         val req = gamerApi.getRequestBuilder()
             .setUrl(summary.id.toHttpUrl())
             .setPage(1)
@@ -99,4 +136,7 @@ class GamerSource @Inject constructor(
     }
 
     override fun getWebUrl(summary: ThreadSummary): String = summary.id
+
+    private suspend fun requestAuth(): AuthResult =
+        sourceContext?.requestWebViewAuth(loginUrl = loginUrl) ?: AuthResult.Cancelled
 }

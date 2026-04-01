@@ -6,6 +6,9 @@ import tw.kevinzhang.gamer_api.model.GBoard
 
 class GetAllBoard {
     suspend fun invoke() = withContext(Dispatchers.IO) {
-        listOf(GBoard("電腦應用綜合討論", "https://forum.gamer.com.tw/B.php?bsn=60030"))
+        listOf(
+            GBoard("電腦應用綜合討論", "https://forum.gamer.com.tw/B.php?bsn=60030"),
+            GBoard("場外討論區", "https://forum.gamer.com.tw/B.php?bsn=60076"),
+        )
     }
 }

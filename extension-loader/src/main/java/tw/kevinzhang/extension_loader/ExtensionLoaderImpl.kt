@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import dalvik.system.PathClassLoader
 import dagger.hilt.android.qualifiers.ApplicationContext
 import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.SourceContext
 import javax.inject.Inject
 import javax.inject.Named
 
@@ -14,10 +15,11 @@ private const val SOURCE_CLASS_KEY = "newshub.extension.source_class"
 class ExtensionLoaderImpl @Inject constructor(
     @Named("builtInSources") private val builtInSources: List<@JvmSuppressWildcards Source>,
     @ApplicationContext private val context: Context,
+    private val sourceContext: SourceContext,
 ) : ExtensionLoader {
 
     override fun getAllSources(): List<Source> =
-        builtInSources + loadInstalledApkSources()
+        (builtInSources + loadInstalledApkSources()).onEach { it.onAttach(sourceContext) }
 
     override fun getSource(id: String): Source? =
         getAllSources().find { it.id == id }

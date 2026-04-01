@@ -8,6 +8,9 @@ import tw.kevinzhang.gamer_api.model.GPost
 import tw.kevinzhang.gamer_api.request.RequestBuilder
 import tw.kevinzhang.gamer_api.toResponseBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import java.util.logging.Logger
+
+private val logger = Logger.getLogger("ThreadParser")
 
 class ThreadParser(
     private val postParser: Parser<GPost>,
@@ -15,7 +18,6 @@ class ThreadParser(
     private val requestBuilder: RequestBuilder,
 ): Parser<List<GPost>> {
     override fun parse(body: ResponseBody, req: Request): List<GPost> {
-        println(req.url)
         val source = Jsoup.parse(body.string())
         val currentPage = currentPage(source)
         return listOf(parseHead(source, req, currentPage)).plus(parseReplies(source, req, currentPage))
@@ -38,7 +40,15 @@ class ThreadParser(
 
     private fun parseReplies(source: Element, req: Request, responsePage: Int): List<GPost> {
         val allPosts = source.select("section.c-section[id^=\"post_\"]")
-        return allPosts.map { parseHead(it, req, responsePage) }.subList(1, allPosts.size)
+        return allPosts.mapIndexedNotNull { index, el ->
+            if (index == 0) return@mapIndexedNotNull null  // head is parsed separately
+            try {
+                parseHead(el, req, responsePage)
+            } catch (e: Exception) {
+                logger.warning("parseReplies: skipping post index=$index url=${req.url} — ${e.javaClass.simpleName}: ${e.message}")
+                null
+            }
+        }
     }
 }
 

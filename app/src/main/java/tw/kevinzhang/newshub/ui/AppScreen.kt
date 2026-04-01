@@ -38,6 +38,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
 import kotlinx.coroutines.launch
+import tw.kevinzhang.newshub.auth.AuthRequest
+import tw.kevinzhang.newshub.auth.AuthViewModel
+import tw.kevinzhang.newshub.auth.AuthWebViewScreen
 import tw.kevinzhang.newshub.encode
 import tw.kevinzhang.newshub.ui.collection.CollectionTimelineScreen
 import tw.kevinzhang.newshub.ui.component.AppBottomBar
@@ -53,6 +56,15 @@ import tw.kevinzhang.newshub.ui.thread.ThreadDetailScreen
 @Composable
 fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     val appViewModel: AppViewModel = hiltViewModel()
+    val authViewModel: AuthViewModel = hiltViewModel()
+
+    var pendingAuthRequest by remember { mutableStateOf<AuthRequest?>(null) }
+    LaunchedEffect(Unit) {
+        authViewModel.authRequests.collect { request ->
+            pendingAuthRequest = request
+        }
+    }
+
     val currentBackStack by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStack?.destination?.route
 
@@ -87,6 +99,19 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
         val backgroundColor = MaterialTheme.colorScheme.background
         SideEffect {
             systemUiController.setSystemBarsColor(color = backgroundColor)
+        }
+
+        // Auth WebView — shown on top of all screens when login is required
+        pendingAuthRequest?.let { request ->
+            AuthWebViewScreen(
+                loginUrl = request.loginUrl,
+                cookieJar = authViewModel.cookieJar,
+                onPageLoadJs = request.onPageLoadJs,
+                onDismiss = { result ->
+                    pendingAuthRequest = null
+                    authViewModel.completeAuth(result)
+                },
+            )
         }
 
         ModalNavigationDrawer(
@@ -208,7 +233,11 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                         )
                     }
                     composable("extensions") {
-                        ExtensionsScreen(onNavigateToMarketplace = { navController.navigate("marketplace") })
+                        ExtensionsScreen(
+                            onNavigateToMarketplace = { navController.navigate("marketplace") },
+                            onLoginClick = { loginUrl, js -> authViewModel.triggerManualLogin(loginUrl, js) },
+                            onLogoutClick = { loginUrl -> authViewModel.logout(loginUrl) },
+                        )
                     }
                     composable("marketplace") {
                         MarketplaceScreen()

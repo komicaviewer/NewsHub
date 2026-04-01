@@ -13,17 +13,21 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tw.kevinzhang.collection.data.CollectionEntity
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.newshub.R
+import tw.kevinzhang.newshub.auth.LoginStatus
 import tw.kevinzhang.newshub.ui.component.AppCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExtensionsScreen(
     onNavigateToMarketplace: () -> Unit,
+    onLoginClick: (loginUrl: String, onPageLoadJs: String?) -> Unit = { _, _ -> },
+    onLogoutClick: (loginUrl: String) -> Unit = {},
     viewModel: ExtensionsViewModel = hiltViewModel(),
 ) {
     val sources by viewModel.sources.collectAsStateWithLifecycle()
     val collections by viewModel.collections.collectAsStateWithLifecycle(emptyList())
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val loginStatuses by viewModel.loginStatuses.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -52,11 +56,32 @@ fun ExtensionsScreen(
                 else -> LazyColumn(modifier = Modifier.weight(1f)) {
                     sources.forEach { (source, boards) ->
                         item(key = source.id) {
-                            Text(
-                                text = source.name,
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.padding(dimensionResource(R.dimen.space_8)),
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(dimensionResource(R.dimen.space_8)),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    text = source.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                if (source.requiresLogin && source.loginUrl != null) {
+                                    val status = loginStatuses[source.loginUrl] ?: LoginStatus.NONE
+                                    when (status) {
+                                        LoginStatus.LOGGED_IN -> TextButton(
+                                            onClick = { onLogoutClick(source.loginUrl!!) },
+                                        ) { Text("Logout") }
+                                        LoginStatus.FAILED -> TextButton(
+                                            onClick = { onLoginClick(source.loginUrl!!, source.loginPageLoadJs) },
+                                        ) { Text("Retry") }
+                                        LoginStatus.NONE -> TextButton(
+                                            onClick = { onLoginClick(source.loginUrl!!, source.loginPageLoadJs) },
+                                        ) { Text("Login") }
+                                    }
+                                }
+                            }
                         }
                         items(boards, key = { "${source.id}:${it.url}" }) { board ->
                             BoardRow(
