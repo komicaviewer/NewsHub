@@ -1,6 +1,11 @@
 package tw.kevinzhang.newshub.ui.thread
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -9,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,25 +34,29 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.newshub.R
 import tw.kevinzhang.newshub.ui.component.AppCard
 import tw.kevinzhang.newshub.ui.component.gallery.LazyGallery
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,81 +71,117 @@ fun ThreadDetailScreen(
     val commentStates by viewModel.commentStates.collectAsStateWithLifecycle()
     val alwaysUseRawImage by viewModel.alwaysUseRawImage.collectAsStateWithLifecycle()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(thread?.title ?: "") },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateUp) {
-                        Icon(
-                            imageVector = Icons.Outlined.ArrowBack,
-                            contentDescription = "Back",
-                        )
-                    }
-                },
-                actions = {
-                    if (threadUrl != null) {
-                        IconButton(onClick = { onOpenWebClick(threadUrl!!) }) {
+    val coroutineScope = rememberCoroutineScope()
+    val offsetX = remember { Animatable(0f) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        coroutineScope.launch {
+                            if (offsetX.value > size.width * 0.4f) {
+                                offsetX.animateTo(
+                                    targetValue = size.width.toFloat(),
+                                    animationSpec = tween(durationMillis = 200),
+                                )
+                                onNavigateUp()
+                            } else {
+                                offsetX.animateTo(0f, animationSpec = spring())
+                            }
+                        }
+                    },
+                    onDragCancel = {
+                        coroutineScope.launch { offsetX.animateTo(0f, animationSpec = spring()) }
+                    },
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume()
+                        coroutineScope.launch {
+                            offsetX.snapTo((offsetX.value + dragAmount).coerceAtLeast(0f))
+                        }
+                    },
+                )
+            },
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(thread?.title ?: "") },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateUp) {
                             Icon(
-                                imageVector = Icons.Default.OpenInBrowser,
-                                contentDescription = "Open in browser",
+                                imageVector = Icons.Outlined.ArrowBack,
+                                contentDescription = "Back",
                             )
                         }
+                    },
+                    actions = {
+                        if (threadUrl != null) {
+                            IconButton(onClick = { onOpenWebClick(threadUrl!!) }) {
+                                Icon(
+                                    imageVector = Icons.Default.OpenInBrowser,
+                                    contentDescription = "Open in browser",
+                                )
+                            }
+                        }
                     }
-                }
-            )
-        },
-    ) { padding ->
-        if (thread == null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
-        } else {
-            val onReplyToClick =
-                remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
-            LazyColumn(modifier = Modifier.padding(padding)) {
-                items(thread!!.posts, key = { it.id }) { post ->
-                    ExtPostCard(
-                        post = post,
-                        alwaysUseRawImage = alwaysUseRawImage,
-                        commentUiState = commentStates[post.id],
-                        onReplyToClick = onReplyToClick,
-                        onLoadMoreCommentsClick = { viewModel.loadMoreComments(post.id) },
-                    )
+                )
+            },
+        ) { padding ->
+            if (thread == null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    contentAlignment = Alignment.Center,
+                ) { CircularProgressIndicator() }
+            } else {
+                val onReplyToClick =
+                    remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
+                LazyColumn(modifier = Modifier.padding(padding)) {
+                    items(thread!!.posts, key = { it.id }) { post ->
+                        ExtPostCard(
+                            post = post,
+                            alwaysUseRawImage = alwaysUseRawImage,
+                            commentUiState = commentStates[post.id],
+                            onReplyToClick = onReplyToClick,
+                            onLoadMoreCommentsClick = { viewModel.loadMoreComments(post.id) },
+                        )
+                    }
                 }
             }
         }
-    }
 
-    previewPost?.let { post ->
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissPreview() },
-            confirmButton = {
-                TextButton(onClick = { viewModel.dismissPreview() }) { Text("Close") }
-            },
-            title = { Text("Post ${post.id}") },
-            text = {
-                Column {
-                    post.content.forEach { paragraph ->
-                        when (paragraph) {
-                            is Paragraph.Text -> Text(paragraph.content)
-                            is Paragraph.Quote -> Text("> ${paragraph.content}")
-                            is Paragraph.ReplyTo -> Text(">> ${paragraph.id}")
-                            is Paragraph.Link -> Text(paragraph.content)
-                            is Paragraph.ImageInfo -> {
-                                val url = if (alwaysUseRawImage) paragraph.raw else paragraph.thumb
-                                url?.let { AsyncImage(model = it, contentDescription = null) }
+        previewPost?.let { post ->
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissPreview() },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.dismissPreview() }) { Text("Close") }
+                },
+                title = { Text("Post ${post.id}") },
+                text = {
+                    Column {
+                        post.content.forEach { paragraph ->
+                            when (paragraph) {
+                                is Paragraph.Text -> Text(paragraph.content)
+                                is Paragraph.Quote -> Text("> ${paragraph.content}")
+                                is Paragraph.ReplyTo -> Text(">> ${paragraph.id}")
+                                is Paragraph.Link -> Text(paragraph.content)
+                                is Paragraph.ImageInfo -> {
+                                    val url =
+                                        if (alwaysUseRawImage) paragraph.raw else paragraph.thumb
+                                    url?.let { AsyncImage(model = it, contentDescription = null) }
+                                }
+
+                                is Paragraph.VideoInfo -> Text("[video]")
                             }
-
-                            is Paragraph.VideoInfo -> Text("[video]")
                         }
                     }
-                }
-            },
-        )
+                },
+            )
+        }
     }
 }
 
@@ -231,7 +277,10 @@ private fun CommentItem(comment: Comment, alwaysUseRawImage: Boolean) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = dimensionResource(R.dimen.space_8), vertical = dimensionResource(R.dimen.space_4)),
+            .padding(
+                horizontal = dimensionResource(R.dimen.space_8),
+                vertical = dimensionResource(R.dimen.space_4)
+            ),
         verticalAlignment = Alignment.Top,
     ) {
         // 頭像佔位
