@@ -84,6 +84,8 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
         else -> MainNavItems.Collections
     }
 
+    val defaultCollectionId by appViewModel.defaultCollectionId.collectAsStateWithLifecycle()
+
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
     val openDrawer = { coroutineScope.launch { drawerState.open() } }
@@ -140,8 +142,13 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             scrollBehavior = scrollBehavior,
                             selectedItem = selectedTab,
                             onNavItemClick = { item ->
-                                val route =
-                                    if (item == MainNavItems.Collections) "home" else item.route
+                                val route = when {
+                                    item == MainNavItems.Collections && defaultCollectionId != null ->
+                                        "collection/$defaultCollectionId"
+
+                                    item == MainNavItems.Collections -> "home"
+                                    else -> item.route
+                                }
                                 navController.navigate(route) {
                                     popUpTo("home") { saveState = true }
                                     launchSingleTop = true
@@ -167,14 +174,13 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     popExitTransition = { ExitTransition.None },
                 ) {
                     composable("home") {
-                        val defaultCollectionId by appViewModel.defaultCollectionId.collectAsStateWithLifecycle()
+                        val homeDefaultCollectionId by appViewModel.defaultCollectionId.collectAsStateWithLifecycle()
                         var navigatedToDefault by remember { mutableStateOf(false) }
 
-                        LaunchedEffect(defaultCollectionId) {
-                            if (!navigatedToDefault && defaultCollectionId != null) {
+                        LaunchedEffect(homeDefaultCollectionId) {
+                            if (!navigatedToDefault && homeDefaultCollectionId != null) {
                                 navigatedToDefault = true
-                                navController.navigate("collection/$defaultCollectionId") {
-                                    popUpTo("home") { inclusive = true }
+                                navController.navigate("collection/$homeDefaultCollectionId") {
                                 }
                             }
                         }
