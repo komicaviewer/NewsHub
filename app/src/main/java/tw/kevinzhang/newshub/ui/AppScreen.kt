@@ -67,6 +67,8 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
 
     val currentBackStack by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStack?.destination?.route
+    val isHomeRoute = currentRoute == "home"
+    val isCollectionRoute = currentRoute == "collection/{collectionId}"
 
     val showBottomBar = currentRoute in setOf(
         "home",
@@ -76,7 +78,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     )
 
     val selectedTab = when {
-        currentRoute == "home" || currentRoute == "collection/{collectionId}" -> MainNavItems.Collections
+        isHomeRoute || isCollectionRoute -> MainNavItems.Collections
         currentRoute == "extensions" -> MainNavItems.Extensions
         currentRoute == "settings" -> MainNavItems.Settings
         else -> MainNavItems.Collections
@@ -87,7 +89,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     val openDrawer = { coroutineScope.launch { drawerState.open() } }
 
     val scrollBehavior = BottomAppBarDefaults.exitAlwaysScrollBehavior()
-    val isCollectionRoute = currentRoute == "collection/{collectionId}"
+
 
     // Reset bar position when leaving the collection route so it stays fully visible elsewhere
     LaunchedEffect(isCollectionRoute) {
@@ -116,6 +118,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
 
         ModalNavigationDrawer(
             drawerState = drawerState,
+            gesturesEnabled = isCollectionRoute || isHomeRoute,
             drawerContent = {
                 AppDrawer(
                     onCollectionClick = { collection ->
