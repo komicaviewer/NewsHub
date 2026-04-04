@@ -82,7 +82,7 @@ fun ThreadDetailScreen(
                 detectHorizontalDragGestures(
                     onDragEnd = {
                         coroutineScope.launch {
-                            if (offsetX.value > size.width * 0.4f) {
+                            if (offsetX.value > size.width * 0.2f) {
                                 offsetX.animateTo(
                                     targetValue = size.width.toFloat(),
                                     animationSpec = tween(durationMillis = 200),
