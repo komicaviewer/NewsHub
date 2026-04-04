@@ -43,11 +43,11 @@ import tw.kevinzhang.newshub.auth.AuthRequest
 import tw.kevinzhang.newshub.auth.AuthViewModel
 import tw.kevinzhang.newshub.auth.AuthWebViewScreen
 import tw.kevinzhang.newshub.encode
+import tw.kevinzhang.newshub.ui.boards.BoardsScreen
 import tw.kevinzhang.newshub.ui.collection.CollectionTimelineScreen
 import tw.kevinzhang.newshub.ui.collection.CreateCollectionScreen
 import tw.kevinzhang.newshub.ui.component.AppBottomBar
 import tw.kevinzhang.newshub.ui.component.AppDrawer
-import tw.kevinzhang.newshub.ui.extensions.ExtensionsScreen
 import tw.kevinzhang.newshub.ui.marketplace.MarketplaceScreen
 import tw.kevinzhang.newshub.ui.navigation.MainNavItems
 import tw.kevinzhang.newshub.ui.navigation.mainNavItems
@@ -75,13 +75,13 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     val showBottomBar = currentRoute in setOf(
         "home",
         "collection/{collectionId}",
-        "extensions",
+        "boards",
         "settings",
     )
 
     val selectedTab = when {
         isHomeRoute || isCollectionRoute -> MainNavItems.Collections
-        currentRoute == "extensions" -> MainNavItems.Extensions
+        currentRoute == "boards" -> MainNavItems.Boards
         currentRoute == "settings" -> MainNavItems.Settings
         else -> MainNavItems.Collections
     }
@@ -254,8 +254,8 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             },
                         )
                     }
-                    composable("extensions") {
-                        ExtensionsScreen(
+                    composable("boards") {
+                        BoardsScreen(
                             onNavigateToMarketplace = { navController.navigate("marketplace") },
                             onLoginClick = { loginUrl, js -> authViewModel.triggerManualLogin(loginUrl, js) },
                             onLogoutClick = { loginUrl -> authViewModel.logout(loginUrl) },

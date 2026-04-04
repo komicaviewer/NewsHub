@@ -1,4 +1,4 @@
-package tw.kevinzhang.newshub.ui.extensions
+package tw.kevinzhang.newshub.ui.boards
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -18,7 +18,7 @@ import javax.inject.Inject
 data class SourceWithBoards(val source: Source, val boards: List<Board>)
 
 @HiltViewModel
-class ExtensionsViewModel @Inject constructor(
+class BoardsViewModel @Inject constructor(
     private val extensionLoader: ExtensionLoader,
     private val collectionRepo: CollectionRepository,
     authRepository: AuthRepository,

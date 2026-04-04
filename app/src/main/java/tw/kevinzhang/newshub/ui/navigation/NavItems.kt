@@ -25,8 +25,9 @@ sealed class MainNavItems(
     val labelRes: Int,
 ) : NavItems(resourceId = labelRes, icon = icon, selectedIcon = selectedIcon, route = route) {
     object Collections : MainNavItems(Icons.Outlined.Home, Icons.Filled.Home, "collections", R.string.collections)
-    object Extensions : MainNavItems(Icons.Outlined.Language, Icons.Filled.Language, "extensions", R.string.extensions)
+    object Boards :
+        MainNavItems(Icons.Outlined.Language, Icons.Filled.Language, "boards", R.string.extensions)
     object Settings : MainNavItems(Icons.Outlined.Settings, Icons.Filled.Settings, "settings", R.string.settings)
 }
 
-fun mainNavItems() = listOf(MainNavItems.Collections, MainNavItems.Extensions, MainNavItems.Settings)
+fun mainNavItems() = listOf(MainNavItems.Collections, MainNavItems.Boards, MainNavItems.Settings)
