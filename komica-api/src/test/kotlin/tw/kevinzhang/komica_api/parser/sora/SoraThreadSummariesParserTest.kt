@@ -5,19 +5,19 @@ import org.jsoup.Jsoup
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import tw.kevinzhang.komica_api.loadFile
-import tw.kevinzhang.komica_api.request.sora.SoraBoardRequestBuilder
-import tw.kevinzhang.komica_api.request.sora.SoraBoardRequestParser
 import tw.kevinzhang.komica_api.request.sora.SoraThreadRequestBuilder
+import tw.kevinzhang.komica_api.request.sora.SoraThreadSummariesRequestBuilder
+import tw.kevinzhang.komica_api.request.sora.SoraThreadSummariesRequestParser
 import tw.kevinzhang.komica_api.toResponseBody
 
-internal class SoraBoardParserTest {
+internal class SoraThreadSummariesParserTest {
 
     @Test
     fun `Test parse posts with 綜合 BoardPage html expect successful`() {
-        val builder = SoraBoardRequestBuilder()
-        val parser = SoraBoardParser(
+        val builder = SoraThreadSummariesRequestBuilder()
+        val parser = SoraThreadSummariesParser(
             SoraPostParser(SoraUrlParser(), SoraPostHeadParser()),
-            SoraBoardRequestParser(), SoraThreadRequestBuilder(),
+            SoraThreadSummariesRequestParser(), SoraThreadRequestBuilder(),
         )
         val posts = parser.parse(
             Jsoup.parse(loadFile("./src/test/html/org/komica/sora/BoardPage.html"))
@@ -29,10 +29,10 @@ internal class SoraBoardParserTest {
 
     @Test
     fun `Test parse posts with 2cat BoardPage html expect successful`() {
-        val builder = SoraBoardRequestBuilder()
-        val parser = SoraBoardParser(
+        val builder = SoraThreadSummariesRequestBuilder()
+        val parser = SoraThreadSummariesParser(
             SoraPostParser(SoraUrlParser(), SoraPostHeadParser()),
-            SoraBoardRequestParser(), SoraThreadRequestBuilder(),
+            SoraThreadSummariesRequestParser(), SoraThreadRequestBuilder(),
         )
         val posts = parser.parse(
             Jsoup.parse(loadFile("./src/test/html/org/komica/2cat/BoardPage.html"))

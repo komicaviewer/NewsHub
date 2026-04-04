@@ -5,16 +5,16 @@ import org.jsoup.Jsoup
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import tw.kevinzhang.komica_api.loadFile
-import tw.kevinzhang.komica_api.request.sora.SoraBoardRequestBuilder
 import tw.kevinzhang.komica_api.request.sora.SoraThreadRequestBuilder
 import tw.kevinzhang.komica_api.request.sora.SoraThreadRequestParser
+import tw.kevinzhang.komica_api.request.sora.SoraThreadSummariesRequestBuilder
 import tw.kevinzhang.komica_api.toResponseBody
 
 internal class SoraThreadParserTest {
 
     @Test
     fun `Test parse thread with 綜合 ThreadPage html expect successful`() {
-        val builder = SoraBoardRequestBuilder()
+        val builder = SoraThreadSummariesRequestBuilder()
         val parser = SoraThreadParser(
             SoraPostParser(SoraUrlParser(), SoraPostHeadParser()),
             SoraThreadRequestParser(), SoraThreadRequestBuilder(),
@@ -30,7 +30,7 @@ internal class SoraThreadParserTest {
 
     @Test
     fun `Test parse thread with 2cat ThreadPage html expect successful`() {
-        val builder = SoraBoardRequestBuilder()
+        val builder = SoraThreadSummariesRequestBuilder()
         val parser = SoraThreadParser(
             SoraPostParser(SoraUrlParser(), SoraPostHeadParser()),
             SoraThreadRequestParser(),

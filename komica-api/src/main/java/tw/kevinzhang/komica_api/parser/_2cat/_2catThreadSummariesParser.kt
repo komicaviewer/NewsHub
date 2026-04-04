@@ -1,15 +1,15 @@
 package tw.kevinzhang.komica_api.parser._2cat
 
-import tw.kevinzhang.komica_api.model.KPost
-import tw.kevinzhang.komica_api.parser.Parser
-import tw.kevinzhang.komica_api.parser.sora.SoraBoardParser.Companion.parseReplyCount
-import tw.kevinzhang.komica_api.request._2cat._2catRequestBuilder
-import tw.kevinzhang.komica_api.toResponseBody
 import okhttp3.Request
 import okhttp3.ResponseBody
 import org.jsoup.Jsoup
+import tw.kevinzhang.komica_api.model.KPost
+import tw.kevinzhang.komica_api.parser.Parser
+import tw.kevinzhang.komica_api.parser.sora.SoraThreadSummariesParser.Companion.parseReplyCount
+import tw.kevinzhang.komica_api.request._2cat._2catRequestBuilder
+import tw.kevinzhang.komica_api.toResponseBody
 
-class _2catBoardParser(
+class _2catThreadSummariesParser(
     private val postParser: Parser<KPost>,
     private val threadRequestBuilder: _2catRequestBuilder,
 ): Parser<List<KPost>> {

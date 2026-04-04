@@ -1,19 +1,19 @@
 package tw.kevinzhang.komica_api.interactor
 
 import tw.kevinzhang.komica_api.model.KBoard
-import tw.kevinzhang.komica_api.request.BoardRequestBuilder
 import tw.kevinzhang.komica_api.request.ThreadRequestBuilder
+import tw.kevinzhang.komica_api.request.ThreadSummariesRequestBuilder
 import tw.kevinzhang.komica_api.request._2cat._2catRequestBuilder
-import tw.kevinzhang.komica_api.request.sora.SoraBoardRequestBuilder
 import tw.kevinzhang.komica_api.request.sora.SoraThreadRequestBuilder
+import tw.kevinzhang.komica_api.request.sora.SoraThreadSummariesRequestBuilder
 
 class GetRequestBuilder {
-    fun forBoard(board: KBoard): BoardRequestBuilder {
+    fun forBoard(board: KBoard): ThreadSummariesRequestBuilder {
         return when (board) {
             is KBoard.Sora, KBoard.人外, KBoard.格鬥遊戲, KBoard.Idolmaster, KBoard.`3D-STG`, KBoard.魔物獵人, KBoard.`TYPE-MOON` ->
-                SoraBoardRequestBuilder().setBoard(board)
+                SoraThreadSummariesRequestBuilder().setBoard(board)
             is KBoard._2catKomica ->
-                SoraBoardRequestBuilder().setBoard(board)
+                SoraThreadSummariesRequestBuilder().setBoard(board)
             is KBoard._2cat ->
                 _2catRequestBuilder().setBoard(board)
             else ->

@@ -31,10 +31,10 @@ class SoraSource @Inject constructor(
 
     override suspend fun getThreadSummaries(board: ExtBoard, page: Int): List<ThreadSummary> {
         val kBoard = boards().first { it.url == board.url }
-        val req = api.getBoardRequestBuilder(kBoard)
+        val req = api.getThreadSummariesRequestBuilder(kBoard)
             .setPage(page)
             .build()
-        return api.getAllPost(req).map { kPost ->
+        return api.getThread(req).map { kPost ->
             ThreadSummary(
                 sourceId = id,
                 boardUrl = board.url,
@@ -55,7 +55,7 @@ class SoraSource @Inject constructor(
         val req = api.getThreadRequestBuilder(kBoard)
             .setUrl(summary.id.toHttpUrl())
             .build()
-        val posts = api.getAllPost(req)
+        val posts = api.getThread(req)
         return Thread(
             id = summary.id,
             url = getWebUrl(summary),

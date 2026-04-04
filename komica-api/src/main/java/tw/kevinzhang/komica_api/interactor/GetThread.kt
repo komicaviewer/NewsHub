@@ -24,7 +24,7 @@ import tw.kevinzhang.komica_api.request.sora.SoraThreadRequestBuilder
 import tw.kevinzhang.komica_api.request.sora.SoraThreadRequestParser
 import tw.kevinzhang.komica_api.toKBoard
 
-class GetAllPost(
+class GetThread(
     private val client: OkHttpClient,
 ) {
     suspend fun invoke(req: Request): List<KPost> = withContext(Dispatchers.IO) {

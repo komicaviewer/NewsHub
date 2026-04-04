@@ -5,11 +5,11 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import tw.kevinzhang.komica_api.isZeroOrNull
 import tw.kevinzhang.komica_api.model.KBoard
-import tw.kevinzhang.komica_api.request.BoardRequestBuilder
 import tw.kevinzhang.komica_api.request.ThreadRequestBuilder
+import tw.kevinzhang.komica_api.request.ThreadSummariesRequestBuilder
 import tw.kevinzhang.komica_api.toKBoard
 
-class _2catRequestBuilder : BoardRequestBuilder, ThreadRequestBuilder {
+class _2catRequestBuilder : ThreadSummariesRequestBuilder, ThreadRequestBuilder {
     private lateinit var builder: HttpUrl.Builder
 
     override fun setUrl(url: HttpUrl): _2catRequestBuilder {

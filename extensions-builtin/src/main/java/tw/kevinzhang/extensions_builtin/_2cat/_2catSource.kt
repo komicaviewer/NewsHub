@@ -32,10 +32,10 @@ class _2catSource @Inject constructor(
 
     override suspend fun getThreadSummaries(board: ExtBoard, page: Int): List<ThreadSummary> {
         val kBoard = boards().first { it.url == board.url }
-        val req = api.getBoardRequestBuilder(kBoard)
+        val req = api.getThreadSummariesRequestBuilder(kBoard)
             .setPage(page)
             .build()
-        return api.getAllPost(req).map { kPost ->
+        return api.getThread(req).map { kPost ->
             val boardUrl =
                 _2catRequestBuilder().setUrl(board.url.toHttpUrl()).setPage(null)
                     .build().url.toString()
@@ -62,7 +62,7 @@ class _2catSource @Inject constructor(
         val req = api.getThreadRequestBuilder(kBoard)
             .setUrl(summary.id.toHttpUrl())
             .build()
-        val posts = api.getAllPost(req)
+        val posts = api.getThread(req)
         return Thread(
             id = summary.id,
             url = getWebUrl(summary),
