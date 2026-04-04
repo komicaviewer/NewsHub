@@ -8,4 +8,6 @@ data class CollectionEntity(
     @PrimaryKey val id: String,   // UUID
     val name: String,
     val sortOrder: Int,
+    val description: String = "",
+    val emoji: String = "📰",
 )
