@@ -26,9 +26,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -57,6 +60,16 @@ fun CollectionTimelineScreen(
     val rawImageSourceIds by viewModel.rawImageSourceIds.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val activity = LocalContext.current as Activity
+    val pullToRefreshState = rememberPullToRefreshState()
+
+    if (pullToRefreshState.isRefreshing) {
+        LaunchedEffect(true) { items.refresh() }
+    }
+    LaunchedEffect(items.loadState.refresh) {
+        if (items.loadState.refresh !is LoadState.Loading) {
+            pullToRefreshState.endRefresh()
+        }
+    }
 
     LaunchedEffect(scrollToTopTrigger) {
         if (scrollToTopTrigger > 0) listState.animateScrollToItem(0)
@@ -80,6 +93,7 @@ fun CollectionTimelineScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .nestedScroll(pullToRefreshState.nestedScrollConnection)
         ) {
             LazyColumn(state = listState) {
                 items(
@@ -131,6 +145,10 @@ fun CollectionTimelineScreen(
 
                 else -> {}
             }
+            PullToRefreshContainer(
+                state = pullToRefreshState,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
         }
     }
 }
