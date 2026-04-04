@@ -16,14 +16,18 @@ class CollectionRepositoryImpl @Inject constructor(
     override fun observeSubscriptions(collectionId: String): Flow<List<BoardSubscriptionEntity>> =
         dao.observeSubscriptions(collectionId)
 
-    override suspend fun createCollection(name: String) {
+    override suspend fun createCollection(name: String, description: String, emoji: String): String {
+        val id = UUID.randomUUID().toString()
         dao.insertCollection(
             CollectionEntity(
-                id = UUID.randomUUID().toString(),
+                id = id,
                 name = name,
                 sortOrder = 0,
+                description = description,
+                emoji = emoji,
             )
         )
+        return id
     }
 
     override suspend fun deleteCollection(id: String) {
