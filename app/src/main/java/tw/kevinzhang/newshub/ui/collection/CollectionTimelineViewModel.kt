@@ -17,11 +17,15 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import tw.kevinzhang.collection.CollectionRepository
+import tw.kevinzhang.collection.data.BoardSubscriptionEntity
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import javax.inject.Inject
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class CollectionTimelineViewModel @Inject constructor(
     private val collectionRepo: CollectionRepository,
@@ -44,6 +48,10 @@ class CollectionTimelineViewModel @Inject constructor(
         .map { list -> list.firstOrNull { it.id == collectionId }?.name ?: "" }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
+    val subscriptions: StateFlow<List<BoardSubscriptionEntity>> =
+        collectionRepo.observeSubscriptions(collectionId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val timelinePager: Flow<PagingData<ThreadSummary>> =
         collectionRepo.observeSubscriptions(collectionId)
             .distinctUntilChanged()
@@ -56,4 +64,15 @@ class CollectionTimelineViewModel @Inject constructor(
                 }.flow
             }
             .cachedIn(viewModelScope)
+
+    fun addBoardSubscription(sourceId: String, boardUrl: String, boardName: String) {
+        viewModelScope.launch {
+            collectionRepo.addBoardSubscription(
+                collectionId = collectionId,
+                sourceId = sourceId,
+                boardUrl = boardUrl,
+                boardName = boardName,
+            )
+        }
+    }
 }
