@@ -44,6 +44,7 @@ import tw.kevinzhang.newshub.auth.AuthViewModel
 import tw.kevinzhang.newshub.auth.AuthWebViewScreen
 import tw.kevinzhang.newshub.encode
 import tw.kevinzhang.newshub.ui.collection.CollectionTimelineScreen
+import tw.kevinzhang.newshub.ui.collection.CreateCollectionScreen
 import tw.kevinzhang.newshub.ui.component.AppBottomBar
 import tw.kevinzhang.newshub.ui.component.AppDrawer
 import tw.kevinzhang.newshub.ui.extensions.ExtensionsScreen
@@ -133,6 +134,10 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             launchSingleTop = false
                         }
                         coroutineScope.launch { drawerState.close() }
+                    },
+                    onCreateCollectionClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        navController.navigate("create_collection")
                     },
                 )
             },
@@ -266,6 +271,16 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                         ) {
                             Text("Settings — coming soon")
                         }
+                    }
+                    composable("create_collection") {
+                        CreateCollectionScreen(
+                            onNavigateUp = { navController.navigateUp() },
+                            onCollectionCreated = { collectionId ->
+                                navController.navigate("collection/$collectionId") {
+                                    popUpTo("create_collection") { inclusive = true }
+                                }
+                            },
+                        )
                     }
                 }
             }
