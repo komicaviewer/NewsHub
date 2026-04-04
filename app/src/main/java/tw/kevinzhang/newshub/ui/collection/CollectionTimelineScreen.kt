@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -31,9 +32,12 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.unit.dp
@@ -54,13 +58,21 @@ fun CollectionTimelineScreen(
     onThreadClick: (ThreadSummary) -> Unit,
     scrollToTopTrigger: Int = 0,
     viewModel: CollectionTimelineViewModel = hiltViewModel(),
+    boardPickerViewModel: BoardPickerViewModel = hiltViewModel(),
 ) {
     val items = viewModel.timelinePager.collectAsLazyPagingItems()
     val collectionName by viewModel.collectionName.collectAsStateWithLifecycle()
     val rawImageSourceIds by viewModel.rawImageSourceIds.collectAsStateWithLifecycle()
+    val subscriptions by viewModel.subscriptions.collectAsStateWithLifecycle()
+    val sourcesWithBoards by boardPickerViewModel.sourcesWithBoards.collectAsStateWithLifecycle()
+    val isBoardPickerLoading by boardPickerViewModel.isLoading.collectAsStateWithLifecycle()
+
     val listState = rememberLazyListState()
     val activity = LocalContext.current as Activity
     val pullToRefreshState = rememberPullToRefreshState()
+
+    var showBoardPicker by remember { mutableStateOf(false) }
+    var localSelectedBoards by remember { mutableStateOf(emptySet<SelectedBoard>()) }
 
     if (pullToRefreshState.isRefreshing) {
         LaunchedEffect(true) { items.refresh() }
@@ -95,10 +107,29 @@ fun CollectionTimelineScreen(
                 .padding(innerPadding)
                 .nestedScroll(pullToRefreshState.nestedScrollConnection)
         ) {
+            // Empty state: no subscriptions and not loading
+            if (subscriptions.isEmpty() && items.loadState.refresh !is LoadState.Loading) {
+                Column(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = "尚未加入任何 Board",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(onClick = { showBoardPicker = true }) {
+                        Text("新增 Board")
+                    }
+                }
+            }
+
             LazyColumn(state = listState) {
                 items(
                     count = items.itemCount,
-                    key = { index -> items.peek(index)?.id ?: index }) { index ->
+                    key = { index -> items.peek(index)?.id ?: index },
+                ) { index ->
                     val summary = items[index] ?: return@items
                     ThreadSummaryCard(
                         summary = summary,
@@ -126,6 +157,7 @@ fun CollectionTimelineScreen(
                     }
                 }
             }
+
             when (val refreshState = items.loadState.refresh) {
                 is LoadState.Loading -> if (items.itemCount == 0) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -145,11 +177,37 @@ fun CollectionTimelineScreen(
 
                 else -> {}
             }
+
             PullToRefreshContainer(
                 state = pullToRefreshState,
                 modifier = Modifier.align(Alignment.TopCenter),
             )
         }
+    }
+
+    if (showBoardPicker) {
+        BoardPickerDialog(
+            sourcesWithBoards = sourcesWithBoards,
+            isLoading = isBoardPickerLoading,
+            selectedBoards = localSelectedBoards,
+            onBoardToggle = { board ->
+                localSelectedBoards = if (board in localSelectedBoards)
+                    localSelectedBoards - board
+                else
+                    localSelectedBoards + board
+            },
+            onConfirm = {
+                localSelectedBoards.forEach { board ->
+                    viewModel.addBoardSubscription(board.sourceId, board.boardUrl, board.boardName)
+                }
+                localSelectedBoards = emptySet()
+                showBoardPicker = false
+            },
+            onDismiss = {
+                localSelectedBoards = emptySet()
+                showBoardPicker = false
+            },
+        )
     }
 }
 
@@ -157,7 +215,7 @@ fun CollectionTimelineScreen(
 private fun ThreadSummaryCard(
     summary: ThreadSummary,
     alwaysUseRawImage: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
 ) {
     AppCard(onClick = onClick) {
         Column(modifier = Modifier.padding(dimensionResource(R.dimen.space_8))) {
@@ -223,8 +281,7 @@ private fun ThreadSummaryCard(
                 AsyncImage(
                     model = it,
                     contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
