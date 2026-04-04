@@ -43,14 +43,16 @@ class ExtensionsViewModel @Inject constructor(
         }
     }
 
-    fun addBoardToCollection(collectionId: String, board: Board, source: Source) {
+    fun addBoardToCollections(collectionIds: List<String>, board: Board, source: Source) {
         viewModelScope.launch {
-            collectionRepo.addBoardSubscription(
-                collectionId = collectionId,
-                sourceId = source.id,
-                boardUrl = board.url,
-                boardName = board.name,
-            )
+            collectionIds.forEach { collectionId ->
+                collectionRepo.addBoardSubscription(
+                    collectionId = collectionId,
+                    sourceId = source.id,
+                    boardUrl = board.url,
+                    boardName = board.name,
+                )
+            }
         }
     }
 }

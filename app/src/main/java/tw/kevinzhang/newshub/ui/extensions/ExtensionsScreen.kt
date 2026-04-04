@@ -1,5 +1,6 @@
 package tw.kevinzhang.newshub.ui.extensions
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -8,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tw.kevinzhang.collection.data.CollectionEntity
@@ -87,8 +89,8 @@ fun ExtensionsScreen(
                             BoardRow(
                                 board = board,
                                 collections = collections,
-                                onAddToCollection = { collectionId ->
-                                    viewModel.addBoardToCollection(collectionId, board, source)
+                                onAddToCollections = { collectionIds ->
+                                    viewModel.addBoardToCollections(collectionIds, board, source)
                                 },
                             )
                         }
@@ -99,15 +101,18 @@ fun ExtensionsScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BoardRow(
     board: Board,
     collections: List<CollectionEntity>,
-    onAddToCollection: (String) -> Unit,
+    onAddToCollections: (List<String>) -> Unit,
 ) {
-    var showDialog by remember { mutableStateOf(false) }
+    var showSheet by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(emptySet<String>()) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    AppCard(onClick = { showDialog = true }) {
+    AppCard(onClick = { showSheet = true }) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -116,37 +121,82 @@ private fun BoardRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(text = board.name, modifier = Modifier.weight(1f))
-            TextButton(onClick = { showDialog = true }) { Text("Add") }
+            TextButton(onClick = { showSheet = true }) { Text("Add") }
         }
     }
     Spacer(modifier = Modifier.height(dimensionResource(R.dimen.space_4)))
 
-    if (showDialog) {
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text("Add to Collection") },
-            text = {
-                if (collections.isEmpty()) {
-                    Text("No collections yet. Create one first.")
-                } else {
-                    LazyColumn {
-                        items(collections, key = { it.id }) { collection ->
-                            TextButton(
-                                onClick = {
-                                    onAddToCollection(collection.id)
-                                    showDialog = false
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(collection.name)
-                            }
+    if (showSheet) {
+        ModalBottomSheet(
+            onDismissRequest = {
+                selectedIds = emptySet()
+                showSheet = false
+            },
+            sheetState = sheetState,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "加入 Collection",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    onClick = {
+                        onAddToCollections(selectedIds.toList())
+                        selectedIds = emptySet()
+                        showSheet = false
+                    },
+                    enabled = selectedIds.isNotEmpty(),
+                ) {
+                    Text("確認")
+                }
+            }
+
+            if (collections.isEmpty()) {
+                Text(
+                    text = "尚未建立任何 Collection",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 24.dp),
+                ) {
+                    items(collections, key = { it.id }) { collection ->
+                        val isChecked = collection.id in selectedIds
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedIds = if (collection.id in selectedIds)
+                                        selectedIds - collection.id
+                                    else
+                                        selectedIds + collection.id
+                                }
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                checked = isChecked,
+                                onCheckedChange = null,
+                            )
+                            Text(
+                                text = "${collection.emoji}  ${collection.name}",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 8.dp),
+                            )
                         }
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
-            },
-        )
+            }
+        }
     }
 }
