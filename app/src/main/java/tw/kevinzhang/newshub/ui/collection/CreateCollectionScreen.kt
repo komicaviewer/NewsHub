@@ -16,7 +16,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -58,13 +60,18 @@ fun CreateCollectionScreen(
     onNavigateUp: () -> Unit,
     onCollectionCreated: (collectionId: String) -> Unit,
     viewModel: CreateCollectionViewModel = hiltViewModel(),
+    boardPickerViewModel: BoardPickerViewModel = hiltViewModel(),
 ) {
     val name by viewModel.name.collectAsStateWithLifecycle()
     val description by viewModel.description.collectAsStateWithLifecycle()
     val emoji by viewModel.emoji.collectAsStateWithLifecycle()
+    val selectedBoards by viewModel.selectedBoards.collectAsStateWithLifecycle()
+    val sourcesWithBoards by boardPickerViewModel.sourcesWithBoards.collectAsStateWithLifecycle()
+    val isBoardPickerLoading by boardPickerViewModel.isLoading.collectAsStateWithLifecycle()
 
     var showEmojiPicker by remember { mutableStateOf(false) }
-    val bottomSheetState = rememberModalBottomSheetState()
+    var showBoardPicker by remember { mutableStateOf(false) }
+    val emojiSheetState = rememberModalBottomSheetState()
 
     LaunchedEffect(Unit) {
         viewModel.createdCollectionId.collect { id ->
@@ -90,6 +97,11 @@ fun CreateCollectionScreen(
                     }
                 },
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { showBoardPicker = true }) {
+                Icon(Icons.Default.Add, contentDescription = "選擇 Board")
+            }
         },
     ) { padding ->
         Column(
@@ -140,13 +152,23 @@ fun CreateCollectionScreen(
                 minLines = 3,
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            if (selectedBoards.isNotEmpty()) {
+                Text(
+                    text = "已選擇 ${selectedBoards.size} 個 Board",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 
+    // Emoji picker bottom sheet
     if (showEmojiPicker) {
         ModalBottomSheet(
             onDismissRequest = { showEmojiPicker = false },
-            sheetState = bottomSheetState,
+            sheetState = emojiSheetState,
         ) {
             Text(
                 text = "選擇 Emoji",
@@ -185,5 +207,17 @@ fun CreateCollectionScreen(
             }
             Box(modifier = Modifier.padding(bottom = 24.dp))
         }
+    }
+
+    // Board picker bottom sheet
+    if (showBoardPicker) {
+        BoardPickerDialog(
+            sourcesWithBoards = sourcesWithBoards,
+            isLoading = isBoardPickerLoading,
+            selectedBoards = selectedBoards,
+            onBoardToggle = { board -> viewModel.toggleBoard(board) },
+            onConfirm = { showBoardPicker = false },
+            onDismiss = { showBoardPicker = false },
+        )
     }
 }
