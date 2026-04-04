@@ -5,7 +5,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.ResponseBody
 import org.jsoup.Jsoup
-import tw.kevinzhang.gamer_api.model.GNews
+import tw.kevinzhang.gamer_api.model.GThreadSummary
 import tw.kevinzhang.gamer_api.request.RequestBuilder
 import tw.kevinzhang.gamer_api.toResponseBody
 import java.util.logging.Logger
@@ -13,10 +13,10 @@ import java.util.logging.Logger
 private val logger = Logger.getLogger("BoardParser")
 
 class BoardParser(
-    private val newsParser: NewsParser,
+    private val threadSummaryParser: ThreadSummaryParser,
     private val requestBuilder: RequestBuilder,
-): Parser<List<GNews>> {
-    override fun parse(body: ResponseBody, req: Request): List<GNews> {
+) : Parser<List<GThreadSummary>> {
+    override fun parse(body: ResponseBody, req: Request): List<GThreadSummary> {
         val source = Jsoup.parse(body.string())
         val newsList = source.select("tr.b-list__row.b-list-item.b-imglist-item:not(.b-list__row--sticky)")
         if (newsList.isEmpty()) {
@@ -29,7 +29,10 @@ class BoardParser(
                     .replaceAfterHost("/$href")
                     .removeAllQueryParameters("tnum")
                     .build()
-                newsParser.parse(it.toResponseBody(), requestBuilder.setUrl(threadUrl).build())
+                threadSummaryParser.parse(
+                    it.toResponseBody(),
+                    requestBuilder.setUrl(threadUrl).build()
+                )
             } catch (e: Exception) {
                 logger.warning("parse: skipping item — ${e.javaClass.simpleName}: ${e.message}")
                 null

@@ -16,7 +16,7 @@ import java.util.logging.Logger
 
 private val logger = Logger.getLogger("GetAllPost")
 
-class GetAllPost(
+class GetThread(
     private val client: OkHttpClient,
 ) {
     suspend fun invoke(req: Request): List<GPost> = withContext(Dispatchers.IO) {

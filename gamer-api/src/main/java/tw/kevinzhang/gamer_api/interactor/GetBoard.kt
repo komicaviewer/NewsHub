@@ -5,6 +5,6 @@ import kotlinx.coroutines.withContext
 
 class GetBoard {
     suspend fun invoke(url: String) = withContext(Dispatchers.IO) {
-        GetAllBoard().invoke().first { url.contains(it.url) }
+        GetAllBoards().invoke().first { url.contains(it.url) }
     }
 }

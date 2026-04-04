@@ -5,10 +5,10 @@ import okhttp3.ResponseBody
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import tw.kevinzhang.gamer_api.expandInt
-import tw.kevinzhang.gamer_api.model.GNews
+import tw.kevinzhang.gamer_api.model.GThreadSummary
 
-class NewsParser: Parser<GNews> {
-    private var news = GNews(
+class ThreadSummaryParser : Parser<GThreadSummary> {
+    private var news = GThreadSummary(
         url = "",
         title = "",
         gp = 0,
@@ -20,7 +20,7 @@ class NewsParser: Parser<GNews> {
         createdAt = "",
     )
 
-    override fun parse(body: ResponseBody, req: Request): GNews {
+    override fun parse(body: ResponseBody, req: Request): GThreadSummary {
         val source = Jsoup.parse(body.string())
         setTitle(source)
         setGp(source)

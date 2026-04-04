@@ -37,7 +37,7 @@ class GamerSource @Inject constructor(
     }
 
     override suspend fun getBoards(): List<Board> =
-        gamerApi.getAllBoard().map { gBoard ->
+        gamerApi.getAllBoards().map { gBoard ->
             Board(
                 sourceId = id,
                 url = gBoard.url,
@@ -61,7 +61,7 @@ class GamerSource @Inject constructor(
             .setUrl(board.url.toHttpUrl())
             .setPage(page.takeIf { it != 0 })
             .build()
-        val result = gamerApi.getAllNews(req)
+        val result = gamerApi.getThreadSummaries(req)
         return result.map { gNews ->
             ThreadSummary(
                 sourceId = id,
@@ -96,7 +96,7 @@ class GamerSource @Inject constructor(
             .setUrl(summary.id.toHttpUrl())
             .setPage(1)
             .build()
-        val gPosts = gamerApi.getAllPost(req)
+        val gPosts = gamerApi.getThread(req)
         return Thread(
             id = summary.id,
             url = getWebUrl(summary),

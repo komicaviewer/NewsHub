@@ -1,6 +1,6 @@
 package tw.kevinzhang.gamer_api.model
 
-data class GNews(
+data class GThreadSummary(
     val title: String,
     val url: String,
     val preview: String,
