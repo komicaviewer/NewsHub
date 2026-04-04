@@ -49,6 +49,7 @@ import tw.kevinzhang.newshub.ui.component.AppCard
 fun CollectionTimelineScreen(
     onOpenDrawer: () -> Unit,
     onThreadClick: (ThreadSummary) -> Unit,
+    scrollToTopTrigger: Int = 0,
     viewModel: CollectionTimelineViewModel = hiltViewModel(),
 ) {
     val items = viewModel.timelinePager.collectAsLazyPagingItems()
@@ -56,6 +57,10 @@ fun CollectionTimelineScreen(
     val rawImageSourceIds by viewModel.rawImageSourceIds.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val activity = LocalContext.current as Activity
+
+    LaunchedEffect(scrollToTopTrigger) {
+        if (scrollToTopTrigger > 0) listState.animateScrollToItem(0)
+    }
 
     BackHandler { activity.moveTaskToBack(true) }
 

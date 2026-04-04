@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -86,6 +87,8 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
 
     val defaultCollectionId by appViewModel.defaultCollectionId.collectAsStateWithLifecycle()
 
+    var collectionScrollToTopTrigger by remember { mutableIntStateOf(0) }
+
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
     val openDrawer = { coroutineScope.launch { drawerState.open() } }
@@ -142,17 +145,21 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             scrollBehavior = scrollBehavior,
                             selectedItem = selectedTab,
                             onNavItemClick = { item ->
-                                val route = when {
-                                    item == MainNavItems.Collections && defaultCollectionId != null ->
-                                        "collection/$defaultCollectionId"
+                                if (item == MainNavItems.Collections && isCollectionRoute) {
+                                    collectionScrollToTopTrigger++
+                                } else {
+                                    val route = when {
+                                        item == MainNavItems.Collections && defaultCollectionId != null ->
+                                            "collection/$defaultCollectionId"
 
-                                    item == MainNavItems.Collections -> "home"
-                                    else -> item.route
-                                }
-                                navController.navigate(route) {
-                                    popUpTo("home") { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
+                                        item == MainNavItems.Collections -> "home"
+                                        else -> item.route
+                                    }
+                                    navController.navigate(route) {
+                                        popUpTo("home") { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
                                 }
                             },
                         )
@@ -206,6 +213,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     ) {
                         CollectionTimelineScreen(
                             onOpenDrawer = { openDrawer() },
+                            scrollToTopTrigger = collectionScrollToTopTrigger,
                             onThreadClick = { summary ->
                                 val threadId = summary.id.encode()
                                 val sourceId = summary.sourceId.encode()
