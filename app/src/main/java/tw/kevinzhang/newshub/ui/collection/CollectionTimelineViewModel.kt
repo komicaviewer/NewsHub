@@ -48,9 +48,9 @@ class CollectionTimelineViewModel @Inject constructor(
         .map { list -> list.firstOrNull { it.id == collectionId }?.name ?: "" }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
-    val subscriptions: StateFlow<List<BoardSubscriptionEntity>> =
+    val subscriptions: StateFlow<List<BoardSubscriptionEntity>?> =
         collectionRepo.observeSubscriptions(collectionId)
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val timelinePager: Flow<PagingData<ThreadSummary>> =
         collectionRepo.observeSubscriptions(collectionId)

@@ -107,8 +107,8 @@ fun CollectionTimelineScreen(
                 .padding(innerPadding)
                 .nestedScroll(pullToRefreshState.nestedScrollConnection)
         ) {
-            // Empty state: no subscriptions and not loading
-            if (subscriptions.isEmpty() && items.loadState.refresh !is LoadState.Loading) {
+            // Empty state: subscriptions loaded (non-null) and empty, pager not loading
+            if (subscriptions?.isEmpty() == true && items.loadState.refresh !is LoadState.Loading) {
                 Column(
                     modifier = Modifier.align(Alignment.Center),
                     horizontalAlignment = Alignment.CenterHorizontally,

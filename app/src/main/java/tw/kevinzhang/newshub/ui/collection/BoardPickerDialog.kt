@@ -96,7 +96,7 @@ fun BoardPickerDialog(
                         ) {
                             Checkbox(
                                 checked = isChecked,
-                                onCheckedChange = { onBoardToggle(selected) },
+                                onCheckedChange = null,
                             )
                             Text(
                                 text = board.name,

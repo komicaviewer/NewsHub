@@ -1,5 +1,6 @@
 package tw.kevinzhang.newshub.ui.collection
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -38,6 +39,7 @@ class BoardPickerViewModel @Inject constructor(
                 SourceWithBoards(
                     source = source,
                     boards = runCatching { source.getBoards() }
+                        .onFailure { Log.w("BoardPickerViewModel", "Failed to load boards for ${source.id}", it) }
                         .getOrDefault(emptyList())
                         .distinctBy { it.url },
                 )
