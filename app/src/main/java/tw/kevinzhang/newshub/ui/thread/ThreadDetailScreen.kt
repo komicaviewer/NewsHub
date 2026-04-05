@@ -36,7 +36,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -48,7 +47,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -332,34 +330,20 @@ private fun ExtPostCard(
 
 @Composable
 private fun PostWebView(rawHtml: String, textZoom: Int) {
-    // Tracks the measured content height (in dp units from WebView.contentHeight).
-    // Starts at 300 as a loading placeholder; updated in onPageFinished.
-    val contentHeightState = remember { mutableIntStateOf(300) }
-
     AndroidView(
         factory = { context ->
             WebView(context).apply {
                 settings.javaScriptEnabled = false
                 settings.loadWithOverviewMode = true
                 settings.useWideViewPort = true
-                webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView, url: String) {
-                        // post() ensures layout has been measured after load completes.
-                        view.post {
-                            val h = view.contentHeight
-                            if (h > 0) contentHeightState.intValue = h
-                        }
-                    }
-                }
             }
         },
         update = { wv ->
+            // Apply zoom outside the tag-guard — textZoom change must take effect immediately
+            // without reloading the page content.
             wv.settings.textZoom = textZoom
-            // Include textZoom in the tag so zoom changes trigger a reload,
-            // which fires onPageFinished and updates the measured height.
-            val tagKey = rawHtml to textZoom
-            if (wv.tag != tagKey) {
-                wv.tag = tagKey
+            if (wv.tag != rawHtml) {
+                wv.tag = rawHtml
                 wv.loadDataWithBaseURL(
                     "https://forum.gamer.com.tw",
                     rawHtml,
@@ -370,9 +354,10 @@ private fun PostWebView(rawHtml: String, textZoom: Int) {
             }
         },
         onRelease = { wv -> wv.destroy() },
+        // LazyColumn requires fixed height. Scroll conflicts with parent list are expected.
         modifier = Modifier
             .fillMaxWidth()
-            .height(contentHeightState.intValue.dp),
+            .height(600.dp),
     )
 }
 
