@@ -7,4 +7,5 @@ data class Post(
     val thumbnail: String?,
     val content: List<Paragraph>,
     val comments: List<Comment>,
+    val rawHtml: String? = null,
 )
