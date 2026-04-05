@@ -2,16 +2,12 @@ package tw.kevinzhang.newshub.ui.thread
 
 import android.animation.ObjectAnimator
 import android.webkit.WebView
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,7 +40,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,7 +54,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.Paragraph
@@ -315,26 +309,11 @@ private fun ExtPostCard(
 @Composable
 private fun PostWebView(rawHtml: String, textZoom: Int, onZoomChange: (Int) -> Unit) {
     val webViewRef = remember { arrayOfNulls<WebView>(1) }
-    var controlsVisible by remember { mutableStateOf(true) }
-    val coroutineScope = rememberCoroutineScope()
-
-    // Auto-hide controls after 3 seconds of inactivity
-    LaunchedEffect(controlsVisible) {
-        if (controlsVisible) {
-            delay(3_000)
-            controlsVisible = false
-        }
-    }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(600.dp)
-            // Tap anywhere on the WebView area to show controls
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) { controlsVisible = true },
+            .height(600.dp),
     ) {
         AndroidView(
             factory = { context ->
@@ -365,37 +344,24 @@ private fun PostWebView(rawHtml: String, textZoom: Int, onZoomChange: (Int) -> U
             modifier = Modifier.fillMaxSize(),
         )
 
-        AnimatedVisibility(
-            visible = controlsVisible,
-            enter = fadeIn(tween(200)),
-            exit = fadeOut(tween(500)),
+        WebViewControls(
+            textZoom = textZoom,
+            onZoomChange = onZoomChange,
+            onScrollUp = {
+                webViewRef[0]?.let { wv ->
+                    val target = (wv.scrollY - 300).coerceAtLeast(0)
+                    ObjectAnimator.ofInt(wv, "scrollY", wv.scrollY, target)
+                        .apply { duration = 250; start() }
+                }
+            },
+            onScrollDown = {
+                webViewRef[0]?.let { wv ->
+                    ObjectAnimator.ofInt(wv, "scrollY", wv.scrollY, wv.scrollY + 300)
+                        .apply { duration = 250; start() }
+                }
+            },
             modifier = Modifier.align(Alignment.BottomEnd),
-        ) {
-            WebViewControls(
-                textZoom = textZoom,
-                onZoomChange = { zoom ->
-                    onZoomChange(zoom)
-                    coroutineScope.launch {
-                        controlsVisible = false
-                        delay(100)
-                        controlsVisible = true
-                    }
-                },
-                onScrollUp = {
-                    webViewRef[0]?.let { wv ->
-                        val target = (wv.scrollY - 300).coerceAtLeast(0)
-                        ObjectAnimator.ofInt(wv, "scrollY", wv.scrollY, target)
-                            .apply { duration = 250; start() }
-                    }
-                },
-                onScrollDown = {
-                    webViewRef[0]?.let { wv ->
-                        ObjectAnimator.ofInt(wv, "scrollY", wv.scrollY, wv.scrollY + 300)
-                            .apply { duration = 250; start() }
-                    }
-                },
-            )
-        }
+        )
     }
 }
 
@@ -405,13 +371,14 @@ private fun WebViewControls(
     onZoomChange: (Int) -> Unit,
     onScrollUp: () -> Unit,
     onScrollDown: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val currentIndex = WEBVIEW_TEXT_ZOOM_STEPS.indexOf(textZoom).takeIf { it >= 0 }
         ?: WEBVIEW_TEXT_ZOOM_STEPS.indexOf(100)
     val buttonSize = 48.dp
 
     Column(
-        modifier = Modifier.padding(8.dp),
+        modifier = modifier.padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
