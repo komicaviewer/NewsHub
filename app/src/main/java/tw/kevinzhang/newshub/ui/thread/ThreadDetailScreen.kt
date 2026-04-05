@@ -39,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -210,28 +211,9 @@ private fun ExtPostCard(
             val rawHtml = post.rawHtml
             when {
                 useWebView && rawHtml != null -> {
-                    AndroidView(
-                        factory = { context ->
-                            WebView(context).apply {
-                                settings.loadWithOverviewMode = true
-                                settings.useWideViewPort = true
-                            }
-                        },
-                        update = { webView ->
-                            webView.loadDataWithBaseURL(
-                                "https://forum.gamer.com.tw",
-                                rawHtml,
-                                "text/html",
-                                "UTF-8",
-                                null,
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(600.dp),
-                    )
+                    PostWebView(rawHtml = rawHtml)
                 }
-                post.content.isEmpty() && rawHtml != null -> {
+                !useWebView && post.content.isEmpty() && rawHtml != null -> {
                     TextButton(
                         onClick = onEnableWebView,
                         contentPadding = PaddingValues(0.dp),
@@ -306,6 +288,37 @@ private fun ExtPostCard(
             onDismissRequest = { galleryStartIndex = null },
         )
     }
+}
+
+@Composable
+private fun PostWebView(rawHtml: String) {
+    val webView = rememberUpdatedState(rawHtml)
+    AndroidView(
+        factory = { context ->
+            WebView(context).apply {
+                settings.javaScriptEnabled = false
+                settings.loadWithOverviewMode = true
+                settings.useWideViewPort = true
+            }
+        },
+        update = { wv ->
+            if (wv.tag != webView.value) {
+                wv.tag = webView.value
+                wv.loadDataWithBaseURL(
+                    "https://forum.gamer.com.tw",
+                    webView.value,
+                    "text/html",
+                    "UTF-8",
+                    null,
+                )
+            }
+        },
+        onRelease = { wv -> wv.destroy() },
+        // LazyColumn requires fixed height. Scroll conflicts with parent list are expected.
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(600.dp),
+    )
 }
 
 @Composable
