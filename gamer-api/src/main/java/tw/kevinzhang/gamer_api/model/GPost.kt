@@ -15,6 +15,7 @@ data class GPost (
     val readAt: Int,
     val page: Int,
     val content: List<GParagraph>,
+    val rawHtml: String,
 )
 
 class GPostBuilder {
@@ -32,6 +33,7 @@ class GPostBuilder {
     private var commentsUrl: String= ""
     private var content: List<GParagraph> = emptyList()
     private var page: Int= 0
+    private var rawHtml: String = ""
 
     fun setTitle(title: String): GPostBuilder {
         this.title = title
@@ -55,6 +57,11 @@ class GPostBuilder {
 
     fun setContent(content: List<GParagraph>): GPostBuilder {
         this.content = content
+        return this
+    }
+
+    fun setRawHtml(html: String): GPostBuilder {
+        this.rawHtml = html
         return this
     }
 
@@ -109,5 +116,6 @@ class GPostBuilder {
             readAt,
             page,
             content,
+            rawHtml,
         )
 }
