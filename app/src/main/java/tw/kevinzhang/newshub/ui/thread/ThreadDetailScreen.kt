@@ -58,6 +58,8 @@ import tw.kevinzhang.newshub.ui.component.AppCard
 import tw.kevinzhang.newshub.ui.component.gallery.LazyGallery
 import kotlin.math.roundToInt
 
+private val WEBVIEW_TEXT_ZOOM_STEPS = listOf(75, 100, 125, 150, 175, 200)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ThreadDetailScreen(
@@ -71,6 +73,7 @@ fun ThreadDetailScreen(
     val commentStates by viewModel.commentStates.collectAsStateWithLifecycle()
     val alwaysUseRawImage by viewModel.alwaysUseRawImage.collectAsStateWithLifecycle()
     val useWebViewPosts by viewModel.useWebViewPosts.collectAsStateWithLifecycle()
+    val webViewTextZoom by viewModel.webViewTextZoom.collectAsStateWithLifecycle()
 
     val coroutineScope = rememberCoroutineScope()
     val offsetX = remember { Animatable(0f) }
@@ -141,6 +144,8 @@ fun ThreadDetailScreen(
             } else {
                 val onReplyToClick =
                     remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
+                val onZoomChange =
+                    remember(viewModel) { { zoom: Int -> viewModel.setWebViewTextZoom(zoom) } }
                 LazyColumn(modifier = Modifier.padding(padding)) {
                     items(thread!!.posts, key = { it.id }) { post ->
                         ExtPostCard(
@@ -151,6 +156,8 @@ fun ThreadDetailScreen(
                             commentUiState = commentStates[post.id],
                             onReplyToClick = onReplyToClick,
                             onLoadMoreCommentsClick = { viewModel.loadMoreComments(post.id) },
+                            textZoom = webViewTextZoom,
+                            onZoomChange = onZoomChange,
                         )
                     }
                 }
@@ -197,6 +204,8 @@ private fun ExtPostCard(
     commentUiState: CommentUiState?,
     onReplyToClick: (String) -> Unit,
     onLoadMoreCommentsClick: () -> Unit,
+    textZoom: Int,
+    onZoomChange: (Int) -> Unit,
 ) {
     val rawImages = remember(post.id) {
         post.content.filterIsInstance<Paragraph.ImageInfo>().map { it.raw }
@@ -210,7 +219,37 @@ private fun ExtPostCard(
             val rawHtml = post.rawHtml
             when {
                 useWebView && rawHtml != null -> {
-                    PostWebView(rawHtml = rawHtml)
+                    PostWebView(rawHtml = rawHtml, textZoom = textZoom)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val currentIndex = WEBVIEW_TEXT_ZOOM_STEPS.indexOf(textZoom)
+                            .takeIf { it >= 0 } ?: WEBVIEW_TEXT_ZOOM_STEPS.indexOf(100)
+                        TextButton(
+                            onClick = {
+                                if (currentIndex > 0)
+                                    onZoomChange(WEBVIEW_TEXT_ZOOM_STEPS[currentIndex - 1])
+                            },
+                            enabled = currentIndex > 0,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        ) { Text("A-") }
+                        Text(
+                            text = "$textZoom%",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                        TextButton(
+                            onClick = {
+                                if (currentIndex < WEBVIEW_TEXT_ZOOM_STEPS.lastIndex)
+                                    onZoomChange(WEBVIEW_TEXT_ZOOM_STEPS[currentIndex + 1])
+                            },
+                            enabled = currentIndex < WEBVIEW_TEXT_ZOOM_STEPS.lastIndex,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        ) { Text("A+") }
+                    }
                 }
                 !useWebView && post.content.isEmpty() && rawHtml != null -> {
                     TextButton(
@@ -290,7 +329,7 @@ private fun ExtPostCard(
 }
 
 @Composable
-private fun PostWebView(rawHtml: String) {
+private fun PostWebView(rawHtml: String, textZoom: Int) {
     AndroidView(
         factory = { context ->
             WebView(context).apply {
@@ -300,6 +339,9 @@ private fun PostWebView(rawHtml: String) {
             }
         },
         update = { wv ->
+            // Apply zoom outside the tag-guard — textZoom change must take effect immediately
+            // without reloading the page content.
+            wv.settings.textZoom = textZoom
             if (wv.tag != rawHtml) {
                 wv.tag = rawHtml
                 wv.loadDataWithBaseURL(

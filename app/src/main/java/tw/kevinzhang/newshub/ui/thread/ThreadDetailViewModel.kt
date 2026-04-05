@@ -22,6 +22,7 @@ import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extension_loader.ExtensionLoader
+import tw.kevinzhang.newshub.data.PreferenceStore
 import javax.inject.Inject
 
 private const val COMMENTS_PAGE_SIZE = 5
@@ -35,6 +36,7 @@ data class CommentUiState(
 @HiltViewModel
 class ThreadDetailViewModel @Inject constructor(
     private val extensionLoader: ExtensionLoader,
+    private val preferenceStore: PreferenceStore,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
     private val threadId: String = checkNotNull(savedStateHandle["threadId"]) {
@@ -62,6 +64,10 @@ class ThreadDetailViewModel @Inject constructor(
 
     private val _useWebViewPosts = MutableStateFlow<Set<String>>(emptySet())
     val useWebViewPosts = _useWebViewPosts.asStateFlow()
+
+    val webViewTextZoom: StateFlow<Int> = preferenceStore.observable
+        .map { it.webViewTextZoom }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 100)
 
     private var cachedSource: Source? = null
 
@@ -187,5 +193,9 @@ class ThreadDetailViewModel @Inject constructor(
 
     fun enableWebViewForPost(postId: String) {
         _useWebViewPosts.update { it + postId }
+    }
+
+    fun setWebViewTextZoom(zoom: Int) {
+        viewModelScope.launch { preferenceStore.setWebViewTextZoom(zoom) }
     }
 }

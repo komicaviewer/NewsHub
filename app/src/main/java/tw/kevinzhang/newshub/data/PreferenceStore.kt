@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -22,6 +23,7 @@ class PreferenceStore @Inject constructor(
 ) {
     private object Keys {
         val KEY_DEFAULT_COLLECTION_ID = stringPreferencesKey("default_collection_id")
+        val KEY_WEBVIEW_TEXT_ZOOM = intPreferencesKey("webview_text_zoom")
     }
 
     private val dataStore = appContext.dataStore
@@ -44,13 +46,21 @@ class PreferenceStore @Inject constructor(
         }
     }
 
+    suspend fun setWebViewTextZoom(zoom: Int) {
+        dataStore.edit { prefs ->
+            prefs[Keys.KEY_WEBVIEW_TEXT_ZOOM] = zoom
+        }
+    }
+
     private fun mapPreference(preferences: Preferences): Preference {
         return Preference(
             defaultCollectionId = preferences[Keys.KEY_DEFAULT_COLLECTION_ID],
+            webViewTextZoom = preferences[Keys.KEY_WEBVIEW_TEXT_ZOOM] ?: 100,
         )
     }
 
     data class Preference(
         val defaultCollectionId: String?,
+        val webViewTextZoom: Int,
     )
 }
