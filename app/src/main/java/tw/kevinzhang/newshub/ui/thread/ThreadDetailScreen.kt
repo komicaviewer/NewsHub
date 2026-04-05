@@ -46,6 +46,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import android.webkit.WebView
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
@@ -68,6 +70,7 @@ fun ThreadDetailScreen(
     val previewPost by viewModel.previewPost.collectAsStateWithLifecycle()
     val commentStates by viewModel.commentStates.collectAsStateWithLifecycle()
     val alwaysUseRawImage by viewModel.alwaysUseRawImage.collectAsStateWithLifecycle()
+    val useWebViewPosts by viewModel.useWebViewPosts.collectAsStateWithLifecycle()
 
     val coroutineScope = rememberCoroutineScope()
     val offsetX = remember { Animatable(0f) }
@@ -142,6 +145,8 @@ fun ThreadDetailScreen(
                     items(thread!!.posts, key = { it.id }) { post ->
                         ExtPostCard(
                             post = post,
+                            useWebView = post.id in useWebViewPosts,
+                            onEnableWebView = { viewModel.enableWebViewForPost(post.id) },
                             alwaysUseRawImage = alwaysUseRawImage,
                             commentUiState = commentStates[post.id],
                             onReplyToClick = onReplyToClick,
@@ -186,6 +191,8 @@ fun ThreadDetailScreen(
 @Composable
 private fun ExtPostCard(
     post: Post,
+    useWebView: Boolean,
+    onEnableWebView: () -> Unit,
     alwaysUseRawImage: Boolean,
     commentUiState: CommentUiState?,
     onReplyToClick: (String) -> Unit,
@@ -200,40 +207,71 @@ private fun ExtPostCard(
         Column(modifier = Modifier.padding(8.dp)) {
             Text(text = "Post ${post.id}", style = MaterialTheme.typography.labelSmall)
             Spacer(modifier = Modifier.height(4.dp))
-            var imageIndex = 0
-            post.content.forEach { paragraph ->
-                when (paragraph) {
-                    is Paragraph.Text -> Text(paragraph.content)
-                    is Paragraph.Quote -> Text(
-                        "> ${paragraph.content}",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-
-                    is Paragraph.ReplyTo -> TextButton(
-                        onClick = { onReplyToClick(paragraph.id) },
-                        contentPadding = PaddingValues(0.dp),
-                    ) { Text(">> ${paragraph.id}") }
-
-                    is Paragraph.Link -> Text(
-                        paragraph.content,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-
-                    is Paragraph.ImageInfo -> {
-                        val index = imageIndex++
-                        val url = if (alwaysUseRawImage) paragraph.raw else paragraph.thumb
-                        url?.let {
-                            AsyncImage(
-                                model = it,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { galleryStartIndex = index },
+            val rawHtml = post.rawHtml
+            when {
+                useWebView && rawHtml != null -> {
+                    AndroidView(
+                        factory = { context ->
+                            WebView(context).apply {
+                                settings.loadWithOverviewMode = true
+                                settings.useWideViewPort = true
+                            }
+                        },
+                        update = { webView ->
+                            webView.loadDataWithBaseURL(
+                                "https://forum.gamer.com.tw",
+                                rawHtml,
+                                "text/html",
+                                "UTF-8",
+                                null,
                             )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(600.dp),
+                    )
+                }
+                post.content.isEmpty() && rawHtml != null -> {
+                    TextButton(
+                        onClick = onEnableWebView,
+                        contentPadding = PaddingValues(0.dp),
+                    ) {
+                        Text("使用WebView引擎渲染")
+                    }
+                }
+                else -> {
+                    var imageIndex = 0
+                    post.content.forEach { paragraph ->
+                        when (paragraph) {
+                            is Paragraph.Text -> Text(paragraph.content)
+                            is Paragraph.Quote -> Text(
+                                "> ${paragraph.content}",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            is Paragraph.ReplyTo -> TextButton(
+                                onClick = { onReplyToClick(paragraph.id) },
+                                contentPadding = PaddingValues(0.dp),
+                            ) { Text(">> ${paragraph.id}") }
+                            is Paragraph.Link -> Text(
+                                paragraph.content,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            is Paragraph.ImageInfo -> {
+                                val index = imageIndex++
+                                val url = if (alwaysUseRawImage) paragraph.raw else paragraph.thumb
+                                url?.let {
+                                    AsyncImage(
+                                        model = it,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { galleryStartIndex = index },
+                                    )
+                                }
+                            }
+                            is Paragraph.VideoInfo -> Text("[video: ${paragraph.url}]")
                         }
                     }
-
-                    is Paragraph.VideoInfo -> Text("[video: ${paragraph.url}]")
                 }
             }
             val visibleComments = commentUiState?.visibleComments.orEmpty()
