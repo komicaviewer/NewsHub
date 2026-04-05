@@ -48,8 +48,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -289,28 +289,29 @@ private fun ExtPostCard(
                     }
                 }
             }
-            val visibleComments = commentUiState?.visibleComments.orEmpty()
-            if (visibleComments.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                visibleComments.forEach { comment ->
-                    CommentItem(comment = comment, alwaysUseRawImage = alwaysUseRawImage)
-                }
-            }
-            when {
-                commentUiState?.isLoading == true ->
-                    CircularProgressIndicator(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .padding(top = 4.dp),
-                        strokeWidth = 2.dp,
-                    )
-                commentUiState?.hasMore == true ->
-                    TextButton(
-                        onClick = onLoadMoreCommentsClick,
-                        contentPadding = PaddingValues(0.dp),
-                    ) { Text("載入更多留言", style = MaterialTheme.typography.labelSmall) }
-            }
         }
+    }
+    val visibleComments = commentUiState?.visibleComments.orEmpty()
+    if (visibleComments.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(8.dp))
+        visibleComments.forEach { comment ->
+            CommentItem(comment = comment, alwaysUseRawImage = alwaysUseRawImage)
+        }
+    }
+    when {
+        commentUiState?.isLoading == true ->
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .size(16.dp)
+                    .padding(top = 4.dp),
+                strokeWidth = 2.dp,
+            )
+
+        commentUiState?.hasMore == true ->
+            TextButton(
+                onClick = onLoadMoreCommentsClick,
+                contentPadding = PaddingValues(0.dp),
+            ) { Text("載入更多留言", style = MaterialTheme.typography.labelSmall) }
     }
     Spacer(modifier = Modifier.height(8.dp))
 
