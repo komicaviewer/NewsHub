@@ -19,6 +19,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -80,29 +81,31 @@ fun BoardsScreen(
                 else -> LazyColumn(modifier = Modifier.weight(1f)) {
                     sources.forEach { (source, boards) ->
                         stickyHeader(key = source.id) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(dimensionResource(R.dimen.space_8)),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text(
-                                    text = source.name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
-                                if (source.requiresLogin && source.loginUrl != null) {
-                                    val status = loginStatuses[source.loginUrl] ?: LoginStatus.NONE
-                                    when (status) {
-                                        LoginStatus.LOGGED_IN -> TextButton(
-                                            onClick = { onLogoutClick(source.loginUrl!!) },
-                                        ) { Text("Logout") }
-                                        LoginStatus.FAILED -> TextButton(
-                                            onClick = { onLoginClick(source.loginUrl!!, source.loginPageLoadJs) },
-                                        ) { Text("Retry") }
-                                        LoginStatus.NONE -> TextButton(
-                                            onClick = { onLoginClick(source.loginUrl!!, source.loginPageLoadJs) },
-                                        ) { Text("Login") }
+                            Surface(tonalElevation = 3.dp, shadowElevation = 3.dp) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(dimensionResource(R.dimen.space_8)),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        text = source.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                    )
+                                    if (source.requiresLogin && source.loginUrl != null) {
+                                        val status = loginStatuses[source.loginUrl] ?: LoginStatus.NONE
+                                        when (status) {
+                                            LoginStatus.LOGGED_IN -> TextButton(
+                                                onClick = { onLogoutClick(source.loginUrl!!) },
+                                            ) { Text("Logout") }
+                                            LoginStatus.FAILED -> TextButton(
+                                                onClick = { onLoginClick(source.loginUrl!!, source.loginPageLoadJs) },
+                                            ) { Text("Retry") }
+                                            LoginStatus.NONE -> TextButton(
+                                                onClick = { onLoginClick(source.loginUrl!!, source.loginPageLoadJs) },
+                                            ) { Text("Login") }
+                                        }
                                     }
                                 }
                             }
