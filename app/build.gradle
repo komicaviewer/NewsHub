@@ -98,6 +98,8 @@ dependencies {
     implementation "com.google.code.gson:gson:$versions.gson"
     implementation "io.coil-kt:coil-compose:$versions.coil"
     implementation "io.coil-kt:coil-video:$versions.coil"
+    implementation "androidx.media3:media3-exoplayer:$versions.media3"
+    implementation "androidx.media3:media3-ui:$versions.media3"
     implementation "com.fragula2:fragula-compose:$versions.fragula"
 
     // unit test

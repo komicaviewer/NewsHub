@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -49,6 +50,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
@@ -62,7 +64,7 @@ import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.newshub.ui.component.AppCard
-import tw.kevinzhang.newshub.ui.component.gallery.LazyGallery
+import tw.kevinzhang.newshub.ui.component.gallery.PostGallery
 import kotlin.math.roundToInt
 
 private val WEBVIEW_TEXT_ZOOM_STEPS = listOf(75, 100, 125, 150, 175, 200)
@@ -255,7 +257,7 @@ private fun ExtPostCard(
                     }
                 }
                 else -> {
-                    var imageIndex = 0
+                    var mediaIndex = 0
                     post.content.forEach { paragraph ->
                         when (paragraph) {
                             is Paragraph.Text -> Text(paragraph.content)
@@ -272,7 +274,7 @@ private fun ExtPostCard(
                                 color = MaterialTheme.colorScheme.primary,
                             )
                             is Paragraph.ImageInfo -> {
-                                val index = imageIndex++
+                                val index = mediaIndex++
                                 val url = if (alwaysUseRawImage) paragraph.raw else paragraph.thumb
                                 url?.let {
                                     AsyncImage(
@@ -284,7 +286,27 @@ private fun ExtPostCard(
                                     )
                                 }
                             }
-                            is Paragraph.VideoInfo -> Text("[video: ${paragraph.url}]")
+                            is Paragraph.VideoInfo -> {
+                                val index = mediaIndex++
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { galleryStartIndex = index },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    AsyncImage(
+                                        model = paragraph.url,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.PlayCircle,
+                                        contentDescription = "播放影片",
+                                        tint = Color.White.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(48.dp),
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -316,10 +338,11 @@ private fun ExtPostCard(
     Spacer(modifier = Modifier.height(8.dp))
 
     galleryStartIndex?.let { startIndex ->
-        LazyGallery(
-            images = rawImages,
+        PostGallery(
+            paragraphs = post.content,
             startIndex = startIndex,
             onDismissRequest = { galleryStartIndex = null },
+            onReplyToClick = { },
         )
     }
 }
