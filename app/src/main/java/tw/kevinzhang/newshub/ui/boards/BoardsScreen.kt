@@ -81,11 +81,15 @@ fun BoardsScreen(
                 else -> LazyColumn(modifier = Modifier.weight(1f)) {
                     sources.forEach { (source, boards) ->
                         stickyHeader(key = source.id) {
-                            Surface(tonalElevation = 3.dp, shadowElevation = 3.dp) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surface,
+                                shadowElevation = 3.dp,
+                            ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(dimensionResource(R.dimen.space_8)),
+                                        .height(56.dp)
+                                        .padding(horizontal = dimensionResource(R.dimen.space_8)),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                 ) {
