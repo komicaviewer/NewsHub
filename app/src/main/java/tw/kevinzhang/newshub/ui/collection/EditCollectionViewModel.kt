@@ -32,19 +32,19 @@ class EditCollectionViewModel @Inject constructor(
     private val _emoji = MutableStateFlow("📰")
     val emoji = _emoji.asStateFlow()
 
-    // Tracks the IDs of subscriptions that existed when the screen was opened
-    private var originalSubscriptions: List<BoardSubscriptionEntity> = emptyList()
-
     private val _selectedBoards = MutableStateFlow<Set<SelectedBoard>>(emptySet())
     val selectedBoards = _selectedBoards.asStateFlow()
 
     private val _saved = MutableSharedFlow<Unit>()
     val saved = _saved.asSharedFlow()
 
+    // Captured once at init time. Safe because navigation creates a new ViewModel instance
+    // per destination, so originalSubscriptions won't be stale across navigation cycles.
+    private var originalSubscriptions: List<BoardSubscriptionEntity> = emptyList()
+
     init {
         viewModelScope.launch {
-            val collection = collectionRepo.observeCollections().first()
-                .firstOrNull { it.id == collectionId } ?: return@launch
+            val collection = collectionRepo.getCollectionById(collectionId) ?: return@launch
             _name.value = collection.name
             _description.value = collection.description
             _emoji.value = collection.emoji

@@ -39,6 +39,8 @@ class CollectionRepositoryImpl @Inject constructor(
         dao.deleteCollection(entity)
     }
 
+    override suspend fun getCollectionById(id: String): CollectionEntity? = dao.getById(id)
+
     override suspend fun updateCollection(id: String, name: String, description: String, emoji: String) {
         val entity = dao.getById(id) ?: return
         dao.updateCollection(entity.copy(name = name, description = description, emoji = emoji))
