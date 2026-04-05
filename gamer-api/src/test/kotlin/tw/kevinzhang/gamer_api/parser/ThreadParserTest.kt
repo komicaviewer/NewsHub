@@ -1,11 +1,11 @@
 package tw.kevinzhang.gamer_api.parser
 
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import tw.kevinzhang.gamer_api.loadFile
 import tw.kevinzhang.gamer_api.request.RequestBuilderImpl
-import okhttp3.HttpUrl.Companion.toHttpUrl
 
 internal class ThreadParserTest {
 
@@ -22,5 +22,24 @@ internal class ThreadParserTest {
         )
 
         assertEquals(18, list.size)
+    }
+
+    @Test
+    fun `Test ThreadParser with RichThreadPage html expect successful`() {
+        val parser =
+            ThreadParser(PostParser(UrlParserImpl()), UrlParserImpl(), RequestBuilderImpl())
+        val list = parser.parse(
+            loadFile("./src/test/html/RichThreadPage.html")!!.toResponseBody(),
+            RequestBuilderImpl().setUrl("https://forum.gamer.com.tw/C.php?bsn=60030&snA=682474".toHttpUrl())
+                .build(),
+        )
+        assertEquals(
+            listOf(
+                "XiaoPo",
+            ),
+            list.map { it.posterName }.subList(0, 1),
+        )
+
+        assertEquals(1, list.size)
     }
 }
