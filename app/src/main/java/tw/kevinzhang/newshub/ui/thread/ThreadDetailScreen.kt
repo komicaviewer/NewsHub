@@ -65,6 +65,19 @@ import kotlin.math.roundToInt
 
 private val WEBVIEW_TEXT_ZOOM_STEPS = listOf(75, 100, 125, 150, 175, 200)
 
+/**
+ * Wraps a raw HTML content fragment into a complete HTML document suitable for WebView.
+ * - viewport meta ensures the page fits device width (not 980 px desktop default)
+ * - CSS constrains images to viewport width, which the fragment itself cannot express
+ */
+private fun String.asWebViewDocument(): String = """
+    <!DOCTYPE html>
+    <html><head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>img { max-width: 100%; height: auto; }</style>
+    </head><body>$this</body></html>
+""".trimIndent()
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ThreadDetailScreen(
@@ -356,7 +369,7 @@ private fun PostWebView(rawHtml: String, textZoom: Int, onZoomChange: (Int) -> U
                     wv.tag = rawHtml
                     wv.loadDataWithBaseURL(
                         "https://forum.gamer.com.tw",
-                        rawHtml,
+                        rawHtml.asWebViewDocument(),
                         "text/html",
                         "UTF-8",
                         null,
@@ -391,6 +404,20 @@ private fun PostWebView(rawHtml: String, textZoom: Int, onZoomChange: (Int) -> U
                         .apply { duration = 250; start() }
                 }
             },
+            onRefresh = {
+                onZoomChange(100)
+                webViewRef[0]?.let { wv ->
+                    wv.loadDataWithBaseURL(
+                        "https://forum.gamer.com.tw",
+                        rawHtml.asWebViewDocument(),
+                        "text/html",
+                        "UTF-8",
+                        null,
+                    )
+                    // keep tag in sync so the update block doesn't double-load
+                    wv.tag = rawHtml
+                }
+            },
             modifier = Modifier.align(Alignment.BottomEnd),
         )
     }
@@ -404,6 +431,7 @@ private fun WebViewControls(
     canScrollDown: Boolean,
     onScrollUp: () -> Unit,
     onScrollDown: () -> Unit,
+    onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val currentIndex = WEBVIEW_TEXT_ZOOM_STEPS.indexOf(textZoom).takeIf { it >= 0 }
@@ -429,10 +457,10 @@ private fun WebViewControls(
                 onClick = { onZoomChange(WEBVIEW_TEXT_ZOOM_STEPS[currentIndex + 1]) },
                 enabled = currentIndex < WEBVIEW_TEXT_ZOOM_STEPS.lastIndex,
             ) { Text("A+") }
-            FilledTonalIconButton(onClick = { onZoomChange(100) }) {
+            FilledTonalIconButton(onClick = onRefresh) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
-                    contentDescription = "Reset zoom",
+                    contentDescription = "Refresh",
                     modifier = Modifier.size(18.dp),
                 )
             }

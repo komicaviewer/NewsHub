@@ -95,8 +95,14 @@ class PostParser(
     }
 
     private fun setRawHtml(source: Element) {
-        val html = source.selectFirst("div.c-article__content")?.html() ?: ""
-        builder.setRawHtml(html)
+        val content = source.selectFirst("div.c-article__content") ?: return
+        // Bahamut uses LazyLoad.js: server HTML has src="" and data-src="<real-url>".
+        // JS fills src at runtime, but WebView runs with javaScriptEnabled=false,
+        // so we normalize here before the fragment reaches the WebView.
+        content.select("img[data-src]").forEach { img ->
+            img.attr("src", img.attr("data-src"))
+        }
+        builder.setRawHtml(content.html())
     }
 
     private fun setLike(source: Element) {
