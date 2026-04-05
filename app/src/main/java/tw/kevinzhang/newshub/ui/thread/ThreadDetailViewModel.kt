@@ -60,6 +60,9 @@ class ThreadDetailViewModel @Inject constructor(
     private val _alwaysUseRawImage = MutableStateFlow(false)
     val alwaysUseRawImage = _alwaysUseRawImage.asStateFlow()
 
+    private val _useWebViewPosts = MutableStateFlow<Set<String>>(emptySet())
+    val useWebViewPosts = _useWebViewPosts.asStateFlow()
+
     private var cachedSource: Source? = null
 
     private data class InternalCommentState(
@@ -180,5 +183,9 @@ class ThreadDetailViewModel @Inject constructor(
 
     fun dismissPreview() {
         previewPost.value = null
+    }
+
+    fun enableWebViewForPost(postId: String) {
+        _useWebViewPosts.update { it + postId }
     }
 }
