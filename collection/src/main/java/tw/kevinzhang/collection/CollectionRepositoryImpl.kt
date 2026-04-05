@@ -1,14 +1,17 @@
 package tw.kevinzhang.collection
 
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import tw.kevinzhang.collection.data.BoardSubscriptionEntity
 import tw.kevinzhang.collection.data.CollectionDao
+import tw.kevinzhang.collection.data.CollectionDatabase
 import tw.kevinzhang.collection.data.CollectionEntity
 import java.util.UUID
 import javax.inject.Inject
 
 class CollectionRepositoryImpl @Inject constructor(
     private val dao: CollectionDao,
+    private val db: CollectionDatabase,
 ) : CollectionRepository {
 
     override fun observeCollections(): Flow<List<CollectionEntity>> = dao.observeAll()
@@ -42,9 +45,11 @@ class CollectionRepositoryImpl @Inject constructor(
     }
 
     override suspend fun reorderCollections(orderedIds: List<String>) {
-        orderedIds.forEachIndexed { index, id ->
-            val entity = dao.getById(id) ?: return@forEachIndexed
-            dao.updateCollection(entity.copy(sortOrder = index))
+        db.withTransaction {
+            orderedIds.forEachIndexed { index, id ->
+                val entity = dao.getById(id) ?: return@forEachIndexed
+                dao.updateCollection(entity.copy(sortOrder = index))
+            }
         }
     }
 
