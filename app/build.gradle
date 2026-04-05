@@ -72,6 +72,7 @@ dependencies {
     implementation "androidx.navigation:navigation-compose:$versions.compose_navigation"
     implementation "com.google.accompanist:accompanist-systemuicontroller:$versions.compose_accompanist"
     implementation "androidx.compose.material:material-icons-extended:$versions.compose"
+    implementation "sh.calvin.reorderable:reorderable:2.3.3"
     // paging
     implementation "androidx.paging:paging-runtime:$versions.paging"
     implementation "androidx.paging:paging-compose:$versions.compose_paging"
