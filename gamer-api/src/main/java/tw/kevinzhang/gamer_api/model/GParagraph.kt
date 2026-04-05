@@ -4,26 +4,26 @@ interface GParagraph {
     val content: String
 }
 
-class GImageInfo(
+data class GImageInfo(
     val thumb: String? = null,
     val raw: String,
 ): GParagraph {
     override val content = thumb ?: raw
 }
 
-class GText(
+data class GText(
     override val content: String,
 ): GParagraph
 
-class GQuote(
+data class GQuote(
     override val content: String,
 ): GParagraph
 
-class GReplyTo(
+data class GReplyTo(
     override val content: String,
 ): GParagraph
 
-class GLink(
+data class GLink(
     override val content: String,
 ): GParagraph
 

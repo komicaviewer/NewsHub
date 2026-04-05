@@ -6,10 +6,16 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
-import tw.kevinzhang.gamer_api.model.*
+import tw.kevinzhang.gamer_api.model.GImageInfo
+import tw.kevinzhang.gamer_api.model.GLink
+import tw.kevinzhang.gamer_api.model.GParagraph
+import tw.kevinzhang.gamer_api.model.GPost
+import tw.kevinzhang.gamer_api.model.GPostBuilder
+import tw.kevinzhang.gamer_api.model.GText
+import tw.kevinzhang.gamer_api.model.trim
 import java.text.ParseException
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Locale
 
 class PostParser(
     private val urlParser: UrlParser,
@@ -67,7 +73,11 @@ class PostParser(
         val parent = source.selectFirst("div.c-article__content")
         for (child in parent.childNodes().flatDiv()) {
             if (child is TextNode) {
-                list.add(GText(child.text()))
+                val content = child.text()
+                if (content.trim().isEmpty()) {
+                    continue
+                }
+                list.add(GText(content))
             }
             if (child is Element) {
                 if (child.`is`("a.photoswipe-image")) {
@@ -75,6 +85,8 @@ class PostParser(
                     list.add(GImageInfo(href, href))
                 } else if (child.`is`("a[href^=\"http://\"], a[href^=\"https://\"]")) {
                     list.add(GLink(child.ownText()))
+                } else if (child.tagName() == "br") {
+                    list.add(GText(""))
                 }
             }
         }
@@ -100,12 +112,10 @@ class PostParser(
         builder.setCommentsUrl("https://forum.gamer.com.tw/ajax/moreCommend.php?bsn=$bsn&snB=$postId")
     }
 
-    private fun List<Node>.flatDiv(): List<Node> {
+    fun List<Node>.flatDiv(): List<Node> {
         return this.flatMap {
             if (it is Element && it.`is`("div")){
                 it.childNodes().flatDiv()
-            } else if (it is TextNode) {
-                listOf(it, Element("br"))
             } else {
                 listOf(it)
             }
