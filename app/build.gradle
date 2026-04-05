@@ -100,7 +100,7 @@ dependencies {
     implementation "io.coil-kt:coil-video:$versions.coil"
     implementation "androidx.media3:media3-exoplayer:$versions.media3"
     implementation "androidx.media3:media3-ui:$versions.media3"
-    implementation "com.fragula2:fragula-compose:$versions.fragula"
+
 
     // unit test
     // TODO: Migrate to Junit5

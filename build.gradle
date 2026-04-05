@@ -25,7 +25,6 @@ buildscript {
                 datastore: '1.0.0-rc01',
                 work: '2.7.0',
                 material3: '1.2.1',
-                fragula: '2.4',
                 media3: '1.3.1',
         ]
     }
