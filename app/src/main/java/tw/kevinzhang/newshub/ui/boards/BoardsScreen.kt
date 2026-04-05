@@ -1,5 +1,6 @@
 package tw.kevinzhang.newshub.ui.boards
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,12 +11,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -31,9 +37,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.content.Intent
+import coil.compose.AsyncImage
 import tw.kevinzhang.collection.data.CollectionEntity
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.newshub.auth.LoginStatus
@@ -91,10 +101,22 @@ fun BoardsScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                 ) {
-                                    Text(
-                                        text = source.name,
-                                        style = MaterialTheme.typography.titleMedium,
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        if (source.iconUrl != null) {
+                                            AsyncImage(
+                                                model = source.iconUrl,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                        Text(
+                                            text = source.name,
+                                            style = MaterialTheme.typography.titleMedium,
+                                        )
+                                    }
                                     if (source.requiresLogin && source.loginUrl != null) {
                                         val status = loginStatuses[source.loginUrl] ?: LoginStatus.NONE
                                         when (status) {
@@ -138,17 +160,26 @@ private fun BoardRow(
     var showSheet by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf(emptySet<String>()) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val context = LocalContext.current
 
     AppCard(onClick = { showSheet = true }) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp),
+                .padding(start = 12.dp, end = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(text = board.name, modifier = Modifier.weight(1f))
-            TextButton(onClick = { showSheet = true }) { Text("Add") }
+            IconButton(onClick = {
+                val intent = Intent(Intent.ACTION_VIEW, board.url.toUri())
+                context.startActivity(intent)
+            }) {
+                Icon(Icons.Outlined.Language, contentDescription = "Open in browser")
+            }
+            IconButton(onClick = { showSheet = true }) {
+                Icon(Icons.Outlined.Add, contentDescription = "Add to collection")
+            }
         }
     }
     Spacer(modifier = Modifier.height(4.dp))
