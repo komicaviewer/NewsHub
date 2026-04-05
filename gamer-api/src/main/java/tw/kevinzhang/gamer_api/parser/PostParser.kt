@@ -35,6 +35,7 @@ class PostParser(
         setComments(source, postId)
         setCommentsUrl(bsn, postId)
         setContent(source)
+        setRawHtml(source)
         builder.setUrl(req.url.toString())
         builder.setPostId(postId)
         builder.setPage(urlParser.parsePage(req.url))
@@ -91,6 +92,11 @@ class PostParser(
             }
         }
         builder.setContent(list.trim())
+    }
+
+    private fun setRawHtml(source: Element) {
+        val html = source.selectFirst("div.c-article__content")?.html() ?: ""
+        builder.setRawHtml(html)
     }
 
     private fun setLike(source: Element) {

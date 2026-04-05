@@ -26,6 +26,15 @@ internal class PostParserTest {
         assertEquals("46104650", post.id)
     }
 
+    @Test
+    fun `Test PostParser rawHtml is not blank`() {
+        val post = parser.parse(
+            loadFile("./src/test/html/Post.html")!!.toResponseBody(),
+            RequestBuilderImpl().setUrl("https://forum.gamer.com.tw/C.php?bsn=60076&snA=4166175&sn=46104650".toHttpUrl()).build(),
+        )
+        assertTrue(post.rawHtml.isNotBlank())
+    }
+
     // endregion
 
     // region flatDiv()
