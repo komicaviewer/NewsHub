@@ -17,6 +17,9 @@ interface CollectionDao {
     @Delete
     suspend fun deleteCollection(entity: CollectionEntity)
 
+    @Update
+    suspend fun updateCollection(entity: CollectionEntity)
+
     @Query("SELECT * FROM board_subscriptions WHERE collectionId = :collectionId ORDER BY sortOrder")
     fun observeSubscriptions(collectionId: String): Flow<List<BoardSubscriptionEntity>>
 

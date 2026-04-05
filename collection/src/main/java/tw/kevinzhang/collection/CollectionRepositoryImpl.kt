@@ -36,6 +36,18 @@ class CollectionRepositoryImpl @Inject constructor(
         dao.deleteCollection(entity)
     }
 
+    override suspend fun updateCollection(id: String, name: String, description: String, emoji: String) {
+        val entity = dao.getById(id) ?: return
+        dao.updateCollection(entity.copy(name = name, description = description, emoji = emoji))
+    }
+
+    override suspend fun reorderCollections(orderedIds: List<String>) {
+        orderedIds.forEachIndexed { index, id ->
+            val entity = dao.getById(id) ?: return@forEachIndexed
+            dao.updateCollection(entity.copy(sortOrder = index))
+        }
+    }
+
     override suspend fun addBoardSubscription(
         collectionId: String,
         sourceId: String,
