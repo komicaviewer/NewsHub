@@ -138,6 +138,11 @@ class AppCookieJar @Inject constructor(
         }
     }
 
+    fun hasCookiesForUrl(url: String): Boolean {
+        val host = runCatching { url.toHttpUrl().host }.getOrElse { url }
+        return hasCookiesForDomain(host)
+    }
+
     fun hasCookiesForDomain(domain: String): Boolean {
         val parentDomain = parentDomain(domain)
         return synchronized(cookies) {

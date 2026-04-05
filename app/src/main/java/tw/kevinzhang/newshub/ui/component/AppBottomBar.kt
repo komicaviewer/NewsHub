@@ -57,8 +57,6 @@ fun AppBottomBar(
             .fillMaxWidth()
             .height(visibleHeightDp),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp,
-        shadowElevation = 8.dp,
     ) {
         Row(
             modifier = Modifier

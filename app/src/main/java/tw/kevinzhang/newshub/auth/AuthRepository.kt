@@ -50,6 +50,12 @@ class AuthRepository @Inject constructor() {
         pendingLoginUrl = null
     }
 
+    fun restoreLoginStatus(loginUrl: String) {
+        _loginStatuses.update { current ->
+            if (current[loginUrl] == null) current + (loginUrl to LoginStatus.LOGGED_IN) else current
+        }
+    }
+
     fun logout(loginUrl: String) {
         _loginStatuses.update { it + (loginUrl to LoginStatus.NONE) }
         Log.d(TAG, "logout loginUrl=$loginUrl")
