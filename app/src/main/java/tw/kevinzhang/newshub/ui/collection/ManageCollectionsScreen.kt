@@ -24,12 +24,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -47,15 +49,30 @@ fun ManageCollectionsScreen(
     val collections by viewModel.collections.collectAsStateWithLifecycle()
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
 
-    // Local order for responsive drag-and-drop; syncs from DB when collections changes
-    var localOrder by remember(collections) { mutableStateOf(collections) }
+    var localOrder by remember { mutableStateOf(emptyList<CollectionEntity>()) }
+    var pendingReorder by remember { mutableStateOf(false) }
 
     val lazyListState = rememberLazyListState()
     val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
         localOrder = localOrder.toMutableList().apply {
             add(to.index, removeAt(from.index))
         }
-        viewModel.reorderCollections(localOrder.map { it.id })
+        pendingReorder = true
+    }
+
+    // Sync from DB only when not dragging
+    LaunchedEffect(collections) {
+        if (!reorderState.isAnyItemDragging) {
+            localOrder = collections
+        }
+    }
+
+    // Persist reorder only when drag ends
+    LaunchedEffect(reorderState.isAnyItemDragging) {
+        if (!reorderState.isAnyItemDragging && pendingReorder) {
+            viewModel.reorderCollections(localOrder.map { it.id })
+            pendingReorder = false
+        }
     }
 
     Scaffold(
@@ -135,6 +152,7 @@ private fun CollectionManageRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .shadow(if (isDragging) 8.dp else 0.dp)
             .padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
