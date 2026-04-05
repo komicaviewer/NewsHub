@@ -130,6 +130,7 @@ class GamerSource @Inject constructor(
                     thumbnail = gPost.content.filterIsInstance<GImageInfo>().firstOrNull()?.thumb,
                     content = gPost.content.map { it.toExtParagraph() },
                     comments = comments,
+                    rawHtml = gPost.rawHtml,
                 )
             },
         )
