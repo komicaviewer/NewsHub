@@ -86,6 +86,8 @@ dependencies {
     implementation "androidx.hilt:hilt-navigation-compose:$versions.androidx_hilt"
     implementation "androidx.hilt:hilt-navigation-fragment:$versions.androidx_hilt"
 
+    // emoji picker
+    implementation "androidx.emoji2:emoji2-emojipicker:1.5.0"
     // other
     implementation "androidx.core:core-ktx:$versions.core_ktx"
     implementation "androidx.appcompat:appcompat:$versions.appcompat"
