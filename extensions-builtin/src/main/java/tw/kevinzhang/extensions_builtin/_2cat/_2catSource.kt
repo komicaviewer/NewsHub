@@ -21,7 +21,7 @@ class _2catSource @Inject constructor(
     override val name = "2cat"
     override val language = "zh-TW"
     override val version = 1
-    override val iconUrl: String? = null
+    override val iconUrl: String = "https://2cat.uk/futaba.ico"
     override val alwaysUseRawImage: Boolean
         get() = true
 

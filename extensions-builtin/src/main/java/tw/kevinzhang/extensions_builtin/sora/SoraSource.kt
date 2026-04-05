@@ -20,7 +20,7 @@ class SoraSource @Inject constructor(
     override val name = "Sora Komica"
     override val language = "zh-TW"
     override val version = 1
-    override val iconUrl: String? = null
+    override val iconUrl: String = "https://komica1.org/favicon.ico"
     override val alwaysUseRawImage: Boolean
         get() = true
 

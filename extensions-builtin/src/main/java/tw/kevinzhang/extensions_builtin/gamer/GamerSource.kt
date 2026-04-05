@@ -26,7 +26,7 @@ class GamerSource @Inject constructor(
     override val name = "Gamer 巴哈姆特"
     override val language = "zh-TW"
     override val version = 1
-    override val iconUrl: String? = null
+    override val iconUrl: String = "https://i2.bahamut.com.tw/apple-touch-icon-72x72.png"
     override val requiresLogin = true
     override val loginUrl = "https://user.gamer.com.tw/login.php"
 
