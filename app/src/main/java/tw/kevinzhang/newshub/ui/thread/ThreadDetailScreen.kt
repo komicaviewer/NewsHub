@@ -336,7 +336,15 @@ private fun PostWebView(rawHtml: String, textZoom: Int, onZoomChange: (Int) -> U
                     settings.useWideViewPort = true
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView, url: String) {
-                            view.post { updateScrollState(view) }
+                            // onPageFinished fires when the DOM is fetched, but WebView's
+                            // renderer process fills in contentHeight asynchronously.
+                            // canScrollVertically() returns false until contentHeight is ready,
+                            // so we poll at 100/300/700 ms to catch the first settled value.
+                            // Trade-off: timing is heuristic — slow devices may still miss the
+                            // 700 ms window; very fast devices run two redundant checks.
+                            view.postDelayed({ updateScrollState(view) }, 100)
+                            view.postDelayed({ updateScrollState(view) }, 300)
+                            view.postDelayed({ updateScrollState(view) }, 700)
                         }
                     }
                     webViewRef[0] = this
