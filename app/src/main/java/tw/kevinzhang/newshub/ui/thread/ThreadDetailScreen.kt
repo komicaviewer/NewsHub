@@ -53,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -194,13 +195,17 @@ fun ThreadDetailScreen(
                 },
                 title = { Text("Post ${post.id}") },
                 text = {
+                    val uriHandler = LocalUriHandler.current
                     Column {
                         post.content.forEach { paragraph ->
                             when (paragraph) {
                                 is Paragraph.Text -> Text(paragraph.content)
                                 is Paragraph.Quote -> Text("> ${paragraph.content}")
                                 is Paragraph.ReplyTo -> Text(">> ${paragraph.id}")
-                                is Paragraph.Link -> Text(paragraph.content)
+                                is Paragraph.Link -> TextButton(
+                                    onClick = { uriHandler.openUri(paragraph.content) },
+                                    contentPadding = PaddingValues(0.dp),
+                                ) { Text(paragraph.content) }
                                 is Paragraph.ImageInfo -> {
                                     val url =
                                         if (alwaysUseRawImage) paragraph.raw else paragraph.thumb
@@ -257,6 +262,7 @@ private fun ExtPostCard(
                     }
                 }
                 else -> {
+                    val uriHandler = LocalUriHandler.current
                     var mediaIndex = 0
                     post.content.forEach { paragraph ->
                         when (paragraph) {
@@ -269,10 +275,10 @@ private fun ExtPostCard(
                                 onClick = { onReplyToClick(paragraph.id) },
                                 contentPadding = PaddingValues(0.dp),
                             ) { Text(">> ${paragraph.id}") }
-                            is Paragraph.Link -> Text(
-                                paragraph.content,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
+                            is Paragraph.Link -> TextButton(
+                                onClick = { uriHandler.openUri(paragraph.content) },
+                                contentPadding = PaddingValues(0.dp),
+                            ) { Text(paragraph.content) }
                             is Paragraph.ImageInfo -> {
                                 val index = mediaIndex++
                                 val url = if (alwaysUseRawImage) paragraph.raw else paragraph.thumb
@@ -510,6 +516,7 @@ private fun WebViewControls(
 
 @Composable
 private fun CommentItem(comment: Comment, alwaysUseRawImage: Boolean) {
+    val uriHandler = LocalUriHandler.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -539,7 +546,10 @@ private fun CommentItem(comment: Comment, alwaysUseRawImage: Boolean) {
                     is Paragraph.Text -> Text(paragraph.content, style = MaterialTheme.typography.bodySmall)
                     is Paragraph.Quote -> Text("> ${paragraph.content}", style = MaterialTheme.typography.bodySmall)
                     is Paragraph.ReplyTo -> Text(">> ${paragraph.id}", style = MaterialTheme.typography.bodySmall)
-                    is Paragraph.Link -> Text(paragraph.content, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    is Paragraph.Link -> TextButton(
+                        onClick = { uriHandler.openUri(paragraph.content) },
+                        contentPadding = PaddingValues(0.dp),
+                    ) { Text(paragraph.content, style = MaterialTheme.typography.bodySmall) }
                     is Paragraph.ImageInfo -> {
                         val url = if (alwaysUseRawImage) paragraph.raw else paragraph.thumb
                         url?.let { AsyncImage(model = it, contentDescription = null, modifier = Modifier.fillMaxWidth()) }
