@@ -1,8 +1,7 @@
 package tw.kevinzhang.newshub.ui.component
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
@@ -40,13 +40,12 @@ fun AppDrawer(
 ) {
     val collections by viewModel.collections.collectAsStateWithLifecycle(emptyList())
 
-    ModalDrawerSheet {
+    ModalDrawerSheet(drawerShape = RectangleShape) {
         Column(modifier = Modifier.fillMaxSize()) {
             // App branding header
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.primaryContainer)
                     .padding(horizontal = 20.dp, vertical = 24.dp),
             ) {
                 Text(
@@ -77,6 +76,7 @@ fun AppDrawer(
                     )
                 }
             } else {
+                HorizontalDivider()
                 LazyColumn(modifier = Modifier.weight(1f)) {
                     items(collections, key = { it.id }) { collection ->
                         NavigationDrawerItem(
