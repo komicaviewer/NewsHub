@@ -68,7 +68,7 @@
 <summary>模組架構</summary>
 
 ```mermaid
-graph BT
+graph TD
     komica-api[":komica-api"]
     gamer-api[":gamer-api"]
     extension-api[":extension-api"]
@@ -78,16 +78,16 @@ graph BT
     marketplace[":marketplace"]
     app[":app"]
 
-    komica-api --> extensions-builtin
-    gamer-api --> extensions-builtin
-    extension-api --> extensions-builtin
-    extensions-builtin --> extension-loader
-    extension-api --> extension-loader
-    extension-api --> collection
-    extension-loader --> app
-    collection --> app
-    marketplace --> app
-    extension-api --> app
+    app --> extension-loader
+    app --> collection
+    app --> marketplace
+    app --> extension-api
+    extension-loader --> extensions-builtin
+    extension-loader --> extension-api
+    extensions-builtin --> komica-api
+    extensions-builtin --> gamer-api
+    extensions-builtin --> extension-api
+    collection --> extension-api
 ```
 
 | 模組                    | 說明                                                               |
