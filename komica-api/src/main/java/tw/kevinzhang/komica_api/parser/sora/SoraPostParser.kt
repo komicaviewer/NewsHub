@@ -1,32 +1,27 @@
 package tw.kevinzhang.komica_api.parser.sora
 
 import okhttp3.HttpUrl
-import org.jsoup.nodes.Element
-import org.jsoup.nodes.TextNode
-import tw.kevinzhang.komica_api.ParseException
-import tw.kevinzhang.komica_api.model.*
-import tw.kevinzhang.komica_api.parser.PostHeadParser
-import tw.kevinzhang.komica_api.parser.Parser
-import tw.kevinzhang.komica_api.parser.UrlParser
-import tw.kevinzhang.komica_api.withHttps
 import okhttp3.Request
 import okhttp3.ResponseBody
 import org.jsoup.Jsoup
-import java.util.*
+import org.jsoup.nodes.Element
+import org.jsoup.nodes.TextNode
+import tw.kevinzhang.komica_api.ParseException
+import tw.kevinzhang.komica_api.model.KImageInfo
+import tw.kevinzhang.komica_api.model.KLink
+import tw.kevinzhang.komica_api.model.KParagraph
+import tw.kevinzhang.komica_api.model.KPost
+import tw.kevinzhang.komica_api.model.KPostBuilder
+import tw.kevinzhang.komica_api.model.KQuote
+import tw.kevinzhang.komica_api.model.KReplyTo
+import tw.kevinzhang.komica_api.model.KText
+import tw.kevinzhang.komica_api.model.KVideoInfo
+import tw.kevinzhang.komica_api.parser.Parser
+import tw.kevinzhang.komica_api.parser.PostHeadParser
+import tw.kevinzhang.komica_api.parser.UrlParser
+import tw.kevinzhang.komica_api.withHttps
 import java.util.regex.Pattern
 
-/**
- * 可以解析以下 komica.org 的 Post
- *
- *  - [綜合,男性角色,短片2,寫真],
- *  - [新番捏他,新番實況,漫畫,動畫,萌,車],
- *  - [四格],
- *  - [女性角色,歡樂惡搞,GIF,Vtuber],
- *  - [蘿蔔,鋼普拉,影視,特攝,軍武,中性角色,遊戲速報,飲食,小說,遊戲王,奇幻/科幻,電腦/消費電子,塗鴉王國,新聞,布袋戲,紙牌,網路遊戲]
- *
- * @param url https://sora.komica.org/00/pixmicat.php?res=K2345678
- * @param source html
- */
 class SoraPostParser(
     private val urlParser: UrlParser,
     private val postHeadParser: PostHeadParser,
@@ -55,9 +50,16 @@ class SoraPostParser(
         val parent = source.selectFirst(".quote")
         for (child in parent.childNodes()) {
             if (child is TextNode) {
-                list.add(KText(child.text()))
+                val content = child.text()
+                if (content.trim().isEmpty()) {
+                    continue
+                }
+                list.add(KText(content))
             }
             if (child is Element) {
+                if (child.tagName() == "br") {
+                    list.add(KText(""))
+                }
                 if (child.`is`("span.resquote")) {
                     val qlink = child.selectFirst("a.qlink")
                     if (qlink != null) {
