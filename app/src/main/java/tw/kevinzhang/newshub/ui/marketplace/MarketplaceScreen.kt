@@ -7,12 +7,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tw.kevinzhang.marketplace.data.ExtensionInfo
 import tw.kevinzhang.marketplace.data.InstallState
-import tw.kevinzhang.newshub.R
 import tw.kevinzhang.newshub.ui.component.AppCard
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,7 +63,7 @@ private fun ExtensionCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(dimensionResource(R.dimen.space_8)),
+                .padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -82,5 +81,5 @@ private fun ExtensionCard(
             }
         }
     }
-    Spacer(modifier = Modifier.height(dimensionResource(R.dimen.space_8)))
+    Spacer(modifier = Modifier.height(8.dp))
 }

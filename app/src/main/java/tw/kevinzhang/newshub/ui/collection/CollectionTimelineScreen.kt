@@ -39,7 +39,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,7 +47,6 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.ThreadSummary
-import tw.kevinzhang.newshub.R
 import tw.kevinzhang.newshub.ui.component.AppCard
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -142,7 +140,7 @@ fun CollectionTimelineScreen(
                         is LoadState.Loading -> Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(dimensionResource(R.dimen.space_8)),
+                                .padding(8.dp),
                             contentAlignment = Alignment.Center,
                         ) { CircularProgressIndicator() }
 
@@ -218,7 +216,7 @@ private fun ThreadSummaryCard(
     onClick: () -> Unit,
 ) {
     AppCard(onClick = onClick) {
-        Column(modifier = Modifier.padding(dimensionResource(R.dimen.space_8))) {
+        Column(modifier = Modifier.padding(8.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -229,7 +227,7 @@ private fun ThreadSummaryCard(
                             text = android.text.format.DateUtils.getRelativeTimeSpanString(it)
                                 .toString(),
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(end = dimensionResource(R.dimen.space_4)),
+                            modifier = Modifier.padding(end = 4.dp),
                         )
                     }
                     summary.author?.let {
@@ -240,7 +238,7 @@ private fun ThreadSummaryCard(
                     Text(
                         text = summary.sourceId,
                         style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(end = dimensionResource(R.dimen.space_4)),
+                        modifier = Modifier.padding(end = 4.dp),
                     )
                     summary.replyCount?.takeIf { it > 0 }?.let {
                         Text(text = "$it", style = MaterialTheme.typography.bodySmall)
@@ -249,7 +247,7 @@ private fun ThreadSummaryCard(
             }
             summary.title?.let { title ->
                 if (title.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(dimensionResource(R.dimen.space_4)))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(text = title, style = MaterialTheme.typography.titleMedium)
                 }
             }
@@ -286,5 +284,5 @@ private fun ThreadSummaryCard(
             }
         }
     }
-    Spacer(modifier = Modifier.height(dimensionResource(R.dimen.space_8)))
+    Spacer(modifier = Modifier.height(8.dp))
 }

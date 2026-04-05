@@ -43,7 +43,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -53,7 +52,6 @@ import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
-import tw.kevinzhang.newshub.R
 import tw.kevinzhang.newshub.ui.component.AppCard
 import tw.kevinzhang.newshub.ui.component.gallery.LazyGallery
 import kotlin.math.roundToInt
@@ -199,9 +197,9 @@ private fun ExtPostCard(
     var galleryStartIndex by remember { mutableStateOf<Int?>(null) }
 
     AppCard {
-        Column(modifier = Modifier.padding(dimensionResource(R.dimen.space_8))) {
+        Column(modifier = Modifier.padding(8.dp)) {
             Text(text = "Post ${post.id}", style = MaterialTheme.typography.labelSmall)
-            Spacer(modifier = Modifier.height(dimensionResource(R.dimen.space_4)))
+            Spacer(modifier = Modifier.height(4.dp))
             var imageIndex = 0
             post.content.forEach { paragraph ->
                 when (paragraph) {
@@ -240,7 +238,7 @@ private fun ExtPostCard(
             }
             val visibleComments = commentUiState?.visibleComments.orEmpty()
             if (visibleComments.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(dimensionResource(R.dimen.space_8)))
+                Spacer(modifier = Modifier.height(8.dp))
                 visibleComments.forEach { comment ->
                     CommentItem(comment = comment, alwaysUseRawImage = alwaysUseRawImage)
                 }
@@ -250,7 +248,7 @@ private fun ExtPostCard(
                     CircularProgressIndicator(
                         modifier = Modifier
                             .size(16.dp)
-                            .padding(top = dimensionResource(R.dimen.space_4)),
+                            .padding(top = 4.dp),
                         strokeWidth = 2.dp,
                     )
                 commentUiState?.hasMore == true ->
@@ -261,7 +259,7 @@ private fun ExtPostCard(
             }
         }
     }
-    Spacer(modifier = Modifier.height(dimensionResource(R.dimen.space_8)))
+    Spacer(modifier = Modifier.height(8.dp))
 
     galleryStartIndex?.let { startIndex ->
         LazyGallery(
@@ -278,8 +276,8 @@ private fun CommentItem(comment: Comment, alwaysUseRawImage: Boolean) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                horizontal = dimensionResource(R.dimen.space_8),
-                vertical = dimensionResource(R.dimen.space_4)
+                horizontal = 8.dp,
+                vertical = 4.dp
             ),
         verticalAlignment = Alignment.Top,
     ) {
@@ -289,7 +287,7 @@ private fun CommentItem(comment: Comment, alwaysUseRawImage: Boolean) {
                 .size(36.dp)
                 .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
         )
-        Spacer(modifier = Modifier.width(dimensionResource(R.dimen.space_8)))
+        Spacer(modifier = Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
             comment.author?.let {
                 Text(

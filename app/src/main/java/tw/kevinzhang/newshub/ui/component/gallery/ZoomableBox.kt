@@ -1,6 +1,5 @@
 package tw.kevinzhang.newshub.ui.component.gallery
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.Arrangement
@@ -14,8 +13,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.res.painterResource
-import tw.kevinzhang.newshub.R
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -139,7 +136,7 @@ private fun List<PointerInputChange>.consumeAll() {
 fun PreviewZoomableBox() {
     NewshubTheme {
         ZoomableBox(true) {
-            Image(painter = painterResource(id = R.drawable.ic_launcher_background), contentDescription = null)
+            Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primaryContainer))
         }
     }
 }

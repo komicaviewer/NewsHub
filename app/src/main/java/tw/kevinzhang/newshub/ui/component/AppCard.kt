@@ -5,8 +5,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.dimensionResource
-import tw.kevinzhang.newshub.R
+import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -16,7 +15,7 @@ fun AppCard(
 ) {
     if (onClick != null) {
         Surface(
-            tonalElevation = dimensionResource(id = R.dimen.space_2),
+            tonalElevation = 2.dp,
             modifier = Modifier.fillMaxWidth(),
             onClick = onClick,
         ) {
@@ -24,7 +23,7 @@ fun AppCard(
         }
     } else {
         Surface(
-            tonalElevation = dimensionResource(id = R.dimen.space_2),
+            tonalElevation = 2.dp,
             modifier = Modifier.fillMaxWidth(),
         ) {
             content()

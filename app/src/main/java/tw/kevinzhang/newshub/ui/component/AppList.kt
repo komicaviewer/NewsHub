@@ -11,9 +11,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.dimensionResource
-import tw.kevinzhang.newshub.R
 import androidx.compose.ui.tooling.preview.Preview
 import tw.kevinzhang.newshub.ui.theme.*
 
@@ -35,7 +34,7 @@ fun <T> AppList(
                 Spacer(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(dimensionResource(id = R.dimen.space_1))
+                        .height(1.dp)
                 )
             }
         }
@@ -54,14 +53,14 @@ fun AppMaxWidthItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = dimensionResource(id = R.dimen.space_16)),
+                .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             icon()
             Text(
                 text = title,
                 modifier = Modifier
-                    .padding(dimensionResource(id = R.dimen.space_16)),
+                    .padding(16.dp),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }

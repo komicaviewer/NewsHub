@@ -5,7 +5,10 @@ import android.net.Uri
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
@@ -22,7 +25,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -45,7 +47,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navigation
-import com.google.accompanist.systemuicontroller.rememberSystemUiController
 import kotlinx.coroutines.launch
 import tw.kevinzhang.newshub.auth.AuthRequest
 import tw.kevinzhang.newshub.auth.AuthViewModel
@@ -106,12 +107,6 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     }
 
     NewshubTheme {
-        val systemUiController = rememberSystemUiController()
-        val backgroundColor = MaterialTheme.colorScheme.background
-        SideEffect {
-            systemUiController.setSystemBarsColor(color = backgroundColor)
-        }
-
         // Auth WebView — shown on top of all screens when login is required
         pendingAuthRequest?.let { request ->
             AuthWebViewScreen(
@@ -146,6 +141,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
             },
         ) {
             Scaffold(
+                contentWindowInsets = WindowInsets(0),
                 bottomBar = {
                     if (showBottomBar) {
                         AppBottomBar(
@@ -174,6 +170,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     startDestination = MainNavItems.Collections.route,
                     modifier = Modifier
                         .padding(padding)
+                        .consumeWindowInsets(WindowInsets.navigationBars)
                         .then(
                             if (isCollectionRoute) Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
                             else Modifier

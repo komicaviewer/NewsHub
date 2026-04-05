@@ -5,10 +5,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomAppBarDefaults
 import androidx.compose.material3.BottomAppBarScrollBehavior
@@ -52,6 +58,7 @@ fun AppBottomBar(
         (barHeightPx + heightOffset).coerceAtLeast(0f).toDp()
     }
 
+    Column(modifier = Modifier.fillMaxWidth()) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -61,7 +68,7 @@ fun AppBottomBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(BarHeight),
+                .fillMaxHeight(),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -99,6 +106,13 @@ fun AppBottomBar(
             }
         }
     }
+    Spacer(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .windowInsetsBottomHeight(WindowInsets.navigationBars)
+    )
+    } // Column
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

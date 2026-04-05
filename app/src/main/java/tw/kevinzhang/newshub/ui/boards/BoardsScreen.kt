@@ -31,13 +31,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tw.kevinzhang.collection.data.CollectionEntity
 import tw.kevinzhang.extension_api.model.Board
-import tw.kevinzhang.newshub.R
 import tw.kevinzhang.newshub.auth.LoginStatus
 import tw.kevinzhang.newshub.ui.component.AppCard
 
@@ -89,7 +87,7 @@ fun BoardsScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(56.dp)
-                                        .padding(horizontal = dimensionResource(R.dimen.space_8)),
+                                        .padding(horizontal = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                 ) {
@@ -145,7 +143,7 @@ private fun BoardRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(dimensionResource(R.dimen.space_8)),
+                .padding(8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -153,7 +151,7 @@ private fun BoardRow(
             TextButton(onClick = { showSheet = true }) { Text("Add") }
         }
     }
-    Spacer(modifier = Modifier.height(dimensionResource(R.dimen.space_4)))
+    Spacer(modifier = Modifier.height(4.dp))
 
     if (showSheet) {
         ModalBottomSheet(
