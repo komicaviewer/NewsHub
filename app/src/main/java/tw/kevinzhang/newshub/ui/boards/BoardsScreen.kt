@@ -78,7 +78,7 @@ fun BoardsScreen(
                 }
                 else -> LazyColumn(modifier = Modifier.weight(1f)) {
                     sources.forEach { (source, boards) ->
-                        item(key = source.id) {
+                        stickyHeader(key = source.id) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
