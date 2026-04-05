@@ -55,6 +55,8 @@ import tw.kevinzhang.newshub.encode
 import tw.kevinzhang.newshub.ui.boards.BoardsScreen
 import tw.kevinzhang.newshub.ui.collection.CollectionTimelineScreen
 import tw.kevinzhang.newshub.ui.collection.CreateCollectionScreen
+import tw.kevinzhang.newshub.ui.collection.EditCollectionScreen
+import tw.kevinzhang.newshub.ui.collection.ManageCollectionsScreen
 import tw.kevinzhang.newshub.ui.component.AppBottomBar
 import tw.kevinzhang.newshub.ui.component.AppDrawer
 import tw.kevinzhang.newshub.ui.marketplace.MarketplaceScreen
@@ -136,6 +138,10 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     onCreateCollectionClick = {
                         coroutineScope.launch { drawerState.close() }
                         navController.navigate("create_collection")
+                    },
+                    onManageCollectionsClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        navController.navigate("manage_collections")
                     },
                 )
             },
@@ -292,6 +298,20 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                                     popUpTo("create_collection") { inclusive = true }
                                 }
                             },
+                        )
+                    }
+                    composable("manage_collections") {
+                        ManageCollectionsScreen(
+                            onNavigateUp = { navController.navigateUp() },
+                            onEditCollection = { id -> navController.navigate("edit_collection/$id") },
+                        )
+                    }
+                    composable(
+                        route = "edit_collection/{collectionId}",
+                        arguments = listOf(navArgument("collectionId") { type = NavType.StringType }),
+                    ) {
+                        EditCollectionScreen(
+                            onNavigateUp = { navController.navigateUp() },
                         )
                     }
                 }

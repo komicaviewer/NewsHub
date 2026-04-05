@@ -3,6 +3,7 @@ package tw.kevinzhang.newshub.ui.component
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,9 +13,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.NavigationDrawerItem
@@ -36,6 +39,7 @@ import tw.kevinzhang.newshub.ui.collection.CollectionsViewModel
 fun AppDrawer(
     onCollectionClick: (CollectionEntity) -> Unit,
     onCreateCollectionClick: () -> Unit,
+    onManageCollectionsClick: () -> Unit,
     viewModel: CollectionsViewModel = hiltViewModel(),
 ) {
     val collections by viewModel.collections.collectAsStateWithLifecycle(emptyList())
@@ -112,16 +116,29 @@ fun AppDrawer(
                 }
             }
 
-            // New Collection button
-            Button(
-                onClick = onCreateCollectionClick,
+            // Bottom row: New Collection + Manage
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.Add, contentDescription = null)
+                Button(
+                    onClick = onCreateCollectionClick,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                    Text("New Collection")
+                }
                 Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                Text("New Collection")
+                IconButton(onClick = onManageCollectionsClick) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "管理 Collections",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
