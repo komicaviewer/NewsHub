@@ -63,7 +63,7 @@ fun EditCollectionScreen(
     var showBoardPicker by remember { mutableStateOf(false) }
     val emojiSheetState = rememberModalBottomSheetState()
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(viewModel) {
         viewModel.saved.collect { onNavigateUp() }
     }
 
@@ -158,6 +158,7 @@ fun EditCollectionScreen(
         }
     }
 
+    // Emoji picker bottom sheet
     if (showEmojiPicker) {
         ModalBottomSheet(
             onDismissRequest = { showEmojiPicker = false },
@@ -179,6 +180,7 @@ fun EditCollectionScreen(
         }
     }
 
+    // Board picker bottom sheet
     if (showBoardPicker) {
         BoardPickerDialog(
             sourcesWithBoards = sourcesWithBoards,
