@@ -30,6 +30,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -37,6 +39,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.navigation
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
 import kotlinx.coroutines.launch
 import tw.kevinzhang.newshub.auth.AuthRequest
@@ -59,6 +62,7 @@ import tw.kevinzhang.newshub.ui.thread.ThreadDetailScreen
 fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     val appViewModel: AppViewModel = hiltViewModel()
     val authViewModel: AuthViewModel = hiltViewModel()
+    val navItems = remember { mainNavItems() }
 
     var pendingAuthRequest by remember { mutableStateOf<AuthRequest?>(null) }
     LaunchedEffect(Unit) {
@@ -69,22 +73,17 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
 
     val currentBackStack by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStack?.destination?.route
+    val currentDestination = currentBackStack?.destination
     val isHomeRoute = currentRoute == "home"
     val isCollectionRoute = currentRoute == "collection/{collectionId}"
 
-    val showBottomBar = currentRoute in setOf(
-        "home",
-        "collection/{collectionId}",
-        "boards",
-        "settings",
-    )
-
-    val selectedTab = when {
-        isHomeRoute || isCollectionRoute -> MainNavItems.Collections
-        currentRoute == "boards" -> MainNavItems.Boards
-        currentRoute == "settings" -> MainNavItems.Settings
-        else -> MainNavItems.Collections
+    val showBottomBar = navItems.any { item ->
+        currentDestination?.hierarchy?.any { it.route == item.route } == true
     }
+
+    val selectedTab = navItems.firstOrNull { item ->
+        currentDestination?.hierarchy?.any { it.route == item.route } == true
+    } ?: MainNavItems.Collections
 
     val defaultCollectionId by appViewModel.defaultCollectionId.collectAsStateWithLifecycle()
 
@@ -95,7 +94,6 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     val openDrawer = { coroutineScope.launch { drawerState.open() } }
 
     val scrollBehavior = BottomAppBarDefaults.exitAlwaysScrollBehavior()
-
 
     // Reset bar position when leaving the collection route so it stays fully visible elsewhere
     LaunchedEffect(isCollectionRoute) {
@@ -146,22 +144,17 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                 bottomBar = {
                     if (showBottomBar) {
                         AppBottomBar(
-                            navItems = mainNavItems(),
+                            navItems = navItems,
                             scrollBehavior = scrollBehavior,
                             selectedItem = selectedTab,
                             onNavItemClick = { item ->
                                 if (item == MainNavItems.Collections && isCollectionRoute) {
                                     collectionScrollToTopTrigger++
                                 } else {
-                                    val route = when {
-                                        item == MainNavItems.Collections && defaultCollectionId != null ->
-                                            "collection/$defaultCollectionId"
-
-                                        item == MainNavItems.Collections -> "home"
-                                        else -> item.route
-                                    }
-                                    navController.navigate(route) {
-                                        popUpTo("home") { saveState = true }
+                                    navController.navigate(item.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
                                         launchSingleTop = true
                                         restoreState = true
                                     }
@@ -173,7 +166,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
             ) { padding ->
                 NavHost(
                     navController = navController,
-                    startDestination = "home",
+                    startDestination = MainNavItems.Collections.route,
                     modifier = Modifier
                         .padding(padding)
                         .then(
@@ -185,50 +178,52 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     popEnterTransition = { EnterTransition.None },
                     popExitTransition = { ExitTransition.None },
                 ) {
-                    composable("home") {
-                        val homeDefaultCollectionId by appViewModel.defaultCollectionId.collectAsStateWithLifecycle()
-                        var navigatedToDefault by remember { mutableStateOf(false) }
+                    navigation(
+                        route = MainNavItems.Collections.route,
+                        startDestination = "home",
+                    ) {
+                        composable("home") {
+                            val homeDefaultCollectionId by appViewModel.defaultCollectionId.collectAsStateWithLifecycle()
+                            var navigatedToDefault by remember { mutableStateOf(false) }
 
-                        LaunchedEffect(homeDefaultCollectionId) {
-                            if (!navigatedToDefault && homeDefaultCollectionId != null) {
-                                navigatedToDefault = true
-                                navController.navigate("collection/$homeDefaultCollectionId") {
+                            LaunchedEffect(homeDefaultCollectionId) {
+                                if (!navigatedToDefault && homeDefaultCollectionId != null) {
+                                    navigatedToDefault = true
+                                    navController.navigate("collection/$homeDefaultCollectionId")
+                                }
+                            }
+
+                            if (defaultCollectionId == null) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = "Swipe right or tap \u2630 to select a collection",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                 }
                             }
                         }
-
-                        if (defaultCollectionId == null) {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = "Swipe right or tap \u2630 to select a collection",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
+                        composable(
+                            route = "collection/{collectionId}",
+                            arguments = listOf(navArgument("collectionId") { type = NavType.StringType }),
+                        ) {
+                            CollectionTimelineScreen(
+                                onOpenDrawer = { openDrawer() },
+                                scrollToTopTrigger = collectionScrollToTopTrigger,
+                                onThreadClick = { summary ->
+                                    val threadId = summary.id.encode()
+                                    val sourceId = summary.sourceId.encode()
+                                    val boardUrl = summary.boardUrl.encode()
+                                    val title = summary.title?.encode() ?: ""
+                                    navController.navigate(
+                                        "thread_detail?threadId=$threadId&sourceId=$sourceId&boardUrl=$boardUrl&threadTitle=$title"
+                                    )
+                                },
+                            )
                         }
-                    }
-                    composable(
-                        route = "collection/{collectionId}",
-                        arguments = listOf(navArgument("collectionId") {
-                            type = NavType.StringType
-                        }),
-                    ) {
-                        CollectionTimelineScreen(
-                            onOpenDrawer = { openDrawer() },
-                            scrollToTopTrigger = collectionScrollToTopTrigger,
-                            onThreadClick = { summary ->
-                                val threadId = summary.id.encode()
-                                val sourceId = summary.sourceId.encode()
-                                val boardUrl = summary.boardUrl.encode()
-                                val title = summary.title?.encode() ?: ""
-                                navController.navigate(
-                                    "thread_detail?threadId=$threadId&sourceId=$sourceId&boardUrl=$boardUrl&threadTitle=$title"
-                                )
-                            },
-                        )
                     }
                     composable(
                         route = "thread_detail?threadId={threadId}&sourceId={sourceId}&boardUrl={boardUrl}&threadTitle={threadTitle}",
