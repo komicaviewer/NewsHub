@@ -2,6 +2,7 @@ package tw.kevinzhang.newshub.ui.thread
 
 import android.animation.ObjectAnimator
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -309,6 +310,13 @@ private fun ExtPostCard(
 @Composable
 private fun PostWebView(rawHtml: String, textZoom: Int, onZoomChange: (Int) -> Unit) {
     val webViewRef = remember { arrayOfNulls<WebView>(1) }
+    var canScrollUp by remember { mutableStateOf(false) }
+    var canScrollDown by remember { mutableStateOf(false) }
+
+    fun updateScrollState(wv: WebView) {
+        canScrollUp = wv.canScrollVertically(-1)
+        canScrollDown = wv.canScrollVertically(1)
+    }
 
     Box(
         modifier = Modifier
@@ -317,10 +325,20 @@ private fun PostWebView(rawHtml: String, textZoom: Int, onZoomChange: (Int) -> U
     ) {
         AndroidView(
             factory = { context ->
-                WebView(context).apply {
+                object : WebView(context) {
+                    override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
+                        super.onScrollChanged(l, t, oldl, oldt)
+                        updateScrollState(this)
+                    }
+                }.apply {
                     settings.javaScriptEnabled = false
                     settings.loadWithOverviewMode = true
                     settings.useWideViewPort = true
+                    webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView, url: String) {
+                            view.post { updateScrollState(view) }
+                        }
+                    }
                     webViewRef[0] = this
                 }
             },
@@ -335,6 +353,9 @@ private fun PostWebView(rawHtml: String, textZoom: Int, onZoomChange: (Int) -> U
                         "UTF-8",
                         null,
                     )
+                } else {
+                    // textZoom changed — re-check after layout settles
+                    wv.post { updateScrollState(wv) }
                 }
             },
             onRelease = { wv ->
@@ -347,6 +368,8 @@ private fun PostWebView(rawHtml: String, textZoom: Int, onZoomChange: (Int) -> U
         WebViewControls(
             textZoom = textZoom,
             onZoomChange = onZoomChange,
+            canScrollUp = canScrollUp,
+            canScrollDown = canScrollDown,
             onScrollUp = {
                 webViewRef[0]?.let { wv ->
                     val target = (wv.scrollY - 300).coerceAtLeast(0)
@@ -369,6 +392,8 @@ private fun PostWebView(rawHtml: String, textZoom: Int, onZoomChange: (Int) -> U
 private fun WebViewControls(
     textZoom: Int,
     onZoomChange: (Int) -> Unit,
+    canScrollUp: Boolean,
+    canScrollDown: Boolean,
     onScrollUp: () -> Unit,
     onScrollDown: () -> Unit,
     modifier: Modifier = Modifier,
@@ -384,7 +409,11 @@ private fun WebViewControls(
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Spacer(modifier = Modifier.size(buttonSize))
-            FilledTonalIconButton(onClick = onScrollUp) { Text("↑") }
+            if (canScrollUp) {
+                FilledTonalIconButton(onClick = onScrollUp) { Text("↑") }
+            } else {
+                Spacer(modifier = Modifier.size(buttonSize))
+            }
             Spacer(modifier = Modifier.size(buttonSize))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -406,7 +435,11 @@ private fun WebViewControls(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Spacer(modifier = Modifier.size(buttonSize))
-            FilledTonalIconButton(onClick = onScrollDown) { Text("↓") }
+            if (canScrollDown) {
+                FilledTonalIconButton(onClick = onScrollDown) { Text("↓") }
+            } else {
+                Spacer(modifier = Modifier.size(buttonSize))
+            }
             Spacer(modifier = Modifier.size(buttonSize))
         }
     }
