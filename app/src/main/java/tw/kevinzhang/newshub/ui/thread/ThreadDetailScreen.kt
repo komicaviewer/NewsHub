@@ -6,6 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -219,37 +221,11 @@ private fun ExtPostCard(
             val rawHtml = post.rawHtml
             when {
                 useWebView && rawHtml != null -> {
-                    PostWebView(rawHtml = rawHtml, textZoom = textZoom)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val currentIndex = WEBVIEW_TEXT_ZOOM_STEPS.indexOf(textZoom)
-                            .takeIf { it >= 0 } ?: WEBVIEW_TEXT_ZOOM_STEPS.indexOf(100)
-                        TextButton(
-                            onClick = {
-                                if (currentIndex > 0)
-                                    onZoomChange(WEBVIEW_TEXT_ZOOM_STEPS[currentIndex - 1])
-                            },
-                            enabled = currentIndex > 0,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                        ) { Text("A-") }
-                        Text(
-                            text = "$textZoom%",
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 4.dp),
-                        )
-                        TextButton(
-                            onClick = {
-                                if (currentIndex < WEBVIEW_TEXT_ZOOM_STEPS.lastIndex)
-                                    onZoomChange(WEBVIEW_TEXT_ZOOM_STEPS[currentIndex + 1])
-                            },
-                            enabled = currentIndex < WEBVIEW_TEXT_ZOOM_STEPS.lastIndex,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                        ) { Text("A+") }
-                    }
+                    PostWebView(
+                        rawHtml = rawHtml,
+                        textZoom = textZoom,
+                        onZoomChange = onZoomChange,
+                    )
                 }
                 !useWebView && post.content.isEmpty() && rawHtml != null -> {
                     TextButton(
@@ -329,36 +305,80 @@ private fun ExtPostCard(
 }
 
 @Composable
-private fun PostWebView(rawHtml: String, textZoom: Int) {
-    AndroidView(
-        factory = { context ->
-            WebView(context).apply {
-                settings.javaScriptEnabled = false
-                settings.loadWithOverviewMode = true
-                settings.useWideViewPort = true
-            }
-        },
-        update = { wv ->
-            // Apply zoom outside the tag-guard — textZoom change must take effect immediately
-            // without reloading the page content.
-            wv.settings.textZoom = textZoom
-            if (wv.tag != rawHtml) {
-                wv.tag = rawHtml
-                wv.loadDataWithBaseURL(
-                    "https://forum.gamer.com.tw",
-                    rawHtml,
-                    "text/html",
-                    "UTF-8",
-                    null,
-                )
-            }
-        },
-        onRelease = { wv -> wv.destroy() },
-        // LazyColumn requires fixed height. Scroll conflicts with parent list are expected.
+private fun PostWebView(rawHtml: String, textZoom: Int, onZoomChange: (Int) -> Unit) {
+    val webViewRef = remember { arrayOfNulls<WebView>(1) }
+    val currentIndex = WEBVIEW_TEXT_ZOOM_STEPS.indexOf(textZoom).takeIf { it >= 0 }
+        ?: WEBVIEW_TEXT_ZOOM_STEPS.indexOf(100)
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(600.dp),
-    )
+    ) {
+        AndroidView(
+            factory = { context ->
+                WebView(context).apply {
+                    settings.javaScriptEnabled = false
+                    settings.loadWithOverviewMode = true
+                    settings.useWideViewPort = true
+                    webViewRef[0] = this
+                }
+            },
+            update = { wv ->
+                wv.settings.textZoom = textZoom
+                if (wv.tag != rawHtml) {
+                    wv.tag = rawHtml
+                    wv.loadDataWithBaseURL(
+                        "https://forum.gamer.com.tw",
+                        rawHtml,
+                        "text/html",
+                        "UTF-8",
+                        null,
+                    )
+                }
+            },
+            onRelease = { wv ->
+                webViewRef[0] = null
+                wv.destroy()
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        // Floating controls overlaid on bottom-right of WebView:
+        //   Row 1: ↑ (scroll up)   | A+ (zoom in)
+        //   Row 2: ↓ (scroll down) | A- (zoom out)
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                FilledTonalIconButton(onClick = { webViewRef[0]?.scrollBy(0, -300) }) {
+                    Text("↑")
+                }
+                FilledTonalIconButton(
+                    onClick = {
+                        if (currentIndex < WEBVIEW_TEXT_ZOOM_STEPS.lastIndex)
+                            onZoomChange(WEBVIEW_TEXT_ZOOM_STEPS[currentIndex + 1])
+                    },
+                    enabled = currentIndex < WEBVIEW_TEXT_ZOOM_STEPS.lastIndex,
+                ) { Text("A+") }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                FilledTonalIconButton(onClick = { webViewRef[0]?.scrollBy(0, 300) }) {
+                    Text("↓")
+                }
+                FilledTonalIconButton(
+                    onClick = {
+                        if (currentIndex > 0)
+                            onZoomChange(WEBVIEW_TEXT_ZOOM_STEPS[currentIndex - 1])
+                    },
+                    enabled = currentIndex > 0,
+                ) { Text("A-") }
+            }
+        }
+    }
 }
 
 @Composable
