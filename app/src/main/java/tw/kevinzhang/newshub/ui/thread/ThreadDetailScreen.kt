@@ -1,11 +1,17 @@
 package tw.kevinzhang.newshub.ui.thread
 
+import android.animation.ObjectAnimator
+import android.webkit.WebView
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +30,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -37,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,11 +55,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
-import android.webkit.WebView
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.Paragraph
@@ -307,13 +315,26 @@ private fun ExtPostCard(
 @Composable
 private fun PostWebView(rawHtml: String, textZoom: Int, onZoomChange: (Int) -> Unit) {
     val webViewRef = remember { arrayOfNulls<WebView>(1) }
-    val currentIndex = WEBVIEW_TEXT_ZOOM_STEPS.indexOf(textZoom).takeIf { it >= 0 }
-        ?: WEBVIEW_TEXT_ZOOM_STEPS.indexOf(100)
+    var controlsVisible by remember { mutableStateOf(true) }
+    val coroutineScope = rememberCoroutineScope()
+
+    // Auto-hide controls after 3 seconds of inactivity
+    LaunchedEffect(controlsVisible) {
+        if (controlsVisible) {
+            delay(3_000)
+            controlsVisible = false
+        }
+    }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(600.dp),
+            .height(600.dp)
+            // Tap anywhere on the WebView area to show controls
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { controlsVisible = true },
     ) {
         AndroidView(
             factory = { context ->
@@ -344,39 +365,82 @@ private fun PostWebView(rawHtml: String, textZoom: Int, onZoomChange: (Int) -> U
             modifier = Modifier.fillMaxSize(),
         )
 
-        // Floating controls overlaid on bottom-right of WebView:
-        //   Row 1: ↑ (scroll up)   | A+ (zoom in)
-        //   Row 2: ↓ (scroll down) | A- (zoom out)
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+        AnimatedVisibility(
+            visible = controlsVisible,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(500)),
+            modifier = Modifier.align(Alignment.BottomEnd),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                FilledTonalIconButton(onClick = { webViewRef[0]?.scrollBy(0, -300) }) {
-                    Text("↑")
-                }
-                FilledTonalIconButton(
-                    onClick = {
-                        if (currentIndex < WEBVIEW_TEXT_ZOOM_STEPS.lastIndex)
-                            onZoomChange(WEBVIEW_TEXT_ZOOM_STEPS[currentIndex + 1])
-                    },
-                    enabled = currentIndex < WEBVIEW_TEXT_ZOOM_STEPS.lastIndex,
-                ) { Text("A+") }
+            WebViewControls(
+                textZoom = textZoom,
+                onZoomChange = { zoom ->
+                    onZoomChange(zoom)
+                    coroutineScope.launch {
+                        controlsVisible = false
+                        delay(100)
+                        controlsVisible = true
+                    }
+                },
+                onScrollUp = {
+                    webViewRef[0]?.let { wv ->
+                        val target = (wv.scrollY - 300).coerceAtLeast(0)
+                        ObjectAnimator.ofInt(wv, "scrollY", wv.scrollY, target)
+                            .apply { duration = 250; start() }
+                    }
+                },
+                onScrollDown = {
+                    webViewRef[0]?.let { wv ->
+                        ObjectAnimator.ofInt(wv, "scrollY", wv.scrollY, wv.scrollY + 300)
+                            .apply { duration = 250; start() }
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun WebViewControls(
+    textZoom: Int,
+    onZoomChange: (Int) -> Unit,
+    onScrollUp: () -> Unit,
+    onScrollDown: () -> Unit,
+) {
+    val currentIndex = WEBVIEW_TEXT_ZOOM_STEPS.indexOf(textZoom).takeIf { it >= 0 }
+        ?: WEBVIEW_TEXT_ZOOM_STEPS.indexOf(100)
+    val buttonSize = 48.dp
+
+    Column(
+        modifier = Modifier.padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Spacer(modifier = Modifier.size(buttonSize))
+            FilledTonalIconButton(onClick = onScrollUp) { Text("↑") }
+            Spacer(modifier = Modifier.size(buttonSize))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            FilledTonalIconButton(
+                onClick = { onZoomChange(WEBVIEW_TEXT_ZOOM_STEPS[currentIndex + 1]) },
+                enabled = currentIndex < WEBVIEW_TEXT_ZOOM_STEPS.lastIndex,
+            ) { Text("A+") }
+            FilledTonalIconButton(onClick = { onZoomChange(100) }) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Reset zoom",
+                    modifier = Modifier.size(18.dp),
+                )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                FilledTonalIconButton(onClick = { webViewRef[0]?.scrollBy(0, 300) }) {
-                    Text("↓")
-                }
-                FilledTonalIconButton(
-                    onClick = {
-                        if (currentIndex > 0)
-                            onZoomChange(WEBVIEW_TEXT_ZOOM_STEPS[currentIndex - 1])
-                    },
-                    enabled = currentIndex > 0,
-                ) { Text("A-") }
-            }
+            FilledTonalIconButton(
+                onClick = { onZoomChange(WEBVIEW_TEXT_ZOOM_STEPS[currentIndex - 1]) },
+                enabled = currentIndex > 0,
+            ) { Text("A-") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Spacer(modifier = Modifier.size(buttonSize))
+            FilledTonalIconButton(onClick = onScrollDown) { Text("↓") }
+            Spacer(modifier = Modifier.size(buttonSize))
         }
     }
 }
