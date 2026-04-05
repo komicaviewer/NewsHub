@@ -39,7 +39,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -292,7 +291,6 @@ private fun ExtPostCard(
 
 @Composable
 private fun PostWebView(rawHtml: String) {
-    val webView = rememberUpdatedState(rawHtml)
     AndroidView(
         factory = { context ->
             WebView(context).apply {
@@ -302,11 +300,11 @@ private fun PostWebView(rawHtml: String) {
             }
         },
         update = { wv ->
-            if (wv.tag != webView.value) {
-                wv.tag = webView.value
+            if (wv.tag != rawHtml) {
+                wv.tag = rawHtml
                 wv.loadDataWithBaseURL(
                     "https://forum.gamer.com.tw",
-                    webView.value,
+                    rawHtml,
                     "text/html",
                     "UTF-8",
                     null,

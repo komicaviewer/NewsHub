@@ -3,6 +3,7 @@ package tw.kevinzhang.gamer_api.parser
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tw.kevinzhang.gamer_api.loadFile
 import tw.kevinzhang.gamer_api.request.RequestBuilderImpl
@@ -41,5 +42,7 @@ internal class ThreadParserTest {
         )
 
         assertEquals(1, list.size)
+        assertTrue(list[0].content.isEmpty())
+        assertTrue(list[0].rawHtml.isNotBlank())
     }
 }
