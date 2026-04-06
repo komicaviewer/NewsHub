@@ -21,6 +21,14 @@
 -keepclassmembers class tw.kevinzhang.gamer_api.parser.CommentListParser$CommentRes { *; }
 
 # -----------------------------------------------------------------------
+# OkHttp: suppress warnings for optional platform-specific TLS providers
+# (BouncyCastle, Conscrypt, OpenJSSE are not present on Android)
+# -----------------------------------------------------------------------
+-dontwarn org.bouncycastle.jsse.**
+-dontwarn org.conscrypt.**
+-dontwarn org.openjsse.**
+
+# -----------------------------------------------------------------------
 # Debugging: preserve stack trace line numbers in release builds
 # -----------------------------------------------------------------------
 -keepattributes SourceFile,LineNumberTable
