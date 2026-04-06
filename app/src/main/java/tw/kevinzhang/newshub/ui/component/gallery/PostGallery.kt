@@ -109,6 +109,7 @@ fun PostGallery(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .weight(0.5f)
                     .background(MaterialTheme.colorScheme.surface)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 12.dp),
