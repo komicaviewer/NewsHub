@@ -20,7 +20,8 @@ data class KQuote(
 ): KParagraph
 
 data class KReplyTo(
-    val content: String,
+    val targetId: String,
+    var preview: String? = null,
 ): KParagraph
 
 data class KLink(

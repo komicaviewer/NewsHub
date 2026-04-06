@@ -41,6 +41,6 @@ internal class KPostTest {
             )
         ).build()
 
-        assertEquals(2, listOf(post1, post2, post3).filterReplyToIs("B").size)
+        assertEquals(2, listOf(post1, post2, post3).filterRepliesBy("B").size)
     }
 }

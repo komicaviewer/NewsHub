@@ -5,7 +5,7 @@ sealed class Paragraph {
     data class VideoInfo(val url: String) : Paragraph()
     data class Text(val content: String) : Paragraph()
     data class Quote(val content: String) : Paragraph()
-    data class ReplyTo(val id: String) : Paragraph()
+    data class ReplyTo(val targetId: String, val preview: String? = null) : Paragraph()
     data class Link(val content: String) : Paragraph()
 }
 

@@ -201,7 +201,13 @@ fun ThreadDetailScreen(
                             when (paragraph) {
                                 is Paragraph.Text -> Text(paragraph.content)
                                 is Paragraph.Quote -> Text("> ${paragraph.content}")
-                                is Paragraph.ReplyTo -> Text(">> ${paragraph.id}")
+                                is Paragraph.ReplyTo -> {
+                                    if (paragraph.preview == null) {
+                                        Text(">> ${paragraph.targetId}")
+                                    } else {
+                                        Text(">> ${paragraph.targetId}(${paragraph.preview})")
+                                    }
+                                }
                                 is Paragraph.Link -> TextButton(
                                     onClick = { uriHandler.openUri(paragraph.content) },
                                     contentPadding = PaddingValues(0.dp),
@@ -272,9 +278,15 @@ private fun ExtPostCard(
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             is Paragraph.ReplyTo -> TextButton(
-                                onClick = { onReplyToClick(paragraph.id) },
+                                onClick = { onReplyToClick(paragraph.targetId) },
                                 contentPadding = PaddingValues(0.dp),
-                            ) { Text(">> ${paragraph.id}") }
+                            ) {
+                                if (paragraph.preview == null) {
+                                    Text(">> ${paragraph.targetId}")
+                                } else {
+                                    Text(">> ${paragraph.targetId}(${paragraph.preview})")
+                                }
+                            }
                             is Paragraph.Link -> TextButton(
                                 onClick = { uriHandler.openUri(paragraph.content) },
                                 contentPadding = PaddingValues(0.dp),
@@ -545,7 +557,19 @@ private fun CommentItem(comment: Comment, alwaysUseRawImage: Boolean) {
                 when (paragraph) {
                     is Paragraph.Text -> Text(paragraph.content, style = MaterialTheme.typography.bodySmall)
                     is Paragraph.Quote -> Text("> ${paragraph.content}", style = MaterialTheme.typography.bodySmall)
-                    is Paragraph.ReplyTo -> Text(">> ${paragraph.id}", style = MaterialTheme.typography.bodySmall)
+                    is Paragraph.ReplyTo -> {
+                        if (paragraph.preview == null) {
+                            Text(
+                                ">> ${paragraph.targetId}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        } else {
+                            Text(
+                                ">> ${paragraph.targetId}(${paragraph.preview})",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
                     is Paragraph.Link -> TextButton(
                         onClick = { uriHandler.openUri(paragraph.content) },
                         contentPadding = PaddingValues(0.dp),

@@ -15,10 +15,10 @@ data class KPost (
 fun KPost.replyTo(): List<String> {
     return content
         .filterIsInstance<KReplyTo>()
-        .map { paragraph -> paragraph.content }
+        .map { paragraph -> paragraph.targetId }
 }
 
-fun List<KPost>.filterReplyToIs(threadId: String?): List<KPost> {
+fun List<KPost>.filterRepliesBy(threadId: String?): List<KPost> {
     return if(threadId == null)
         this.filter { it.replyTo().isEmpty() }
     else
