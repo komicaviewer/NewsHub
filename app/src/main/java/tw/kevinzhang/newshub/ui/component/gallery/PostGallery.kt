@@ -31,7 +31,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import tw.kevinzhang.extension_api.model.Paragraph
-import tw.kevinzhang.newshub.ui.component.BodySmallText
+import tw.kevinzhang.newshub.ui.component.Small
+import tw.kevinzhang.newshub.ui.component.View
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -117,26 +118,10 @@ fun PostGallery(
             ) {
                 paragraphs.forEach { paragraph ->
                     when (paragraph) {
-                        is Paragraph.Text -> Text(
-                            text = paragraph.content,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        is Paragraph.Quote -> BodySmallText(
-                            text = "> ${paragraph.content}",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        is Paragraph.ReplyTo -> {
-                            if (paragraph.preview == null) {
-                                Text(">> ${paragraph.targetId}")
-                            } else {
-                                Text(">> ${paragraph.targetId}(${paragraph.preview})")
-                            }
-                        }
-                        is Paragraph.Link -> Text(
-                            text = paragraph.content,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        is Paragraph.Text -> paragraph.View()
+                        is Paragraph.Quote -> paragraph.Small()
+                        is Paragraph.ReplyTo -> paragraph.View()
+                        is Paragraph.Link -> paragraph.View()
                         is Paragraph.ImageInfo, is Paragraph.VideoInfo -> Unit
                     }
                 }

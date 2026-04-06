@@ -49,7 +49,9 @@ import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.newshub.ui.component.AppCard
 import tw.kevinzhang.newshub.ui.component.BodyLargeText
 import tw.kevinzhang.newshub.ui.component.BodySmallText
+import tw.kevinzhang.newshub.ui.component.Small
 import tw.kevinzhang.newshub.ui.component.TitleMediumText
+import tw.kevinzhang.newshub.ui.component.View
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -262,13 +264,9 @@ private fun ThreadSummaryCard(
 
             summary.previewContent.forEach { paragraph ->
                 when (paragraph) {
-                    is Paragraph.Text -> Text(paragraph.content)
-                    is Paragraph.Quote -> BodySmallText("> ${paragraph.content}")
-                    is Paragraph.Link -> Text(
-                        paragraph.content,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-
+                    is Paragraph.Text -> paragraph.View()
+                    is Paragraph.Quote -> paragraph.Small()
+                    is Paragraph.Link -> paragraph.View()
                     else -> {}
                 }
             }

@@ -7,7 +7,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,7 +26,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.OpenInBrowser
-import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -50,24 +48,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.newshub.ui.component.AppCard
-import tw.kevinzhang.newshub.ui.component.BodySmallText
 import tw.kevinzhang.newshub.ui.component.LabelMediumText
 import tw.kevinzhang.newshub.ui.component.LabelSmallText
+import tw.kevinzhang.newshub.ui.component.Small
+import tw.kevinzhang.newshub.ui.component.View
 import tw.kevinzhang.newshub.ui.component.gallery.PostGallery
 import kotlin.math.roundToInt
 
@@ -198,30 +194,15 @@ fun ThreadDetailScreen(
                 },
                 title = { Text("Post ${post.id}") },
                 text = {
-                    val uriHandler = LocalUriHandler.current
                     Column {
                         post.content.forEach { paragraph ->
                             when (paragraph) {
-                                is Paragraph.Text -> Text(paragraph.content)
-                                is Paragraph.Quote -> Text("> ${paragraph.content}")
-                                is Paragraph.ReplyTo -> {
-                                    if (paragraph.preview == null) {
-                                        Text(">> ${paragraph.targetId}")
-                                    } else {
-                                        Text(">> ${paragraph.targetId}(${paragraph.preview})")
-                                    }
-                                }
-                                is Paragraph.Link -> TextButton(
-                                    onClick = { uriHandler.openUri(paragraph.content) },
-                                    contentPadding = PaddingValues(0.dp),
-                                ) { Text(paragraph.content) }
-                                is Paragraph.ImageInfo -> {
-                                    val url =
-                                        if (alwaysUseRawImage) paragraph.raw else paragraph.thumb
-                                    url?.let { AsyncImage(model = it, contentDescription = null) }
-                                }
-
-                                is Paragraph.VideoInfo -> Text("[video]")
+                                is Paragraph.Text -> paragraph.View()
+                                is Paragraph.Quote -> paragraph.Small()
+                                is Paragraph.ReplyTo -> paragraph.View()
+                                is Paragraph.Link -> paragraph.View()
+                                is Paragraph.ImageInfo -> paragraph.View(alwaysUseRawImage)
+                                is Paragraph.VideoInfo -> paragraph.View()
                             }
                         }
                     }
@@ -271,60 +252,23 @@ private fun ExtPostCard(
                     }
                 }
                 else -> {
-                    val uriHandler = LocalUriHandler.current
                     var mediaIndex = 0
                     post.content.forEach { paragraph ->
                         when (paragraph) {
-                            is Paragraph.Text -> Text(paragraph.content)
-                            is Paragraph.Quote -> BodySmallText(
-                                text = "> ${paragraph.content}",
-                            )
-                            is Paragraph.ReplyTo -> TextButton(
-                                onClick = { onReplyToClick(paragraph.targetId) },
-                                contentPadding = PaddingValues(0.dp),
-                            ) {
-                                if (paragraph.preview == null) {
-                                    Text(">> ${paragraph.targetId}")
-                                } else {
-                                    Text(">> ${paragraph.targetId}(${paragraph.preview})")
-                                }
-                            }
-                            is Paragraph.Link -> TextButton(
-                                onClick = { uriHandler.openUri(paragraph.content) },
-                                contentPadding = PaddingValues(0.dp),
-                            ) { Text(paragraph.content) }
+                            is Paragraph.Text -> paragraph.View()
+                            is Paragraph.Quote -> paragraph.Small()
+                            is Paragraph.ReplyTo -> paragraph.View(onReplyToClick)
+                            is Paragraph.Link -> paragraph.View()
                             is Paragraph.ImageInfo -> {
                                 val index = mediaIndex++
-                                val url = if (alwaysUseRawImage) paragraph.raw else paragraph.thumb
-                                url?.let {
-                                    AsyncImage(
-                                        model = it,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { galleryStartIndex = index },
-                                    )
+                                paragraph.View(alwaysUseRawImage) {
+                                    galleryStartIndex = index
                                 }
                             }
                             is Paragraph.VideoInfo -> {
                                 val index = mediaIndex++
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { galleryStartIndex = index },
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    AsyncImage(
-                                        model = paragraph.url,
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                    Icon(
-                                        imageVector = Icons.Default.PlayCircle,
-                                        contentDescription = "播放影片",
-                                        tint = Color.White.copy(alpha = 0.85f),
-                                        modifier = Modifier.size(48.dp),
-                                    )
+                                paragraph.View {
+                                    galleryStartIndex = index
                                 }
                             }
                         }
@@ -530,7 +474,6 @@ private fun WebViewControls(
 
 @Composable
 private fun CommentItem(comment: Comment, alwaysUseRawImage: Boolean) {
-    val uriHandler = LocalUriHandler.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -556,37 +499,12 @@ private fun CommentItem(comment: Comment, alwaysUseRawImage: Boolean) {
             }
             comment.content.forEach { paragraph ->
                 when (paragraph) {
-                    is Paragraph.Text -> BodySmallText(text = paragraph.content)
-                    is Paragraph.Quote -> BodySmallText(text = "> ${paragraph.content}")
-                    is Paragraph.ReplyTo -> {
-                        if (paragraph.preview == null) {
-                            BodySmallText(
-                                text = ">> ${paragraph.targetId}",
-                            )
-                        } else {
-                            BodySmallText(
-                                text = ">> ${paragraph.targetId}(${paragraph.preview})",
-                            )
-                        }
-                    }
-
-                    is Paragraph.Link -> TextButton(
-                        onClick = { uriHandler.openUri(paragraph.content) },
-                        contentPadding = PaddingValues(0.dp),
-                    ) { BodySmallText(text = paragraph.content) }
-
-                    is Paragraph.ImageInfo -> {
-                        val url = if (alwaysUseRawImage) paragraph.raw else paragraph.thumb
-                        url?.let {
-                            AsyncImage(
-                                model = it,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-
-                    is Paragraph.VideoInfo -> BodySmallText(text = "[video]")
+                    is Paragraph.Text -> paragraph.Small()
+                    is Paragraph.Quote -> paragraph.Small()
+                    is Paragraph.ReplyTo -> paragraph.Small()
+                    is Paragraph.Link -> paragraph.Small()
+                    is Paragraph.ImageInfo -> paragraph.View(alwaysUseRawImage)
+                    is Paragraph.VideoInfo -> paragraph.View()
                 }
             }
         }
