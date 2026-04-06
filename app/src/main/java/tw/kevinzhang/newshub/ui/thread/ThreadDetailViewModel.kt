@@ -102,12 +102,15 @@ class ThreadDetailViewModel @Inject constructor(
                 title = threadTitle,
                 author = null,
                 createdAt = null,
-                replyCount = null,
+                commentCount = null,
                 thumbnail = null,
                 rawImage = null,
                 previewContent = emptyList(),
             )
-            val thread = source.getThread(summary)
+            val rawThread = source.getThread(summary)
+            val thread = rawThread.copy(
+                posts = rawThread.posts.map { it.copy(sourceIconUrl = source.iconUrl) }
+            )
             _thread.value = thread
             _commentStates.value = buildInitialCommentStates(source, thread)
         }

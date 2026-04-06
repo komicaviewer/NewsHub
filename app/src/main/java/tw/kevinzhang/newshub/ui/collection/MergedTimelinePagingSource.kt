@@ -28,7 +28,10 @@ class MergedTimelinePagingSource(
                     .mapNotNull { sub ->
                         val source = sourceResolver(sub.sourceId) ?: return@mapNotNull null
                         val board = Board(sourceId = sub.sourceId, url = sub.boardUrl, name = sub.boardName)
-                        async { source.getThreadSummaries(board, page) }
+                        async {
+                            source.getThreadSummaries(board, page)
+                                .map { it.copy(sourceIconUrl = source.iconUrl) }
+                        }
                     }
                     .awaitAll()
                     .flatten()

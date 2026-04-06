@@ -4,10 +4,9 @@ import android.animation.ObjectAnimator
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,19 +16,22 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -41,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,25 +52,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
+import tw.kevinzhang.newshub.filterRepliesBy
 import tw.kevinzhang.newshub.ui.component.AppCard
+import tw.kevinzhang.newshub.ui.component.swipeToGoBack
+import tw.kevinzhang.newshub.ui.component.BodySmallText
 import tw.kevinzhang.newshub.ui.component.LabelMediumText
 import tw.kevinzhang.newshub.ui.component.LabelSmallText
 import tw.kevinzhang.newshub.ui.component.Small
 import tw.kevinzhang.newshub.ui.component.View
 import tw.kevinzhang.newshub.ui.component.gallery.PostGallery
-import kotlin.math.roundToInt
 
 private val WEBVIEW_TEXT_ZOOM_STEPS = listOf(75, 100, 125, 150, 175, 200)
+private const val HIGHLIGHT_DURATION_MS = 1500
 
 /**
  * Wraps a raw HTML content fragment into a complete HTML document suitable for WebView.
@@ -98,39 +103,11 @@ fun ThreadDetailScreen(
     val webViewTextZoom by viewModel.webViewTextZoom.collectAsStateWithLifecycle()
 
     val coroutineScope = rememberCoroutineScope()
-    val offsetX = remember { Animatable(0f) }
+    val listState = rememberLazyListState()
+    var repliesDialogForPostId by remember { mutableStateOf<String?>(null) }
+    var highlightedPostId by remember { mutableStateOf<String?>(null) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .offset { IntOffset(offsetX.value.roundToInt(), 0) }
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        coroutineScope.launch {
-                            if (offsetX.value > size.width * 0.2f) {
-                                offsetX.animateTo(
-                                    targetValue = size.width.toFloat(),
-                                    animationSpec = tween(durationMillis = 200),
-                                )
-                                onNavigateUp()
-                            } else {
-                                offsetX.animateTo(0f, animationSpec = spring())
-                            }
-                        }
-                    },
-                    onDragCancel = {
-                        coroutineScope.launch { offsetX.animateTo(0f, animationSpec = spring()) }
-                    },
-                    onHorizontalDrag = { change, dragAmount ->
-                        change.consume()
-                        coroutineScope.launch {
-                            offsetX.snapTo((offsetX.value + dragAmount).coerceAtLeast(0f))
-                        }
-                    },
-                )
-            },
-    ) {
+    Box(modifier = Modifier.fillMaxSize().swipeToGoBack(onNavigateUp)) {
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -168,14 +145,17 @@ fun ThreadDetailScreen(
                     remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
                 val onZoomChange =
                     remember(viewModel) { { zoom: Int -> viewModel.setWebViewTextZoom(zoom) } }
-                LazyColumn(modifier = Modifier.padding(padding)) {
+                LazyColumn(state = listState, modifier = Modifier.padding(padding)) {
                     items(thread!!.posts, key = { it.id }) { post ->
                         ExtPostCard(
                             post = post,
+                            isHighlighted = post.id == highlightedPostId,
+                            onHighlightDone = { if (post.id == highlightedPostId) highlightedPostId = null },
                             useWebView = post.id in useWebViewPosts,
                             onEnableWebView = { viewModel.enableWebViewForPost(post.id) },
                             alwaysUseRawImage = alwaysUseRawImage,
                             commentUiState = commentStates[post.id],
+                            onShowReplies = { repliesDialogForPostId = post.id },
                             onReplyToClick = onReplyToClick,
                             onLoadMoreCommentsClick = { viewModel.loadMoreComments(post.id) },
                             textZoom = webViewTextZoom,
@@ -195,15 +175,66 @@ fun ThreadDetailScreen(
                 title = { Text("Post ${post.id}") },
                 text = {
                     Column {
-                        post.content.forEach { paragraph ->
-                            when (paragraph) {
-                                is Paragraph.Text -> paragraph.View()
-                                is Paragraph.Quote -> paragraph.Small()
-                                is Paragraph.ReplyTo -> paragraph.View()
-                                is Paragraph.Link -> paragraph.View()
-                                is Paragraph.ImageInfo -> paragraph.View(alwaysUseRawImage)
-                                is Paragraph.VideoInfo -> paragraph.View()
+                        ParagraphsContent(
+                            paragraphs = post.content,
+                            alwaysUseRawImage = alwaysUseRawImage,
+                        )
+                    }
+                },
+            )
+        }
+
+        repliesDialogForPostId?.let { postId ->
+            val dialogReplies = remember(thread, postId) {
+                thread!!.posts.filterRepliesBy(postId)
+            }
+            AlertDialog(
+                onDismissRequest = { repliesDialogForPostId = null },
+                confirmButton = {
+                    TextButton(onClick = { repliesDialogForPostId = null }) { Text("關閉") }
+                },
+                title = { Text("回文清單 (${dialogReplies.size})") },
+                text = {
+                    LazyColumn {
+                        items(dialogReplies, key = { it.id }) { reply ->
+                            AppCard(
+                                onClick = {
+                                    repliesDialogForPostId = null
+                                    val index = thread!!.posts.indexOfFirst { it.id == reply.id }
+                                    if (index >= 0) {
+                                        coroutineScope.launch {
+                                            listState.animateScrollToItem(index)
+                                            highlightedPostId = reply.id
+                                        }
+                                    }
+                                }
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        reply.sourceIconUrl?.let {
+                                            AsyncImage(
+                                                model = it,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(14.dp),
+                                            )
+                                        }
+                                        LabelMediumText(
+                                            text = reply.author ?: "Unknown",
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                        BodySmallText(reply.id.takeLast(10))
+                                    }
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                                    ParagraphsContent(
+                                        paragraphs = reply.content,
+                                        alwaysUseRawImage = alwaysUseRawImage,
+                                    )
+                                }
                             }
+                            Spacer(modifier = Modifier.height(6.dp))
                         }
                     }
                 },
@@ -215,68 +246,41 @@ fun ThreadDetailScreen(
 @Composable
 private fun ExtPostCard(
     post: Post,
+    isHighlighted: Boolean,
+    onHighlightDone: () -> Unit,
     useWebView: Boolean,
     onEnableWebView: () -> Unit,
     alwaysUseRawImage: Boolean,
     commentUiState: CommentUiState?,
+    onShowReplies: () -> Unit,
     onReplyToClick: (String) -> Unit,
     onLoadMoreCommentsClick: () -> Unit,
     textZoom: Int,
     onZoomChange: (Int) -> Unit,
 ) {
-    val rawImages = remember(post.id) {
-        post.content.filterIsInstance<Paragraph.ImageInfo>().map { it.raw }
-    }
     var galleryStartIndex by remember { mutableStateOf<Int?>(null) }
-
-    AppCard {
-        Column(modifier = Modifier.padding(8.dp)) {
-            LabelSmallText(text = "Post ${post.id}")
-            Spacer(modifier = Modifier.height(4.dp))
-            val rawHtml = post.rawHtml
-            when {
-                useWebView && rawHtml != null -> {
-                    PostWebView(
-                        rawHtml = rawHtml,
-                        textZoom = textZoom,
-                        onZoomChange = onZoomChange,
-                    )
-                }
-                !useWebView && post.content.isEmpty() && rawHtml != null -> {
-                    FilledTonalButton(
-                        onClick = onEnableWebView,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RectangleShape,
-                    ) {
-                        Text("使用WebView引擎渲染")
-                    }
-                }
-                else -> {
-                    var mediaIndex = 0
-                    post.content.forEach { paragraph ->
-                        when (paragraph) {
-                            is Paragraph.Text -> paragraph.View()
-                            is Paragraph.Quote -> paragraph.Small()
-                            is Paragraph.ReplyTo -> paragraph.View(onReplyToClick)
-                            is Paragraph.Link -> paragraph.View()
-                            is Paragraph.ImageInfo -> {
-                                val index = mediaIndex++
-                                paragraph.View(alwaysUseRawImage) {
-                                    galleryStartIndex = index
-                                }
-                            }
-                            is Paragraph.VideoInfo -> {
-                                val index = mediaIndex++
-                                paragraph.View {
-                                    galleryStartIndex = index
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+    val highlightAlpha = remember { Animatable(0f) }
+    LaunchedEffect(isHighlighted) {
+        if (isHighlighted) {
+            highlightAlpha.snapTo(0.35f)
+            highlightAlpha.animateTo(0f, animationSpec = tween(durationMillis = HIGHLIGHT_DURATION_MS))
+            onHighlightDone()
         }
     }
+
+    PostCard(
+        post = post,
+        highlightAlpha = highlightAlpha.value,
+        useWebView = useWebView,
+        onEnableWebView = onEnableWebView,
+        alwaysUseRawImage = alwaysUseRawImage,
+        onShowReplies = onShowReplies,
+        onReplyToClick = onReplyToClick,
+        onMediaClick = { index -> galleryStartIndex = index },
+        textZoom = textZoom,
+        onZoomChange = onZoomChange,
+    )
+
     val visibleComments = commentUiState?.visibleComments.orEmpty()
     if (visibleComments.isNotEmpty()) {
         Spacer(modifier = Modifier.height(8.dp))
@@ -308,6 +312,111 @@ private fun ExtPostCard(
             onDismissRequest = { galleryStartIndex = null },
             onReplyToClick = { },
         )
+    }
+}
+
+@Composable
+private fun PostCard(
+    post: Post,
+    highlightAlpha: Float,
+    useWebView: Boolean,
+    onEnableWebView: () -> Unit,
+    alwaysUseRawImage: Boolean,
+    onShowReplies: () -> Unit,
+    onReplyToClick: (String) -> Unit,
+    onMediaClick: (index: Int) -> Unit,
+    textZoom: Int,
+    onZoomChange: (Int) -> Unit,
+) {
+    AppCard {
+        Box {
+        Column(modifier = Modifier.padding(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    post.createdAt?.let {
+                        BodySmallText(
+                            text = android.text.format.DateUtils.getRelativeTimeSpanString(it)
+                                .toString(),
+                        )
+                    }
+                    post.sourceIconUrl?.let {
+                        AsyncImage(
+                            model = it,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                    BodySmallText(post.author ?: "Unknown")
+                    BodySmallText(post.id.takeLast(10))
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    post.replyCount?.let {
+                        Icon(
+                            imageVector = Icons.Outlined.Email,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        BodySmallText("$it", modifier = Modifier.clickable { onShowReplies() })
+                    }
+                    post.comments.size.takeIf { it > 0 }?.let {
+                        Icon(
+                            imageVector = Icons.Outlined.ChatBubbleOutline,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        BodySmallText("$it")
+                    }
+                }
+            }
+
+            val rawHtml = post.rawHtml
+            when {
+                useWebView && rawHtml != null -> {
+                    PostWebView(
+                        rawHtml = rawHtml,
+                        textZoom = textZoom,
+                        onZoomChange = onZoomChange,
+                    )
+                }
+                !useWebView && post.content.isEmpty() && rawHtml != null -> {
+                    FilledTonalButton(
+                        onClick = onEnableWebView,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RectangleShape,
+                    ) {
+                        Text("使用WebView引擎渲染")
+                    }
+                }
+                else -> {
+                    ParagraphsContent(
+                        paragraphs = post.content,
+                        alwaysUseRawImage = alwaysUseRawImage,
+                        onReplyToClick = onReplyToClick,
+                        onMediaClick = onMediaClick,
+                    )
+                }
+            }
+        }
+        if (highlightAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = highlightAlpha))
+            )
+        }
+        }
     }
 }
 
@@ -497,15 +606,37 @@ private fun CommentItem(comment: Comment, alwaysUseRawImage: Boolean) {
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
-            comment.content.forEach { paragraph ->
-                when (paragraph) {
-                    is Paragraph.Text -> paragraph.Small()
-                    is Paragraph.Quote -> paragraph.Small()
-                    is Paragraph.ReplyTo -> paragraph.Small()
-                    is Paragraph.Link -> paragraph.Small()
-                    is Paragraph.ImageInfo -> paragraph.View(alwaysUseRawImage)
-                    is Paragraph.VideoInfo -> paragraph.View()
-                }
+            ParagraphsContent(
+                paragraphs = comment.content,
+                alwaysUseRawImage = alwaysUseRawImage,
+                useSmallText = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ParagraphsContent(
+    paragraphs: List<Paragraph>,
+    alwaysUseRawImage: Boolean,
+    onReplyToClick: ((String) -> Unit)? = null,
+    onMediaClick: ((index: Int) -> Unit)? = null,
+    useSmallText: Boolean = false,
+) {
+    var mediaIndex = 0
+    paragraphs.forEach { paragraph ->
+        when (paragraph) {
+            is Paragraph.Text -> if (useSmallText) paragraph.Small() else paragraph.View()
+            is Paragraph.Quote -> paragraph.Small()
+            is Paragraph.ReplyTo -> if (useSmallText) paragraph.Small() else paragraph.View(onReplyToClick)
+            is Paragraph.Link -> if (useSmallText) paragraph.Small() else paragraph.View()
+            is Paragraph.ImageInfo -> {
+                val index = mediaIndex++
+                paragraph.View(alwaysUseRawImage, onClick = onMediaClick?.let { cb -> { cb(index) } })
+            }
+            is Paragraph.VideoInfo -> {
+                val index = mediaIndex++
+                paragraph.View(onClick = onMediaClick?.let { cb -> { cb(index) } })
             }
         }
     }

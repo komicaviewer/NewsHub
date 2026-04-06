@@ -49,10 +49,11 @@ class _2catSource @Inject constructor(
                 title = kPost.title,
                 author = kPost.poster,
                 createdAt = kPost.createdAt,
-                replyCount = kPost.replies,
+                commentCount = kPost.replies,
                 thumbnail = kPost.content.filterIsInstance<KImageInfo>().firstOrNull()?.thumb,
                 rawImage = kPost.content.filterIsInstance<KImageInfo>().firstOrNull()?.raw,
                 previewContent = kPost.content.map { it.toExtParagraph() },
+                replyCount = kPost.replies.takeIf { it > 0 },
             )
         }
     }
@@ -75,6 +76,7 @@ class _2catSource @Inject constructor(
                     thumbnail = kPost.content.filterIsInstance<KImageInfo>().firstOrNull()?.thumb,
                     content = kPost.content.map { it.toExtParagraph() },
                     comments = emptyList(),
+                    replyCount = kPost.replies.takeIf { it > 0 },
                 )
             },
         )

@@ -7,8 +7,10 @@ data class ThreadSummary(
     val title: String?,
     val author: String?,
     val createdAt: Long?,
-    val replyCount: Int?,
+    val commentCount: Int?,
     val rawImage: String?,
     val thumbnail: String?,
     val previewContent: List<Paragraph>,
+    val sourceIconUrl: String? = null,
+    val replyCount: Int? = null,
 )

@@ -70,12 +70,14 @@ class GamerSource @Inject constructor(
                 title = gNews.title,
                 author = gNews.posterName,
                 createdAt = null, // GNews does not expose a creation timestamp
-                replyCount = gNews.interactions,
+                commentCount = gNews.interactions,
                 thumbnail = gNews.thumb,
                 rawImage = gNews.thumb,
                 previewContent = listOf(
                     Paragraph.Text(gNews.preview)
                 ),
+                sourceIconUrl = iconUrl,
+                replyCount = null,
             )
         }
     }
@@ -131,6 +133,8 @@ class GamerSource @Inject constructor(
                     content = gPost.content.map { it.toExtParagraph() },
                     comments = comments,
                     rawHtml = gPost.rawHtml,
+                    sourceIconUrl = iconUrl,
+                    replyCount = null,
                 )
             },
         )

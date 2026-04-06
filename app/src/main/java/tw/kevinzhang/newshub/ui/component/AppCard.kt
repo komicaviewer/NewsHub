@@ -10,13 +10,14 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppCard(
+    modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     if (onClick != null) {
         Surface(
             tonalElevation = 2.dp,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().then(modifier),
             onClick = onClick,
         ) {
             content()
@@ -24,7 +25,7 @@ fun AppCard(
     } else {
         Surface(
             tonalElevation = 2.dp,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().then(modifier),
         ) {
             content()
         }

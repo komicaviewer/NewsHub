@@ -42,10 +42,12 @@ class SoraSource @Inject constructor(
                 title = kPost.title,
                 author = kPost.poster,
                 createdAt = kPost.createdAt,
-                replyCount = kPost.replies,
+                commentCount = 0,
                 thumbnail = kPost.content.filterIsInstance<KImageInfo>().firstOrNull()?.thumb,
                 rawImage = kPost.content.filterIsInstance<KImageInfo>().firstOrNull()?.raw,
                 previewContent = kPost.content.map { it.toExtParagraph() },
+                sourceIconUrl = iconUrl,
+                replyCount = kPost.replies.takeIf { it > 0 },
             )
         }
     }
@@ -68,6 +70,8 @@ class SoraSource @Inject constructor(
                     thumbnail = kPost.content.filterIsInstance<KImageInfo>().firstOrNull()?.thumb,
                     content = kPost.content.map { it.toExtParagraph() },
                     comments = emptyList(),
+                    sourceIconUrl = iconUrl,
+                    replyCount = kPost.replies.takeIf { it > 0 },
                 )
             },
         )

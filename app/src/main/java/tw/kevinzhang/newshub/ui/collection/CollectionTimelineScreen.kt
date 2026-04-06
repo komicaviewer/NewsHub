@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -228,12 +230,14 @@ private fun ThreadSummaryCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     summary.createdAt?.let {
                         BodySmallText(
                             text = android.text.format.DateUtils.getRelativeTimeSpanString(it)
                                 .toString(),
-                            paddingEnd = 4.dp,
                         )
                     }
                     sourceIconUrl?.let {
@@ -241,18 +245,34 @@ private fun ThreadSummaryCard(
                             model = it,
                             contentDescription = null,
                             modifier = Modifier
-                                .padding(end = 4.dp)
                                 .size(16.dp),
                         )
                     }
-                    summary.author?.let { BodySmallText(it) }
+                    BodySmallText(summary.author ?: "Unknown")
+                    BodySmallText(summary.id.takeLast(10))
                 }
-                Row {
-                    BodySmallText(
-                        text = summary.sourceId,
-                        paddingEnd = 4.dp,
-                    )
-                    summary.replyCount?.takeIf { it > 0 }?.let { BodySmallText("$it") }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    summary.replyCount?.let {
+                        Icon(
+                            imageVector = Icons.Outlined.Email,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        BodySmallText("$it")
+                    }
+                    summary.commentCount?.takeIf { it > 0 }?.let {
+                        Icon(
+                            imageVector = Icons.Outlined.ChatBubbleOutline,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        BodySmallText("$it")
+                    }
                 }
             }
             summary.title?.let { title ->

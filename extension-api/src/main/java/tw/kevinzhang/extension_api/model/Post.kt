@@ -8,4 +8,6 @@ data class Post(
     val content: List<Paragraph>,
     val comments: List<Comment>,
     val rawHtml: String? = null,
+    val sourceIconUrl: String? = null,
+    val replyCount: Int? = null,
 )
