@@ -44,6 +44,10 @@ class CollectionTimelineViewModel @Inject constructor(
             .toSet()
     ).asStateFlow()
 
+    val sourceIconUrls: StateFlow<Map<String, String?>> = MutableStateFlow(
+        extensionLoader.getAllSources().associate { it.id to it.iconUrl }
+    ).asStateFlow()
+
     val collectionName: StateFlow<String> = collectionRepo.observeCollections()
         .map { list -> list.firstOrNull { it.id == collectionId }?.name ?: "" }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")

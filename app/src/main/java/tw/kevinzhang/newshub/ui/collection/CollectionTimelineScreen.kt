@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
@@ -59,6 +60,7 @@ fun CollectionTimelineScreen(
     val items = viewModel.timelinePager.collectAsLazyPagingItems()
     val collectionName by viewModel.collectionName.collectAsStateWithLifecycle()
     val rawImageSourceIds by viewModel.rawImageSourceIds.collectAsStateWithLifecycle()
+    val sourceIconUrls: Map<String, String?> by viewModel.sourceIconUrls.collectAsStateWithLifecycle()
     val subscriptions by viewModel.subscriptions.collectAsStateWithLifecycle()
     val sourcesWithBoards by boardPickerViewModel.sourcesWithBoards.collectAsStateWithLifecycle()
     val isBoardPickerLoading by boardPickerViewModel.isLoading.collectAsStateWithLifecycle()
@@ -130,6 +132,7 @@ fun CollectionTimelineScreen(
                     ThreadSummaryCard(
                         summary = summary,
                         alwaysUseRawImage = summary.sourceId in rawImageSourceIds,
+                        sourceIconUrl = sourceIconUrls[summary.sourceId],
                         onClick = { onThreadClick(summary) },
                     )
                 }
@@ -211,6 +214,7 @@ fun CollectionTimelineScreen(
 private fun ThreadSummaryCard(
     summary: ThreadSummary,
     alwaysUseRawImage: Boolean,
+    sourceIconUrl: String?,
     onClick: () -> Unit,
 ) {
     AppCard(onClick = onClick) {
@@ -218,14 +222,24 @@ private fun ThreadSummaryCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     summary.createdAt?.let {
                         Text(
                             text = android.text.format.DateUtils.getRelativeTimeSpanString(it)
                                 .toString(),
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(end = 4.dp),
+                        )
+                    }
+                    sourceIconUrl?.let {
+                        AsyncImage(
+                            model = it,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .size(16.dp),
                         )
                     }
                     summary.author?.let {
