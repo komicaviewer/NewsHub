@@ -57,11 +57,10 @@ fun AppMaxWidthItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             icon()
-            Text(
+            BodyMediumText(
                 text = title,
                 modifier = Modifier
                     .padding(16.dp),
-                style = MaterialTheme.typography.bodyMedium,
             )
         }
     }

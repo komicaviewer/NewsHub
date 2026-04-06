@@ -57,6 +57,7 @@ import tw.kevinzhang.newshub.ui.collection.CollectionTimelineScreen
 import tw.kevinzhang.newshub.ui.collection.CreateCollectionScreen
 import tw.kevinzhang.newshub.ui.collection.EditCollectionScreen
 import tw.kevinzhang.newshub.ui.collection.ManageCollectionsScreen
+import tw.kevinzhang.newshub.ui.component.BodyLargeText
 import tw.kevinzhang.newshub.ui.component.AppBottomBar
 import tw.kevinzhang.newshub.ui.component.AppDrawer
 import tw.kevinzhang.newshub.ui.marketplace.MarketplaceScreen
@@ -220,9 +221,8 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                                             .padding(innerPadding),
                                         contentAlignment = Alignment.Center,
                                     ) {
-                                        Text(
+                                        BodyLargeText(
                                             text = "Swipe right or tap \u2630 to select a collection",
-                                            style = MaterialTheme.typography.bodyLarge,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }

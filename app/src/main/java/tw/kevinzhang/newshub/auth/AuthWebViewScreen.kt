@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,6 +27,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import okhttp3.Cookie
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import tw.kevinzhang.extension_api.AuthResult
+import tw.kevinzhang.newshub.ui.component.TitleMediumText
 
 private const val TAG = "AuthWebViewScreen"
 
@@ -64,9 +64,8 @@ fun AuthWebViewScreen(
                     .padding(horizontal = 16.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
+                TitleMediumText(
                     text = "Login",
-                    style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(

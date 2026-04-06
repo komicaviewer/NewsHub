@@ -31,6 +31,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import tw.kevinzhang.extension_api.model.Paragraph
+import tw.kevinzhang.newshub.ui.component.BodySmallText
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -120,9 +121,8 @@ fun PostGallery(
                             text = paragraph.content,
                             style = MaterialTheme.typography.bodyMedium,
                         )
-                        is Paragraph.Quote -> Text(
+                        is Paragraph.Quote -> BodySmallText(
                             text = "> ${paragraph.content}",
-                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         is Paragraph.ReplyTo -> {

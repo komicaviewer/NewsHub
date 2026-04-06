@@ -1,7 +1,6 @@
 package tw.kevinzhang.newshub.ui.component
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -53,15 +53,13 @@ fun AppDrawer(
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 24.dp),
             ) {
-                Text(
+                HeadlineSmallText(
                     text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
+                BodyMediumText(
                     text = stringResource(R.string.app_tagline),
-                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
                 )
             }
@@ -74,9 +72,8 @@ fun AppDrawer(
                         .fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
+                    BodyLargeText(
                         text = "No collections yet",
-                        style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -86,9 +83,8 @@ fun AppDrawer(
                     items(collections, key = { it.id }) { collection ->
                         NavigationDrawerItem(
                             icon = {
-                                Text(
+                                TitleMediumText(
                                     text = collection.emoji,
-                                    style = MaterialTheme.typography.titleMedium,
                                 )
                             },
                             label = {
@@ -99,9 +95,8 @@ fun AppDrawer(
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                     if (collection.description.isNotEmpty()) {
-                                        Text(
+                                        BodySmallText(
                                             text = collection.description,
-                                            style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,

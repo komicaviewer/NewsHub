@@ -65,6 +65,9 @@ import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.newshub.ui.component.AppCard
+import tw.kevinzhang.newshub.ui.component.BodySmallText
+import tw.kevinzhang.newshub.ui.component.LabelMediumText
+import tw.kevinzhang.newshub.ui.component.LabelSmallText
 import tw.kevinzhang.newshub.ui.component.gallery.PostGallery
 import kotlin.math.roundToInt
 
@@ -247,7 +250,7 @@ private fun ExtPostCard(
 
     AppCard {
         Column(modifier = Modifier.padding(8.dp)) {
-            Text(text = "Post ${post.id}", style = MaterialTheme.typography.labelSmall)
+            LabelSmallText(text = "Post ${post.id}")
             Spacer(modifier = Modifier.height(4.dp))
             val rawHtml = post.rawHtml
             when {
@@ -273,9 +276,8 @@ private fun ExtPostCard(
                     post.content.forEach { paragraph ->
                         when (paragraph) {
                             is Paragraph.Text -> Text(paragraph.content)
-                            is Paragraph.Quote -> Text(
-                                "> ${paragraph.content}",
-                                style = MaterialTheme.typography.bodySmall,
+                            is Paragraph.Quote -> BodySmallText(
+                                text = "> ${paragraph.content}",
                             )
                             is Paragraph.ReplyTo -> TextButton(
                                 onClick = { onReplyToClick(paragraph.targetId) },
@@ -351,7 +353,7 @@ private fun ExtPostCard(
             TextButton(
                 onClick = onLoadMoreCommentsClick,
                 contentPadding = PaddingValues(0.dp),
-            ) { Text("載入更多留言", style = MaterialTheme.typography.labelSmall) }
+            ) { LabelSmallText(text = "載入更多留言") }
     }
     Spacer(modifier = Modifier.height(8.dp))
 
@@ -547,38 +549,44 @@ private fun CommentItem(comment: Comment, alwaysUseRawImage: Boolean) {
         Spacer(modifier = Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
             comment.author?.let {
-                Text(
+                LabelMediumText(
                     text = it,
-                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
             comment.content.forEach { paragraph ->
                 when (paragraph) {
-                    is Paragraph.Text -> Text(paragraph.content, style = MaterialTheme.typography.bodySmall)
-                    is Paragraph.Quote -> Text("> ${paragraph.content}", style = MaterialTheme.typography.bodySmall)
+                    is Paragraph.Text -> BodySmallText(text = paragraph.content)
+                    is Paragraph.Quote -> BodySmallText(text = "> ${paragraph.content}")
                     is Paragraph.ReplyTo -> {
                         if (paragraph.preview == null) {
-                            Text(
-                                ">> ${paragraph.targetId}",
-                                style = MaterialTheme.typography.bodySmall
+                            BodySmallText(
+                                text = ">> ${paragraph.targetId}",
                             )
                         } else {
-                            Text(
-                                ">> ${paragraph.targetId}(${paragraph.preview})",
-                                style = MaterialTheme.typography.bodySmall
+                            BodySmallText(
+                                text = ">> ${paragraph.targetId}(${paragraph.preview})",
                             )
                         }
                     }
+
                     is Paragraph.Link -> TextButton(
                         onClick = { uriHandler.openUri(paragraph.content) },
                         contentPadding = PaddingValues(0.dp),
-                    ) { Text(paragraph.content, style = MaterialTheme.typography.bodySmall) }
+                    ) { BodySmallText(text = paragraph.content) }
+
                     is Paragraph.ImageInfo -> {
                         val url = if (alwaysUseRawImage) paragraph.raw else paragraph.thumb
-                        url?.let { AsyncImage(model = it, contentDescription = null, modifier = Modifier.fillMaxWidth()) }
+                        url?.let {
+                            AsyncImage(
+                                model = it,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
-                    is Paragraph.VideoInfo -> Text("[video]", style = MaterialTheme.typography.bodySmall)
+
+                    is Paragraph.VideoInfo -> BodySmallText(text = "[video]")
                 }
             }
         }

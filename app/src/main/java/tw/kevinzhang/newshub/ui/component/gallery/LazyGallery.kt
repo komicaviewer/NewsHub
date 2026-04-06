@@ -12,9 +12,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import tw.kevinzhang.newshub.ui.component.LabelMediumText
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,9 +60,8 @@ fun LazyGallery(
             }
 
             // Page counter
-            Text(
+            LabelMediumText(
                 text = "${pagerState.currentPage + 1} / ${images.size}",
-                style = MaterialTheme.typography.labelMedium,
                 color = Color.White,
                 modifier = Modifier
                     .align(Alignment.TopEnd)

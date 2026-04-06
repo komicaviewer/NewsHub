@@ -38,6 +38,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import tw.kevinzhang.collection.data.CollectionEntity
+import tw.kevinzhang.newshub.ui.component.BodyLargeText
+import tw.kevinzhang.newshub.ui.component.TitleMediumText
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -94,9 +96,8 @@ fun ManageCollectionsScreen(
                     .padding(padding),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
+                BodyLargeText(
                     text = "尚無 Collections",
-                    style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -162,14 +163,12 @@ private fun CollectionManageRow(
             modifier = dragModifier.padding(end = 12.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(
+        TitleMediumText(
             text = collection.emoji,
-            style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(end = 12.dp),
         )
-        Text(
+        BodyLargeText(
             text = collection.name,
-            style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.weight(1f),
         )
         IconButton(onClick = onEditClick) {

@@ -47,6 +47,9 @@ import coil.compose.AsyncImage
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.newshub.ui.component.AppCard
+import tw.kevinzhang.newshub.ui.component.BodyLargeText
+import tw.kevinzhang.newshub.ui.component.BodySmallText
+import tw.kevinzhang.newshub.ui.component.TitleMediumText
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,9 +115,8 @@ fun CollectionTimelineScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(
+                    BodyLargeText(
                         text = "尚未加入任何 Board",
-                        style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Button(onClick = { showBoardPicker = true }) {
@@ -226,11 +228,10 @@ private fun ThreadSummaryCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     summary.createdAt?.let {
-                        Text(
+                        BodySmallText(
                             text = android.text.format.DateUtils.getRelativeTimeSpanString(it)
                                 .toString(),
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(end = 4.dp),
+                            paddingEnd = 4.dp,
                         )
                     }
                     sourceIconUrl?.let {
@@ -242,35 +243,27 @@ private fun ThreadSummaryCard(
                                 .size(16.dp),
                         )
                     }
-                    summary.author?.let {
-                        Text(text = it, style = MaterialTheme.typography.bodySmall)
-                    }
+                    summary.author?.let { BodySmallText(it) }
                 }
                 Row {
-                    Text(
+                    BodySmallText(
                         text = summary.sourceId,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(end = 4.dp),
+                        paddingEnd = 4.dp,
                     )
-                    summary.replyCount?.takeIf { it > 0 }?.let {
-                        Text(text = "$it", style = MaterialTheme.typography.bodySmall)
-                    }
+                    summary.replyCount?.takeIf { it > 0 }?.let { BodySmallText("$it") }
                 }
             }
             summary.title?.let { title ->
                 if (title.isNotBlank()) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = title, style = MaterialTheme.typography.titleMedium)
+                    TitleMediumText(text = title)
                 }
             }
 
             summary.previewContent.forEach { paragraph ->
                 when (paragraph) {
                     is Paragraph.Text -> Text(paragraph.content)
-                    is Paragraph.Quote -> Text(
-                        "> ${paragraph.content}",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    is Paragraph.Quote -> BodySmallText("> ${paragraph.content}")
                     is Paragraph.Link -> Text(
                         paragraph.content,
                         color = MaterialTheme.colorScheme.primary,

@@ -48,6 +48,7 @@ import tw.kevinzhang.collection.data.CollectionEntity
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.newshub.auth.LoginStatus
 import tw.kevinzhang.newshub.ui.component.AppCard
+import tw.kevinzhang.newshub.ui.component.TitleMediumText
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -112,9 +113,8 @@ fun BoardsScreen(
                                                 modifier = Modifier.size(20.dp),
                                             )
                                         }
-                                        Text(
+                                        TitleMediumText(
                                             text = source.name,
-                                            style = MaterialTheme.typography.titleMedium,
                                         )
                                     }
                                     if (source.requiresLogin && source.loginUrl != null) {
@@ -198,9 +198,8 @@ private fun BoardRow(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
+                TitleMediumText(
                     text = "加入 Collection",
-                    style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(

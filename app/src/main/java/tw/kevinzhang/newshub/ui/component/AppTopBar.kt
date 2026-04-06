@@ -18,9 +18,8 @@ fun NewsHubTopBar(
 ) {
     SmallTopAppBar(
         title = {
-            Text(
+            TitleLargeText(
                 text = title,
-                style = MaterialTheme.typography.titleLarge,
             )
         },
         navigationIcon = {

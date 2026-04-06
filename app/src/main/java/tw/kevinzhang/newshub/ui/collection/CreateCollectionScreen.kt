@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import tw.kevinzhang.newshub.ui.component.BodySmallText
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -129,9 +130,8 @@ fun CreateCollectionScreen(
                 ) {
                     Text(text = emoji, fontSize = 40.sp)
                 }
-                Text(
+                BodySmallText(
                     text = "選擇 Emoji",
-                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -155,9 +155,8 @@ fun CreateCollectionScreen(
             )
 
             if (selectedBoards.isNotEmpty()) {
-                Text(
+                BodySmallText(
                     text = "已選擇 ${selectedBoards.size} 個 Board",
-                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.fillMaxWidth(),
                 )
