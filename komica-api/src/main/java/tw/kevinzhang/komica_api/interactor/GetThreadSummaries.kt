@@ -32,7 +32,7 @@ class GetThreadSummaries(
         val urlParser = GetUrlParser().invoke(board)
 
         when (board) {
-            is KBoard.Sora, KBoard.人外, KBoard.格鬥遊戲, KBoard.Idolmaster, KBoard.`3D-STG`, KBoard.魔物獵人, KBoard.`TYPE-MOON` ->
+            is KBoard.Sora ->
                 SoraThreadSummariesParser(
                     SoraPostParser(urlParser, SoraPostHeadParser()),
                     SoraThreadSummariesRequestParser(),

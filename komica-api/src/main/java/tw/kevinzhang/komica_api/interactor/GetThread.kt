@@ -34,8 +34,12 @@ class GetThread(
         val urlParser = GetUrlParser().invoke(board)
 
         when (board) {
-            is KBoard.Sora, KBoard.人外, KBoard.格鬥遊戲, KBoard.Idolmaster, KBoard.`3D-STG`, KBoard.魔物獵人, KBoard.`TYPE-MOON` ->
-                SoraThreadParser(SoraPostParser(urlParser, SoraPostHeadParser()), SoraThreadRequestParser(), SoraThreadRequestBuilder())
+            is KBoard.Sora ->
+                SoraThreadParser(
+                    SoraPostParser(urlParser, SoraPostHeadParser()),
+                    SoraThreadRequestParser(),
+                    SoraThreadRequestBuilder()
+                )
             is KBoard._2catKomica ->
                 SoraThreadParser(SoraPostParser(urlParser, _2catSoraPostHeadParser(SoraUrlParser())), SoraThreadRequestParser(), SoraThreadRequestBuilder())
             is KBoard._2cat ->

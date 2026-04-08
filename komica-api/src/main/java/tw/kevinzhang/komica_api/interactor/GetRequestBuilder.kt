@@ -10,7 +10,7 @@ import tw.kevinzhang.komica_api.request.sora.SoraThreadSummariesRequestBuilder
 class GetRequestBuilder {
     fun forBoard(board: KBoard): ThreadSummariesRequestBuilder {
         return when (board) {
-            is KBoard.Sora, KBoard.人外, KBoard.格鬥遊戲, KBoard.Idolmaster, KBoard.`3D-STG`, KBoard.魔物獵人, KBoard.`TYPE-MOON` ->
+            is KBoard.Sora ->
                 SoraThreadSummariesRequestBuilder().setBoard(board)
             is KBoard._2catKomica ->
                 SoraThreadSummariesRequestBuilder().setBoard(board)
@@ -23,7 +23,7 @@ class GetRequestBuilder {
 
     fun forThread(board: KBoard): ThreadRequestBuilder {
         return when (board) {
-            is KBoard.Sora, KBoard.人外, KBoard.格鬥遊戲, KBoard.Idolmaster, KBoard.`3D-STG`, KBoard.魔物獵人, KBoard.`TYPE-MOON` ->
+            is KBoard.Sora ->
                 SoraThreadRequestBuilder().setBoard(board)
             is KBoard._2catKomica ->
                 SoraThreadRequestBuilder().setBoard(board)

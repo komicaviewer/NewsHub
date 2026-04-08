@@ -8,7 +8,7 @@ import tw.kevinzhang.komica_api.parser.sora.SoraUrlParser
 class GetUrlParser {
     fun invoke(board: KBoard): UrlParser {
         return when (board) {
-            is KBoard.Sora, KBoard.人外, KBoard.格鬥遊戲, KBoard.Idolmaster, KBoard.`3D-STG`, KBoard.魔物獵人, KBoard.`TYPE-MOON` ->
+            is KBoard.Sora ->
                 SoraUrlParser()
             is KBoard._2catKomica ->
                 SoraUrlParser()
