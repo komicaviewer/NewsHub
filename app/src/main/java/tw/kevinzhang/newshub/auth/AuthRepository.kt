@@ -1,30 +1,46 @@
 package tw.kevinzhang.newshub.auth
 
 import android.util.Log
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_api.AuthResult
+import tw.kevinzhang.newshub.di.ApplicationScope
 import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val TAG = "AuthRepository"
+private val LOGIN_STATUS_KEY = stringPreferencesKey("login_status_map")
 
 enum class LoginStatus { NONE, LOGGED_IN, FAILED }
 
 data class AuthRequest(val loginUrl: String, val onPageLoadJs: String? = null)
 
 @Singleton
-class AuthRepository @Inject constructor() {
+class AuthRepository @Inject constructor(
+    private val dataStore: DataStore<Preferences>,
+    @ApplicationScope private val applicationScope: CoroutineScope,
+) {
+
+    private val gson = Gson()
 
     private val _authRequests = MutableSharedFlow<AuthRequest>(extraBufferCapacity = 1)
     val authRequests = _authRequests.asSharedFlow()
 
-    private val _loginStatuses = MutableStateFlow<Map<String, LoginStatus>>(emptyMap())
-    val loginStatuses = _loginStatuses.asStateFlow()
+    val loginStatuses = dataStore.data
+        .map { prefs -> deserialize(prefs[LOGIN_STATUS_KEY]) }
+        .stateIn(applicationScope, SharingStarted.Eagerly, emptyMap())
 
     private var pendingResult: CompletableDeferred<AuthResult>? = null
     private var pendingLoginUrl: String? = null
@@ -43,21 +59,46 @@ class AuthRepository @Inject constructor() {
             AuthResult.Success -> LoginStatus.LOGGED_IN
             AuthResult.Cancelled -> LoginStatus.FAILED
         }
-        _loginStatuses.update { it + (loginUrl to status) }
         Log.d(TAG, "completeAuth loginUrl=$loginUrl status=$status")
+        applicationScope.launch {
+            dataStore.edit { prefs ->
+                val current = deserialize(prefs[LOGIN_STATUS_KEY])
+                prefs[LOGIN_STATUS_KEY] = serialize(current + (loginUrl to status))
+            }
+        }
         pendingResult?.complete(result)
         pendingResult = null
         pendingLoginUrl = null
     }
 
     fun restoreLoginStatus(loginUrl: String) {
-        _loginStatuses.update { current ->
-            if (current[loginUrl] == null) current + (loginUrl to LoginStatus.LOGGED_IN) else current
+        applicationScope.launch {
+            dataStore.edit { prefs ->
+                val current = deserialize(prefs[LOGIN_STATUS_KEY])
+                if (current[loginUrl] == null) {
+                    prefs[LOGIN_STATUS_KEY] = serialize(current + (loginUrl to LoginStatus.LOGGED_IN))
+                }
+            }
         }
     }
 
     fun logout(loginUrl: String) {
-        _loginStatuses.update { it + (loginUrl to LoginStatus.NONE) }
         Log.d(TAG, "logout loginUrl=$loginUrl")
+        applicationScope.launch {
+            dataStore.edit { prefs ->
+                val current = deserialize(prefs[LOGIN_STATUS_KEY])
+                prefs[LOGIN_STATUS_KEY] = serialize(current + (loginUrl to LoginStatus.NONE))
+            }
+        }
     }
+
+    private fun deserialize(json: String?): Map<String, LoginStatus> {
+        if (json == null) return emptyMap()
+        val type = object : TypeToken<Map<String, String>>() {}.type
+        val raw: Map<String, String> = gson.fromJson(json, type) ?: return emptyMap()
+        return raw.mapValues { (_, v) -> runCatching { LoginStatus.valueOf(v) }.getOrDefault(LoginStatus.NONE) }
+    }
+
+    private fun serialize(map: Map<String, LoginStatus>): String =
+        gson.toJson(map.mapValues { it.value.name })
 }

@@ -20,6 +20,10 @@ annotation class IoDispatcher
 @Qualifier
 annotation class MainDispatcher
 
+@Retention(AnnotationRetention.BINARY)
+@Qualifier
+annotation class ApplicationScope
+
 @InstallIn(SingletonComponent::class)
 @Module
 object DispatcherModule {
