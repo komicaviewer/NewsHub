@@ -42,6 +42,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -101,11 +104,20 @@ fun ThreadDetailScreen(
     val alwaysUseRawImage by viewModel.alwaysUseRawImage.collectAsStateWithLifecycle()
     val useWebViewPosts by viewModel.useWebViewPosts.collectAsStateWithLifecycle()
     val webViewTextZoom by viewModel.webViewTextZoom.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
 
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val pullToRefreshState = rememberPullToRefreshState()
     var repliesDialogForPostId by remember { mutableStateOf<String?>(null) }
     var highlightedPostId by remember { mutableStateOf<String?>(null) }
+
+    if (pullToRefreshState.isRefreshing) {
+        LaunchedEffect(true) { viewModel.refresh() }
+    }
+    LaunchedEffect(isRefreshing) {
+        if (!isRefreshing) pullToRefreshState.endRefresh()
+    }
 
     Box(modifier = Modifier.fillMaxSize().swipeToGoBack(onNavigateUp)) {
         Scaffold(
@@ -133,36 +145,42 @@ fun ThreadDetailScreen(
                 )
             },
         ) { padding ->
-            if (thread == null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) { CircularProgressIndicator() }
-            } else {
-                val onReplyToClick =
-                    remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
-                val onZoomChange =
-                    remember(viewModel) { { zoom: Int -> viewModel.setWebViewTextZoom(zoom) } }
-                LazyColumn(state = listState, modifier = Modifier.padding(padding)) {
-                    items(thread!!.posts, key = { it.id }) { post ->
-                        ExtPostCard(
-                            post = post,
-                            isHighlighted = post.id == highlightedPostId,
-                            onHighlightDone = { if (post.id == highlightedPostId) highlightedPostId = null },
-                            useWebView = post.id in useWebViewPosts,
-                            onEnableWebView = { viewModel.enableWebViewForPost(post.id) },
-                            alwaysUseRawImage = alwaysUseRawImage,
-                            commentUiState = commentStates[post.id],
-                            onShowReplies = { repliesDialogForPostId = post.id },
-                            onReplyToClick = onReplyToClick,
-                            onLoadMoreCommentsClick = { viewModel.loadMoreComments(post.id) },
-                            textZoom = webViewTextZoom,
-                            onZoomChange = onZoomChange,
-                        )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .nestedScroll(pullToRefreshState.nestedScrollConnection),
+            ) {
+                if (thread == null) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                } else {
+                    val onReplyToClick =
+                        remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
+                    val onZoomChange =
+                        remember(viewModel) { { zoom: Int -> viewModel.setWebViewTextZoom(zoom) } }
+                    LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                        items(thread!!.posts, key = { it.id }) { post ->
+                            ExtPostCard(
+                                post = post,
+                                isHighlighted = post.id == highlightedPostId,
+                                onHighlightDone = { if (post.id == highlightedPostId) highlightedPostId = null },
+                                useWebView = post.id in useWebViewPosts,
+                                onEnableWebView = { viewModel.enableWebViewForPost(post.id) },
+                                alwaysUseRawImage = alwaysUseRawImage,
+                                commentUiState = commentStates[post.id],
+                                onShowReplies = { repliesDialogForPostId = post.id },
+                                onReplyToClick = onReplyToClick,
+                                onLoadMoreCommentsClick = { viewModel.loadMoreComments(post.id) },
+                                textZoom = webViewTextZoom,
+                                onZoomChange = onZoomChange,
+                            )
+                        }
                     }
                 }
+                PullToRefreshContainer(
+                    state = pullToRefreshState,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
             }
         }
 

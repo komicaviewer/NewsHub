@@ -71,6 +71,9 @@ class ThreadDetailViewModel @Inject constructor(
 
     private var cachedSource: Source? = null
 
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing = _isRefreshing.asStateFlow()
+
     private data class InternalCommentState(
         val visibleComments: List<Comment>,
         val hasMore: Boolean,
@@ -95,25 +98,38 @@ class ThreadDetailViewModel @Inject constructor(
             val source = extensionLoader.getSource(sourceId) ?: return@launch
             cachedSource = source
             _alwaysUseRawImage.value = source.alwaysUseRawImage
-            val summary = ThreadSummary(
-                sourceId = sourceId,
-                boardUrl = boardUrl,
-                id = threadId,
-                title = threadTitle,
-                author = null,
-                createdAt = null,
-                commentCount = null,
-                thumbnail = null,
-                rawImage = null,
-                previewContent = emptyList(),
-            )
-            val rawThread = source.getThread(summary)
-            val thread = rawThread.copy(
-                posts = rawThread.posts.map { it.copy(sourceIconUrl = source.iconUrl) }
-            )
-            _thread.value = thread
-            _commentStates.value = buildInitialCommentStates(source, thread)
+            loadThread(source)
         }
+    }
+
+    fun refresh() {
+        val source = cachedSource ?: return
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            loadThread(source)
+            _isRefreshing.value = false
+        }
+    }
+
+    private suspend fun loadThread(source: Source) {
+        val summary = ThreadSummary(
+            sourceId = sourceId,
+            boardUrl = boardUrl,
+            id = threadId,
+            title = threadTitle,
+            author = null,
+            createdAt = null,
+            commentCount = null,
+            thumbnail = null,
+            rawImage = null,
+            previewContent = emptyList(),
+        )
+        val rawThread = source.getThread(summary)
+        val thread = rawThread.copy(
+            posts = rawThread.posts.map { it.copy(sourceIconUrl = source.iconUrl) }
+        )
+        _thread.value = thread
+        _commentStates.value = buildInitialCommentStates(source, thread)
     }
 
     private suspend fun buildInitialCommentStates(
