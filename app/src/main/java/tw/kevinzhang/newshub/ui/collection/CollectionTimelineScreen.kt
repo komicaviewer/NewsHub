@@ -112,23 +112,6 @@ fun CollectionTimelineScreen(
                 .padding(innerPadding)
                 .nestedScroll(pullToRefreshState.nestedScrollConnection)
         ) {
-            // Empty state: subscriptions loaded (non-null) and empty, pager not loading
-            if (subscriptions?.isEmpty() == true && items.loadState.refresh !is LoadState.Loading) {
-                Column(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    BodyLargeText(
-                        text = "尚未加入任何 Board",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Button(onClick = { showBoardPicker = true }) {
-                        Text("新增 Board")
-                    }
-                }
-            }
-
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(
                     count = items.itemCount,
@@ -181,6 +164,23 @@ fun CollectionTimelineScreen(
                 }
 
                 else -> {}
+            }
+
+            // Empty state: subscriptions loaded (non-null) and empty, pager not loading
+            if (subscriptions?.isEmpty() == true && items.loadState.refresh !is LoadState.Loading) {
+                Column(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    BodyLargeText(
+                        text = "尚未加入任何 Board",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(onClick = { showBoardPicker = true }) {
+                        Text("新增 Board")
+                    }
+                }
             }
 
             PullToRefreshContainer(

@@ -61,6 +61,7 @@ class CollectionRepositoryImpl @Inject constructor(
         boardUrl: String,
         boardName: String,
     ) {
+        if (dao.countSubscription(collectionId, sourceId, boardUrl) > 0) return
         dao.insertSubscription(
             BoardSubscriptionEntity(
                 id = UUID.randomUUID().toString(),

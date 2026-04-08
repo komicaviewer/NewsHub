@@ -23,6 +23,9 @@ interface CollectionDao {
     @Query("SELECT * FROM board_subscriptions WHERE collectionId = :collectionId ORDER BY sortOrder")
     fun observeSubscriptions(collectionId: String): Flow<List<BoardSubscriptionEntity>>
 
+    @Query("SELECT COUNT(*) FROM board_subscriptions WHERE collectionId = :collectionId AND sourceId = :sourceId AND boardUrl = :boardUrl")
+    suspend fun countSubscription(collectionId: String, sourceId: String, boardUrl: String): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSubscription(entity: BoardSubscriptionEntity)
 
