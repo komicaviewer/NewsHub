@@ -10,6 +10,7 @@ import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.extension_loader.ExtensionLoaderImpl
 import tw.kevinzhang.extensions_builtin._2cat._2catSource
 import tw.kevinzhang.extensions_builtin.gamer.GamerSource
+import tw.kevinzhang.extensions_builtin.komica2.Komica2Source
 import tw.kevinzhang.extensions_builtin.sora.SoraSource
 import javax.inject.Named
 import javax.inject.Singleton
@@ -30,6 +31,7 @@ abstract class ExtensionModule {
             gamer: GamerSource,
             sora: SoraSource,
             _2cat: _2catSource,
-        ): List<Source> = listOf(gamer, sora, _2cat)
+            komica2: Komica2Source,
+        ): List<Source> = listOf(gamer, sora, _2cat, komica2)
     }
 }

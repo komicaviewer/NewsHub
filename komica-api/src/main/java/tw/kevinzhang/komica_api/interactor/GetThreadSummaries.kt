@@ -18,6 +18,7 @@ import tw.kevinzhang.komica_api.parser.sora.SoraThreadSummariesParser
 import tw.kevinzhang.komica_api.parser.sora.SoraUrlParser
 import tw.kevinzhang.komica_api.parser.sora._2catSoraPostHeadParser
 import tw.kevinzhang.komica_api.request._2cat._2catRequestBuilder
+import tw.kevinzhang.komica_api.request.komica2.Komica2ThreadRequestBuilder
 import tw.kevinzhang.komica_api.request.sora.SoraThreadRequestBuilder
 import tw.kevinzhang.komica_api.request.sora.SoraThreadSummariesRequestParser
 import tw.kevinzhang.komica_api.toKBoard
@@ -38,6 +39,7 @@ class GetThreadSummaries(
                     SoraThreadSummariesRequestParser(),
                     SoraThreadRequestBuilder()
                 )
+
             is KBoard._2catKomica ->
                 SoraThreadSummariesParser(
                     SoraPostParser(
@@ -45,12 +47,20 @@ class GetThreadSummaries(
                         _2catSoraPostHeadParser(SoraUrlParser())
                     ), SoraThreadSummariesRequestParser(), SoraThreadRequestBuilder()
                 )
+
             is KBoard._2cat ->
                 _2catThreadSummariesParser(
                     _2catPostParser(
                         urlParser,
                         _2catPostHeadParser(_2catUrlParser())
                     ), _2catRequestBuilder()
+                )
+
+            is KBoard.Komica2 ->
+                SoraThreadSummariesParser(
+                    SoraPostParser(urlParser, SoraPostHeadParser()),
+                    SoraThreadSummariesRequestParser(),
+                    Komica2ThreadRequestBuilder()
                 )
             else ->
                 throw NotImplementedError("ThreadSummariesParser of $board not implemented yet")

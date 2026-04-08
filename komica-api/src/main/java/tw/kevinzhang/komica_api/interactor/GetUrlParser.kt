@@ -14,6 +14,8 @@ class GetUrlParser {
                 SoraUrlParser()
             is KBoard._2cat ->
                 _2catUrlParser()
+            is KBoard.Komica2 ->
+                SoraUrlParser()
             else ->
                 throw NotImplementedError("BoardParser of $board not implemented yet")
         }

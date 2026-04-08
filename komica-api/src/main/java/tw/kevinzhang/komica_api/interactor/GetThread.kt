@@ -20,6 +20,7 @@ import tw.kevinzhang.komica_api.parser.sora.SoraThreadParser
 import tw.kevinzhang.komica_api.parser.sora.SoraUrlParser
 import tw.kevinzhang.komica_api.parser.sora._2catSoraPostHeadParser
 import tw.kevinzhang.komica_api.request._2cat._2catRequestBuilder
+import tw.kevinzhang.komica_api.request.komica2.Komica2ThreadRequestBuilder
 import tw.kevinzhang.komica_api.request.sora.SoraThreadRequestBuilder
 import tw.kevinzhang.komica_api.request.sora.SoraThreadRequestParser
 import tw.kevinzhang.komica_api.toKBoard
@@ -44,6 +45,12 @@ class GetThread(
                 SoraThreadParser(SoraPostParser(urlParser, _2catSoraPostHeadParser(SoraUrlParser())), SoraThreadRequestParser(), SoraThreadRequestBuilder())
             is KBoard._2cat ->
                 _2catThreadParser(_2catPostParser(urlParser, _2catPostHeadParser(_2catUrlParser())), _2catRequestBuilder())
+            is KBoard.Komica2 ->
+                SoraThreadParser(
+                    SoraPostParser(urlParser, SoraPostHeadParser()),
+                    SoraThreadRequestParser(),
+                    Komica2ThreadRequestBuilder()
+                )
             else ->
                 throw NotImplementedError("ThreadParser of ${req.url} not implemented yet")
         }.parse(response.body!!, req)

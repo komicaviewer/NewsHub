@@ -19,9 +19,6 @@ class SoraThreadSummariesParser(
     override fun parse(res: ResponseBody, req: Request): List<KPost> {
         val source = Jsoup.parse(res.string())
         val summariesUrl = summariesReqParser.req(req).baseUrl()
-        // get post secret name
-//        String fsub = getElement().selectFirst("#fsub").attr("name");
-//        String fcom = getElement().selectFirst("#fcom").attr("name");
         val threads = source.selectFirst("#threads").installThreadTag().select("div.thread")
         return threads.map { thread ->
             val threadpost = thread.selectFirst("div.threadpost")

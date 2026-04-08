@@ -121,6 +121,12 @@ sealed class KBoard(val name: String, val url: String) {
         object 人工智慧 : _2cat("人工智慧", "https://www.gomiga.org/ai")
     }
 
+    sealed class Komica2(name: String, url: String) : KBoard(name, url) {
+        object 二次裡A避難版 : Komica2("二次裡A避難版", "https://2cat.uk/~chatura")
+        object 三次裡避難版 : Komica2("三次裡避難版", "https://2cat.uk/~realura")
+        object GIF裏 : Komica2("GIF裏", "https://2cat.org/~gifura/")
+    }
+
     // TODO: 以下尚未實現 Parser
     // 連線版
     object 影視 : KBoard("影視", "https://www.akraft.net/service/66a6eca2bfccee3f04a52bc4")
@@ -152,6 +158,7 @@ sealed class KBoard(val name: String, val url: String) {
 
     // 飲食
     object 酒 : KBoard("酒", "https://eclair.nagatoyuki.org/beverage")
+
 }
 
 fun 連線版() =
@@ -287,6 +294,12 @@ fun 本地版() =
         KBoard.Sora.四格,
     )
 
+fun Komica2() = listOf(
+    KBoard.Komica2.二次裡A避難版,
+    KBoard.Komica2.三次裡避難版,
+    KBoard.Komica2.GIF裏,
+)
+
 fun top50boards() = listOf(
     KBoard.Sora.綜合,
     KBoard._2catKomica.新番捏他,
@@ -335,4 +348,5 @@ fun boards() = top50boards()
     .plus(桌布壁紙())
     .plus(電腦網路())
     .plus(本地版())
+    .plus(Komica2())
     .distinct().toList()

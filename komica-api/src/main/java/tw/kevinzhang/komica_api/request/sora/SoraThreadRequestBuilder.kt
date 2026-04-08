@@ -1,14 +1,14 @@
 package tw.kevinzhang.komica_api.request.sora
 
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.Request
 import tw.kevinzhang.komica_api.addFilename
 import tw.kevinzhang.komica_api.isFile
 import tw.kevinzhang.komica_api.model.KBoard
 import tw.kevinzhang.komica_api.request.ThreadRequestBuilder
-import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.Request
 
-class SoraThreadRequestBuilder: ThreadRequestBuilder {
+open class SoraThreadRequestBuilder : ThreadRequestBuilder {
     private lateinit var builder: HttpUrl.Builder
 
     override fun setUrl(url: HttpUrl): SoraThreadRequestBuilder {

@@ -11,7 +11,7 @@ import tw.kevinzhang.komica_api.request.ThreadSummariesRequestBuilder
 import tw.kevinzhang.komica_api.setFilename
 import tw.kevinzhang.komica_api.toKBoard
 
-class SoraThreadSummariesRequestBuilder : ThreadSummariesRequestBuilder {
+open class SoraThreadSummariesRequestBuilder : ThreadSummariesRequestBuilder {
     private lateinit var builder: HttpUrl.Builder
 
     override fun setUrl(url: HttpUrl): SoraThreadSummariesRequestBuilder {
