@@ -150,9 +150,10 @@ class AppCookieJar @Inject constructor(
         }
     }
 
-    /** Strips the leading subdomain to get the eTLD+1 (e.g., www.gamer.com.tw → gamer.com.tw). */
-    private fun parentDomain(host: String): String {
-        val parts = host.split(".")
-        return if (parts.size > 2) parts.drop(1).joinToString(".") else host
-    }
+}
+
+/** Strips the leading subdomain to get the eTLD+1 (e.g., www.gamer.com.tw → gamer.com.tw). */
+internal fun parentDomain(host: String): String {
+    val parts = host.split(".")
+    return if (parts.size > 2) parts.drop(1).joinToString(".") else host
 }
