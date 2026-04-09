@@ -1,30 +1,27 @@
-package tw.kevinzhang.komica_api.parser._2cat
+package tw.kevinzhang.komica_api.parser.komica2
 
 import okhttp3.HttpUrl
 import org.jsoup.nodes.Element
-import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 import tw.kevinzhang.komica_api.parser.PostHeadParser
-import tw.kevinzhang.komica_api.parser.UrlParser
 import tw.kevinzhang.komica_api.toTimestamp
 import java.util.logging.Logger
 
-private val logger = Logger.getLogger("_2catPostHeadParser")
+private val logger = Logger.getLogger("Komica2PostHeadParser")
 
-class _2catPostHeadParser(
-    private val urlParser: UrlParser,
-): PostHeadParser {
+class Komica2PostHeadParser : PostHeadParser {
     override fun parseTitle(source: Element, url: HttpUrl): String? {
-        source.selectFirst("span.title")?.let {
-            return it.text().trim()
-        }
-        return null
+        val titleE = source.selectFirst("span.title")
+        return titleE?.text()
     }
 
-    override fun parseCreatedAt(source: Element, url: HttpUrl): Long {
+    override fun parseCreatedAt(element: Element, url: HttpUrl): Long {
         return try {
+            val nameSpan = element.selectFirst("span.name")
+                ?: throw IllegalArgumentException("找不到 span.name")
+
             // 尋找包含日期時間和 ID 的文字節點
-            val dateTimeText = findDateTimeText(source)
+            val dateTimeText = findDateTimeText(nameSpan)
                 ?: throw IllegalArgumentException("找不到包含日期和ID的文字節點")
 
             // 提取 [日期時間 ID:xxx] 格式
@@ -32,8 +29,7 @@ class _2catPostHeadParser(
             val matchResult = pattern.find(dateTimeText)
                 ?: throw IllegalArgumentException("無法解析日期時間: $dateTimeText")
 
-            val dateTimeStr = matchResult.groupValues[1].trim()
-            // 可能是: "26/03/07(六)17:08" 或 "25/10/01(三)01:01"
+            val dateTimeStr = matchResult.groupValues[1].trim() // 例如: 25/10/01(三)01:01
 
             // 移除星期符號並解析
             parseDateTimeString(dateTimeStr)
@@ -44,13 +40,17 @@ class _2catPostHeadParser(
         }
     }
 
+
     override fun parsePoster(source: Element, url: HttpUrl): String? {
         return try {
+            val nameSpan = source.selectFirst("span.name")
+                ?: throw IllegalArgumentException("找不到 span.name")
+
             // 尋找包含日期時間和 ID 的文字節點
-            val dateTimeText = findDateTimeText(source)
+            val dateTimeText = findDateTimeText(nameSpan)
                 ?: throw IllegalArgumentException("找不到包含日期和ID的文字節點")
 
-            // 提取 ID (可能包含特殊字符)
+            // 提取 ID
             val pattern = """ID:([^\]]+)""".toRegex()
             val matchResult = pattern.find(dateTimeText)
                 ?: throw IllegalArgumentException("無法解析ID: $dateTimeText")
@@ -63,39 +63,40 @@ class _2catPostHeadParser(
         }
     }
 
-    private fun findDateTimeText(element: Element): String? {
-        fun searchNodes(node: Node): String? {
-            if (node is TextNode) {
-                val text = node.text()
-                if (text.contains("ID:") && text.contains("[")) {
+
+    /**
+     * 輔助方法: 從 span.name 後面找到包含日期時間和 ID 的文字節點
+     */
+    private fun findDateTimeText(nameSpan: Element): String? {
+        var currentNode = nameSpan.nextSibling()
+
+        while (currentNode != null) {
+            if (currentNode is TextNode) {
+                val text = currentNode.text()
+                if (text.contains("ID:")) {
                     return text
                 }
             }
-
-            for (child in node.childNodes()) {
-                searchNodes(child)?.let { return it }
-            }
-
-            return null
+            currentNode = currentNode.nextSibling()
         }
 
-        return searchNodes(element)
+        return null
     }
 
     /**
      * 輔助方法: 解析 Komica2 的日期時間字串
-     * @param dateTimeStr 例如: "26/03/07(六)17:08" 或 "25/10/01(三)01:01"
+     * @param dateTimeStr 例如: "25/10/01(三)01:01"
      * @return Unix 時間戳 (毫秒)
      */
     private fun parseDateTimeString(dateTimeStr: String): Long {
-        // 移除星期: "26/03/07(六)17:08" -> "26/03/07 17:08"
+        // 移除星期: "25/10/01(三)01:01" -> "25/10/01 01:01"
         val cleanDateTime = dateTimeStr.replace(Regex("""\([^)]+\)"""), " ").trim()
 
-        // 分割: ["26", "03", "07", "17", "08"]
+        // 分割: ["25", "10", "01", "01", "01"]
         val parts = cleanDateTime.split(Regex("""[/\s:]+"""))
 
         if (parts.size < 5) {
-            throw IllegalArgumentException("日期時間格式錯誤: $cleanDateTime, parts: $parts")
+            throw IllegalArgumentException("日期時間格式錯誤: $cleanDateTime")
         }
 
         // 補上世紀
@@ -112,4 +113,5 @@ class _2catPostHeadParser(
         // 使用 java.time 轉換
         return fullDateTime.toTimestamp("yyyy/MM/dd HH:mm")
     }
+
 }

@@ -9,7 +9,7 @@ import tw.kevinzhang.komica_api.request._2cat._2catRequestBuilder
 import tw.kevinzhang.komica_api.request.sora.SoraThreadSummariesRequestBuilder
 import tw.kevinzhang.komica_api.toResponseBody
 
-internal class _2CatThreadSummariesParserTest {
+internal class _2catThreadSummariesParserTest {
 
     @Test
     fun `Test _2catBoardParser expect successful`() {

@@ -12,11 +12,10 @@ import tw.kevinzhang.komica_api.parser._2cat._2catPostHeadParser
 import tw.kevinzhang.komica_api.parser._2cat._2catPostParser
 import tw.kevinzhang.komica_api.parser._2cat._2catThreadSummariesParser
 import tw.kevinzhang.komica_api.parser._2cat._2catUrlParser
+import tw.kevinzhang.komica_api.parser.komica2.Komica2PostHeadParser
 import tw.kevinzhang.komica_api.parser.sora.SoraPostHeadParser
 import tw.kevinzhang.komica_api.parser.sora.SoraPostParser
 import tw.kevinzhang.komica_api.parser.sora.SoraThreadSummariesParser
-import tw.kevinzhang.komica_api.parser.sora.SoraUrlParser
-import tw.kevinzhang.komica_api.parser.sora._2catSoraPostHeadParser
 import tw.kevinzhang.komica_api.request._2cat._2catRequestBuilder
 import tw.kevinzhang.komica_api.request.komica2.Komica2ThreadRequestBuilder
 import tw.kevinzhang.komica_api.request.sora.SoraThreadRequestBuilder
@@ -44,7 +43,7 @@ class GetThreadSummaries(
                 SoraThreadSummariesParser(
                     SoraPostParser(
                         urlParser,
-                        _2catSoraPostHeadParser(SoraUrlParser())
+                        SoraPostHeadParser()
                     ), SoraThreadSummariesRequestParser(), SoraThreadRequestBuilder()
                 )
 
@@ -58,7 +57,7 @@ class GetThreadSummaries(
 
             is KBoard.Komica2 ->
                 SoraThreadSummariesParser(
-                    SoraPostParser(urlParser, SoraPostHeadParser()),
+                    SoraPostParser(urlParser, Komica2PostHeadParser()),
                     SoraThreadSummariesRequestParser(),
                     Komica2ThreadRequestBuilder()
                 )

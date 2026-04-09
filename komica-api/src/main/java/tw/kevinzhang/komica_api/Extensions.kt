@@ -2,13 +2,13 @@ package tw.kevinzhang.komica_api
 
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import org.jsoup.nodes.Element
-import tw.kevinzhang.komica_api.model.boards
 import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
-import java.text.ParseException
-import java.text.SimpleDateFormat
-import java.util.*
+import org.jsoup.nodes.Element
+import tw.kevinzhang.komica_api.model.boards
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /**
  * 如果找不到thread標籤，就是2cat.komica.org，要用 [installThreadTag] 改成標準綜合版樣式
@@ -108,32 +108,6 @@ fun String.replaceChiWeekday(): String {
     return s
 }
 
-fun String.toMillTimestamp(): Long {
-    for (format in listOf(
-        "yy/MM/dd(EEE) HH:mm:ss",
-        "yy/MM/dd(EEE)HH:mm:ss",
-        "yy/MM/dd(EEE)HH:mm",
-        "yy/MM/dd HH:mm:ss" // mymoe
-    )) {
-        try {
-            val formatter = SimpleDateFormat(format, Locale.ENGLISH)
-            formatter.set2DigitYearStart(Date(946684800)) // 從 2000 年開始
-            return formatter.parse(this).time
-        } catch (ignored: ParseException) {
-        }
-    }
-    for (format in listOf(
-        "yyyy/MM/dd(EEE) HH:mm:ss.SSS",
-        "yyyy/MM/dd(EEE)",
-    )) {
-        try {
-            return SimpleDateFormat(format, Locale.ENGLISH).parse(this).time
-        } catch (ignored: ParseException) {
-        }
-    }
-    return 0L
-}
-
 fun HttpUrl.toKBoard() =
     boards().first { toString().contains(it.url) }
 
@@ -183,4 +157,10 @@ fun Int?.isZeroOrNull() = this == 0 || this == null
 
 fun Element.toResponseBody(): ResponseBody {
     return this.toString().toResponseBody()
+}
+
+fun String.toTimestamp(pattern: String, zoneId: String = "Asia/Taipei"): Long {
+    val formatter = DateTimeFormatter.ofPattern(pattern)
+    val localDateTime = LocalDateTime.parse(this, formatter)
+    return localDateTime.atZone(ZoneId.of(zoneId)).toInstant().toEpochMilli()
 }

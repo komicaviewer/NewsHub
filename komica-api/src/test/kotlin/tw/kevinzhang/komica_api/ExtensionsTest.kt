@@ -69,10 +69,6 @@ internal class ExtensionsTest {
         assertEquals("Mon Tue", "一 二".replaceChiWeekday())
 
     @Test
-    fun `Test toMillTimestamp extension with years with only two digits extension expect successful`() =
-        assertEquals(1662795827000L, "22/09/10(Sat) 15:43:47".toMillTimestamp())
-
-    @Test
     fun `Test HttpUrl toKBoard extension with sora url expect successful`() =
         assert("https://gaia.komica.org/00/".toHttpUrl().toKBoard() is KBoard.Sora)
 
