@@ -6,6 +6,7 @@ import okhttp3.ResponseBody
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.TextNode
+import tw.kevinzhang.komica_api.isImageUrl
 import tw.kevinzhang.komica_api.model.KImageInfo
 import tw.kevinzhang.komica_api.model.KLink
 import tw.kevinzhang.komica_api.model.KParagraph
@@ -14,10 +15,10 @@ import tw.kevinzhang.komica_api.model.KPostBuilder
 import tw.kevinzhang.komica_api.model.KQuote
 import tw.kevinzhang.komica_api.model.KReplyTo
 import tw.kevinzhang.komica_api.model.KText
+import tw.kevinzhang.komica_api.normalizeUrl
 import tw.kevinzhang.komica_api.parser.Parser
 import tw.kevinzhang.komica_api.parser.PostHeadParser
 import tw.kevinzhang.komica_api.parser.UrlParser
-import tw.kevinzhang.komica_api.withHttps
 
 class SoraPostParser(
     private val urlParser: UrlParser,
@@ -79,20 +80,23 @@ class SoraPostParser(
 
     private fun setPicture(source: Element, host: String) {
         source.select("a").forEach { link ->
+            val href = link.attr("href")
             val img = link.selectFirst("img.img")
-            if (img != null) {
-                val originalUrl = link.attr("href")
-                val thumbnailUrl = img.attr("src")
 
-                if (originalUrl.isNotEmpty() && thumbnailUrl.isNotEmpty()) {
+            if (img != null && href.isNotEmpty() && href.isImageUrl()) {
+                val thumbnailUrl = img.attr("src").ifEmpty {
+                    img.attr("data-original")
+                }
+
+                if (href.isNotEmpty() && thumbnailUrl.isNotEmpty()) {
                     builder.addContent(
                         KImageInfo(
-                            thumbnailUrl.withHttps(),
-                            originalUrl.withHttps()
+                            thumbnailUrl.normalizeUrl(),
+                            href.normalizeUrl(),
                         )
                     )
-                } else if (originalUrl.isNotEmpty()) {
-                    builder.addContent(KImageInfo(null, originalUrl.withHttps()))
+                } else if (href.isNotEmpty()) {
+                    builder.addContent(KImageInfo(null, href.normalizeUrl()))
                 }
             }
         }

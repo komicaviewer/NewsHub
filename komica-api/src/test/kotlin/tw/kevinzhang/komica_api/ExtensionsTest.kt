@@ -3,62 +3,10 @@ package tw.kevinzhang.komica_api
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
 import tw.kevinzhang.komica_api.model.KBoard
 
 
 internal class ExtensionsTest {
-
-    @Test
-    fun `Test withHttps extension with same schema expect successful`() =
-        assertEquals("https://www.google.com", "https://www.google.com".withHttps())
-
-    @Test
-    fun `Test withHttps extension with start with double slash expect successful`() =
-        assertEquals("https://www.google.com", "//www.google.com".withHttps())
-
-    @Test
-    fun `Test withHttps extension expect failure`() {
-        assertThrows<ParseException> {
-            "/path".withHttps()
-        }
-    }
-
-    @Test
-    fun `Test withHttps extension with host expect successful`() =
-        assertEquals("https://www.google.com", "www.google.com".withHttps())
-
-    @Test
-    fun `Test withHttps extension with path expect successful`() =
-        assertEquals("https://www.google.com/search", "/search".withHttps("https://www.google.com"))
-
-    @Test
-    fun `Test withHttps extension with dot path expect successful`() =
-        assertEquals("https://www.google.com/./search", "./search".withHttps("https://www.google.com"))
-
-    @Test
-    fun `Test withHttp extension with same schema expect successful`() =
-        assertEquals("http://example.com", "http://example.com".withHttp())
-
-    @Test
-    fun `Test withHttp extension with start with double slash expect successful`() =
-        assertEquals("http://example.com", "//example.com".withHttp())
-
-    @Test
-    fun `Test withHttp extension expect failure`() {
-        assertThrows<ParseException> {
-            "/path".withHttp()
-        }
-    }
-
-    @Test
-    fun `Test withHttp extension with host expect successful`() =
-        assertEquals("http://example.com", "example.com".withHttp())
-
-    @Test
-    fun `Test toFolder extension expect successful`() {
-        assertEquals("http://example.com/path", "http://example.com/path/page.php".toFolder())
-    }
 
     @Test
     fun `Test replaceJpnWeekday extension expect successful`() =

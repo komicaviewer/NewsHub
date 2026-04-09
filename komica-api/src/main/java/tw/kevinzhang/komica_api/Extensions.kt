@@ -1,7 +1,6 @@
 package tw.kevinzhang.komica_api
 
 import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.jsoup.nodes.Element
@@ -28,50 +27,17 @@ fun Element.installThreadTag(): Element {
     return this
 }
 
-fun String.withHttps(): String {
-    return if (this.startsWith("https://")) {
-        this
-    } else if (this.startsWith("//")) {
-        "https:$this"
-    } else if (this.startsWith("/")) {
-        throw ParseException("The string should not start with /")
-    } else {
-        "https://$this"
+fun String.normalizeUrl(): String {
+    return when {
+        startsWith("//") -> "https:$this"
+        startsWith("http://") || startsWith("https://") -> this
+        else -> this
     }
 }
 
-fun String.withHttps(base: String): String {
-    val startsWithSingleSlash = this.startsWith("/") && !this.startsWith("//")
-    return if (!this.startsWith("./") && !startsWithSingleSlash) {
-        this.withHttps()
-    } else {
-        val url = if (base.endsWith("/") && startsWithSingleSlash)
-            base + this.substring(1)
-        else if (base.endsWith("/") || startsWithSingleSlash)
-            base + this
-        else
-            "$base/$this"
-        return url.withHttps()
-    }
-}
-
-fun String.withHttp(): String {
-    return if (this.startsWith("http://")) {
-        this
-    } else if (this.startsWith("//")) {
-        "http:$this"
-    } else if (this.startsWith("/")) {
-        throw ParseException("The string should not start with /")
-    } else {
-        "http://$this"
-    }
-}
-
-fun String.toFolder(): String {
-    val url = this.toHttpUrl()
-    val pathSegments = url.pathSegments.dropLast(1)
-    val hostWithHttps = if (url.isHttps) url.host.withHttps() else url.host.withHttp()
-    return hostWithHttps + pathSegments.joinToString("/", prefix = "/")
+fun String.isImageUrl(): Boolean {
+    val imageExtensions = listOf(".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
+    return imageExtensions.any { lowercase().contains(it) }
 }
 
 fun String.replaceJpnWeekday(): String {
