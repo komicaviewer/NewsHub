@@ -115,7 +115,6 @@ fun CollectionTimelineScreen(
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(
                     count = items.itemCount,
-                    key = { index -> items.peek(index)?.id ?: index },
                 ) { index ->
                     val summary = items[index] ?: return@items
                     ThreadSummaryCard(

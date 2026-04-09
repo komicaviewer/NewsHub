@@ -13,6 +13,9 @@ class SoraThreadSummariesRequestParser {
     }
 
     fun baseUrl(): HttpUrl {
-        return req.url.newBuilder().removeFilename().build()
+        return req.url.newBuilder()
+            .removeFilename()
+            .removeAllQueryParameters("page_num")
+            .build()
     }
 }
