@@ -41,7 +41,7 @@ class GetThread(
                     SoraThreadRequestParser(),
                     SoraThreadRequestBuilder()
                 )
-            is KBoard._2catKomica ->
+            is KBoard._2catSora ->
                 SoraThreadParser(SoraPostParser(urlParser, _2catSoraPostHeadParser(SoraUrlParser())), SoraThreadRequestParser(), SoraThreadRequestBuilder())
             is KBoard._2cat ->
                 _2catThreadParser(_2catPostParser(urlParser, _2catPostHeadParser(_2catUrlParser())), _2catRequestBuilder())

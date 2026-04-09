@@ -10,7 +10,7 @@ class GetUrlParser {
         return when (board) {
             is KBoard.Sora ->
                 SoraUrlParser()
-            is KBoard._2catKomica ->
+            is KBoard._2catSora ->
                 SoraUrlParser()
             is KBoard._2cat ->
                 _2catUrlParser()

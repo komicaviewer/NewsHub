@@ -14,7 +14,7 @@ class GetRequestBuilder {
         return when (board) {
             is KBoard.Sora ->
                 SoraThreadSummariesRequestBuilder().setBoard(board)
-            is KBoard._2catKomica ->
+            is KBoard._2catSora ->
                 SoraThreadSummariesRequestBuilder().setBoard(board)
             is KBoard._2cat ->
                 _2catRequestBuilder().setBoard(board)
@@ -29,7 +29,7 @@ class GetRequestBuilder {
         return when (board) {
             is KBoard.Sora ->
                 SoraThreadRequestBuilder().setBoard(board)
-            is KBoard._2catKomica ->
+            is KBoard._2catSora ->
                 SoraThreadRequestBuilder().setBoard(board)
             is KBoard._2cat ->
                 _2catRequestBuilder().setBoard(board)

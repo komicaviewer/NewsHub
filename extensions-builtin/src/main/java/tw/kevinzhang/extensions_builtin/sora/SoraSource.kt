@@ -26,7 +26,7 @@ class SoraSource @Inject constructor(
 
     override suspend fun getBoards(): List<ExtBoard> =
         boards()
-            .filter { it is KBoard.Sora || it is KBoard._2catKomica }
+            .filter { it is KBoard.Sora || it is KBoard._2catSora }
             .map { kBoard -> ExtBoard(sourceId = id, url = kBoard.url, name = kBoard.name) }
 
     override suspend fun getThreadSummaries(board: ExtBoard, page: Int): List<ThreadSummary> {

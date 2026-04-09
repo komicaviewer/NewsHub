@@ -40,7 +40,7 @@ class GetThreadSummaries(
                     SoraThreadRequestBuilder()
                 )
 
-            is KBoard._2catKomica ->
+            is KBoard._2catSora ->
                 SoraThreadSummariesParser(
                     SoraPostParser(
                         urlParser,
