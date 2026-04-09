@@ -12,14 +12,14 @@ import tw.kevinzhang.komica_api.parser._2cat._2catPostHeadParser
 import tw.kevinzhang.komica_api.parser._2cat._2catPostParser
 import tw.kevinzhang.komica_api.parser._2cat._2catThreadSummariesParser
 import tw.kevinzhang.komica_api.parser._2cat._2catUrlParser
-import tw.kevinzhang.komica_api.parser.komica2.Komica2PostHeadParser
 import tw.kevinzhang.komica_api.parser.sora.SoraPostHeadParser
 import tw.kevinzhang.komica_api.parser.sora.SoraPostParser
 import tw.kevinzhang.komica_api.parser.sora.SoraThreadSummariesParser
+import tw.kevinzhang.komica_api.parser.sora_komica2.SoraKomica2PostHeadParser
 import tw.kevinzhang.komica_api.request._2cat._2catRequestBuilder
-import tw.kevinzhang.komica_api.request.komica2.Komica2ThreadRequestBuilder
 import tw.kevinzhang.komica_api.request.sora.SoraThreadRequestBuilder
 import tw.kevinzhang.komica_api.request.sora.SoraThreadSummariesRequestParser
+import tw.kevinzhang.komica_api.request.sora_komica2.SoraKomica2ThreadRequestBuilder
 import tw.kevinzhang.komica_api.toKBoard
 
 class GetThreadSummaries(
@@ -55,11 +55,11 @@ class GetThreadSummaries(
                     ), _2catRequestBuilder()
                 )
 
-            is KBoard.Komica2 ->
+            is KBoard.SoraKomica2 ->
                 SoraThreadSummariesParser(
-                    SoraPostParser(urlParser, Komica2PostHeadParser()),
+                    SoraPostParser(urlParser, SoraKomica2PostHeadParser()),
                     SoraThreadSummariesRequestParser(),
-                    Komica2ThreadRequestBuilder()
+                    SoraKomica2ThreadRequestBuilder()
                 )
             else ->
                 throw NotImplementedError("ThreadSummariesParser of $board not implemented yet")

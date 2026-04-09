@@ -91,10 +91,8 @@ class SoraPostParser(
                             originalUrl.withHttps()
                         )
                     )
-                    println("thumbnailUrl $thumbnailUrl originalUrl $originalUrl")
                 } else if (originalUrl.isNotEmpty()) {
                     builder.addContent(KImageInfo(null, originalUrl.withHttps()))
-                    println("only originalUrl $originalUrl")
                 }
             }
         }

@@ -4,10 +4,10 @@ import tw.kevinzhang.komica_api.model.KBoard
 import tw.kevinzhang.komica_api.request.ThreadRequestBuilder
 import tw.kevinzhang.komica_api.request.ThreadSummariesRequestBuilder
 import tw.kevinzhang.komica_api.request._2cat._2catRequestBuilder
-import tw.kevinzhang.komica_api.request.komica2.Komica2ThreadRequestBuilder
-import tw.kevinzhang.komica_api.request.komica2.Komica2ThreadSummariesRequestBuilder
 import tw.kevinzhang.komica_api.request.sora.SoraThreadRequestBuilder
 import tw.kevinzhang.komica_api.request.sora.SoraThreadSummariesRequestBuilder
+import tw.kevinzhang.komica_api.request.sora_komica2.SoraKomica2ThreadRequestBuilder
+import tw.kevinzhang.komica_api.request.sora_komica2.SoraKomica2ThreadSummariesRequestBuilder
 
 class GetRequestBuilder {
     fun forBoard(board: KBoard): ThreadSummariesRequestBuilder {
@@ -18,8 +18,8 @@ class GetRequestBuilder {
                 SoraThreadSummariesRequestBuilder().setBoard(board)
             is KBoard._2cat ->
                 _2catRequestBuilder().setBoard(board)
-            is KBoard.Komica2 ->
-                Komica2ThreadSummariesRequestBuilder().setBoard(board)
+            is KBoard.SoraKomica2 ->
+                SoraKomica2ThreadSummariesRequestBuilder().setBoard(board)
             else ->
                 throw NotImplementedError("BoardRequestBuilder of $board not implemented yet")
         }
@@ -33,8 +33,8 @@ class GetRequestBuilder {
                 SoraThreadRequestBuilder().setBoard(board)
             is KBoard._2cat ->
                 _2catRequestBuilder().setBoard(board)
-            is KBoard.Komica2 ->
-                Komica2ThreadRequestBuilder().setBoard(board)
+            is KBoard.SoraKomica2 ->
+                SoraKomica2ThreadRequestBuilder().setBoard(board)
             else ->
                 throw NotImplementedError("ThreadRequestBuilder of $board not implemented yet")
         }

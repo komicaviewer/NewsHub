@@ -130,14 +130,18 @@ sealed class KBoard(val name: String, val url: String) {
         object 人工智慧 : _2cat("人工智慧", "https://www.gomiga.org/ai")
     }
 
-    sealed class Komica2(name: String, url: String) : KBoard(name, url) {
-        object 二次裡A避難版 :
-            Komica2("二次裡A避難版", "https://2cat.uk/~chatura/pixmicat.php")
+    sealed class SoraKomica2(name: String, url: String) : KBoard(name, url) {
+        object 二次裡A避難版 : SoraKomica2("二次裡A避難版", "https://2cat.uk/~chatura/pixmicat.php")
+        object 三次裡避難版 : SoraKomica2("三次裡避難版", "https://2cat.uk/~realura/pixmicat.php")
+        object 高解析裡 : SoraKomica2("高解析裡", "https://2cat.org/hiso")
+    }
 
-        object 三次裡避難版 :
-            Komica2("三次裡避難版", "https://2cat.uk/~realura/pixmicat.php")
-
-        object GIF裏 : Komica2("GIF裏", "https://2cat.org/~gifura/pixmicat.php")
+    sealed class _2catKomica2(name: String, url: String) : KBoard(name, url) {
+        object GIF裏 : _2catKomica2("GIF裏", "https://2cat.org/~gifura/pixmicat.php")
+        object 玩具裏 : _2catKomica2("玩具裏", "https://2cat.org/~toy/pixmicat.php")
+        object 裏知識 : _2catKomica2("裏知識", "https://2cat.org/~know/pixmicat.php")
+        object 偽娘裏 : _2catKomica2("偽娘裏", "https://2cat.org/~futa/pixmicat.php")
+        object 東方裏避難版 : _2catKomica2("東方裏避難版", "https://2cat.org/touhoux/pixmicat.php")
     }
 
     // TODO: 以下尚未實現 Parser
@@ -171,6 +175,11 @@ sealed class KBoard(val name: String, val url: String) {
 
     // 飲食
     object 酒 : KBoard("酒", "https://eclair.nagatoyuki.org/beverage")
+
+    // Komica2
+    object 詢問裡 : KBoard("詢問裡", "https://majeur.zawarudo.org/demande")
+    object 二次元獵奇 : KBoard("二次元獵奇", "https://majeur.zawarudo.org/guro")
+    object 遊戲裡避難版 : KBoard("遊戲裡避難版", "https://majeur.zawarudo.org/hgame")
 
 }
 
@@ -308,9 +317,14 @@ fun 本地版() =
     )
 
 fun Komica2() = listOf(
-    KBoard.Komica2.二次裡A避難版,
-    KBoard.Komica2.三次裡避難版,
-    KBoard.Komica2.GIF裏,
+    KBoard.SoraKomica2.二次裡A避難版,
+    KBoard.SoraKomica2.三次裡避難版,
+    KBoard.SoraKomica2.高解析裡,
+//    KBoard._2catKomica2.GIF裏,
+//    KBoard._2catKomica2.玩具裏,
+//    KBoard._2catKomica2.裏知識,
+//    KBoard._2catKomica2.偽娘裏,
+//    KBoard._2catKomica2.東方裏避難版,
 )
 
 fun top50boards() = listOf(

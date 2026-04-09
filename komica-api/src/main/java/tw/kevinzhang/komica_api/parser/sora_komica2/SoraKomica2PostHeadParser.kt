@@ -1,4 +1,4 @@
-package tw.kevinzhang.komica_api.parser.komica2
+package tw.kevinzhang.komica_api.parser.sora_komica2
 
 import okhttp3.HttpUrl
 import org.jsoup.nodes.Element
@@ -9,7 +9,7 @@ import java.util.logging.Logger
 
 private val logger = Logger.getLogger("Komica2PostHeadParser")
 
-class Komica2PostHeadParser : PostHeadParser {
+class SoraKomica2PostHeadParser : PostHeadParser {
     override fun parseTitle(source: Element, url: HttpUrl): String? {
         val titleE = source.selectFirst("span.title")
         return titleE?.text()

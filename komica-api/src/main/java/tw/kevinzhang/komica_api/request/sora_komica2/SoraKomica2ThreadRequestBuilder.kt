@@ -1,9 +1,9 @@
-package tw.kevinzhang.komica_api.request.komica2
+package tw.kevinzhang.komica_api.request.sora_komica2
 
 import okhttp3.Request
-import tw.kevinzhang.komica_api.request.sora.SoraThreadSummariesRequestBuilder
+import tw.kevinzhang.komica_api.request.sora.SoraThreadRequestBuilder
 
-class Komica2ThreadSummariesRequestBuilder : SoraThreadSummariesRequestBuilder() {
+class SoraKomica2ThreadRequestBuilder : SoraThreadRequestBuilder() {
     override fun build(): Request {
         val req = super.build()
         return if (req.url.host == "2cat.org") {
