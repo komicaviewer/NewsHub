@@ -6,7 +6,6 @@ import okhttp3.ResponseBody
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.TextNode
-import tw.kevinzhang.komica_api.ParseException
 import tw.kevinzhang.komica_api.model.KImageInfo
 import tw.kevinzhang.komica_api.model.KLink
 import tw.kevinzhang.komica_api.model.KParagraph
@@ -15,12 +14,10 @@ import tw.kevinzhang.komica_api.model.KPostBuilder
 import tw.kevinzhang.komica_api.model.KQuote
 import tw.kevinzhang.komica_api.model.KReplyTo
 import tw.kevinzhang.komica_api.model.KText
-import tw.kevinzhang.komica_api.model.KVideoInfo
 import tw.kevinzhang.komica_api.parser.Parser
 import tw.kevinzhang.komica_api.parser.PostHeadParser
 import tw.kevinzhang.komica_api.parser.UrlParser
 import tw.kevinzhang.komica_api.withHttps
-import java.util.regex.Pattern
 
 class SoraPostParser(
     private val urlParser: UrlParser,
@@ -81,29 +78,25 @@ class SoraPostParser(
     }
 
     private fun setPicture(source: Element, host: String) {
-        source.selectFirst("img")?.let { thumbImg ->
-            val rawUrl = thumbImg.parent().attr("href")
-            val thumbUrl = thumbImg.attr("src")
+        source.select("a").forEach { link ->
+            val img = link.selectFirst("img.img")
+            if (img != null) {
+                val originalUrl = link.attr("href")
+                val thumbnailUrl = img.attr("src")
 
-            val (thumb, raw) = try {
-                Pair(thumbUrl.withHttps(), rawUrl.withHttps())
-            } catch (e: ParseException) {
-                Pair(thumbUrl.withHttps(host), rawUrl.withHttps(host))
+                if (originalUrl.isNotEmpty() && thumbnailUrl.isNotEmpty()) {
+                    builder.addContent(
+                        KImageInfo(
+                            thumbnailUrl.withHttps(),
+                            originalUrl.withHttps()
+                        )
+                    )
+                    println("thumbnailUrl $thumbnailUrl originalUrl $originalUrl")
+                } else if (originalUrl.isNotEmpty()) {
+                    builder.addContent(KImageInfo(null, originalUrl.withHttps()))
+                    println("only originalUrl $originalUrl")
+                }
             }
-            if (raw.match(IMAGE_URL_PATTERN)) {
-                builder.addContent(KImageInfo(thumb, raw))
-            } else if (raw.match(VIDEO_URL_PATTERN)) {
-                builder.addContent(KVideoInfo(raw))
-            } else { }
         }
-    }
-
-    private fun String.match(p: Pattern): Boolean {
-        return p.matcher(this).find()
-    }
-
-    companion object {
-        private val IMAGE_URL_PATTERN = Pattern.compile("(http(s?):/)(/[^/]+)+\\.(?:jpg|gif|png)")
-        private val VIDEO_URL_PATTERN = Pattern.compile("(http(s?):/)(/[^/]+)+\\.(?:webm|mp4)")
     }
 }
