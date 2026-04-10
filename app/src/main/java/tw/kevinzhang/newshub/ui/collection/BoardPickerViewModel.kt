@@ -35,16 +35,20 @@ class BoardPickerViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            _sourcesWithBoards.value = extensionLoader.getAllSources().map { source ->
-                SourceWithBoards(
-                    source = source,
-                    boards = runCatching { source.getBoards() }
-                        .onFailure { Log.w("BoardPickerViewModel", "Failed to load boards for ${source.id}", it) }
-                        .getOrDefault(emptyList())
-                        .distinctBy { it.url },
-                )
+            // Observe reactive source list — re-fetch boards when sources change
+            extensionLoader.sourcesFlow.collect { sources ->
+                _isLoading.value = true
+                _sourcesWithBoards.value = sources.map { source ->
+                    SourceWithBoards(
+                        source = source,
+                        boards = runCatching { source.getBoards() }
+                            .onFailure { Log.w("BoardPickerViewModel", "Failed to load boards for ${source.id}", it) }
+                            .getOrDefault(emptyList())
+                            .distinctBy { it.url },
+                    )
+                }
+                _isLoading.value = false
             }
-            _isLoading.value = false
         }
     }
 }

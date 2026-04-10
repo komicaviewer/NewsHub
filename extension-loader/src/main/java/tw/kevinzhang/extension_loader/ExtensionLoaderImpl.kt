@@ -1,46 +1,42 @@
 package tw.kevinzhang.extension_loader
 
 import android.content.Context
-import android.content.pm.PackageManager
-import dalvik.system.PathClassLoader
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.SourceContext
 import javax.inject.Inject
 import javax.inject.Named
+import javax.inject.Singleton
 
-private const val EXTENSION_META_KEY = "newshub.extension"
-private const val SOURCE_CLASS_KEY = "newshub.extension.source_class"
-
+@Singleton
 class ExtensionLoaderImpl @Inject constructor(
     @Named("builtInSources") private val builtInSources: List<@JvmSuppressWildcards Source>,
     @ApplicationContext private val context: Context,
     private val sourceContext: SourceContext,
+    private val extensionManager: ExtensionManager,
 ) : ExtensionLoader {
 
-    override fun getAllSources(): List<Source> =
-        (builtInSources + loadInstalledApkSources()).onEach { it.onAttach(sourceContext) }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    override fun getSource(id: String): Source? =
-        getAllSources().find { it.id == id }
-
-    private fun loadInstalledApkSources(): List<Source> =
-        context.packageManager
-            .getInstalledPackages(PackageManager.GET_META_DATA)
-            .filter { pkg ->
-                pkg.applicationInfo?.metaData?.containsKey(EXTENSION_META_KEY) == true
-            }
-            .mapNotNull { pkg -> loadSourceFromPackage(pkg) }
-
-    private fun loadSourceFromPackage(pkg: android.content.pm.PackageInfo): Source? {
-        return try {
-            val appInfo = pkg.applicationInfo ?: return null
-            val className = appInfo.metaData?.getString(SOURCE_CLASS_KEY) ?: return null
-            val loader = PathClassLoader(appInfo.sourceDir, context.classLoader)
-            val clazz = loader.loadClass(className)
-            clazz.getDeclaredConstructor().newInstance() as? Source
-        } catch (e: Exception) {
-            null  // silently skip invalid extensions
+    override val sourcesFlow: StateFlow<List<Source>> = extensionManager.installedExtensions
+        .map { installed ->
+            val extensionSources = installed.flatMap { it.sources }
+            (builtInSources + extensionSources).onEach { it.onAttach(sourceContext) }
         }
-    }
+        .stateIn(
+            scope = scope,
+            started = SharingStarted.Eagerly,
+            initialValue = builtInSources.onEach { it.onAttach(sourceContext) },
+        )
+
+    override fun getAllSources(): List<Source> = sourcesFlow.value
+
+    override fun getSource(id: String): Source? = getAllSources().find { it.id == id }
 }
