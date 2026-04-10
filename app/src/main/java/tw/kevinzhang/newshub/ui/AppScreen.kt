@@ -53,10 +53,15 @@ import tw.kevinzhang.newshub.auth.AuthViewModel
 import tw.kevinzhang.newshub.auth.AuthWebViewScreen
 import tw.kevinzhang.newshub.encode
 import tw.kevinzhang.newshub.ui.boards.BoardsScreen
+import tw.kevinzhang.newshub.ui.collection.BoardPickerScreen
 import tw.kevinzhang.newshub.ui.collection.CollectionTimelineScreen
+import tw.kevinzhang.newshub.ui.collection.CollectionTimelineViewModel
 import tw.kevinzhang.newshub.ui.collection.CreateCollectionScreen
+import tw.kevinzhang.newshub.ui.collection.CreateCollectionViewModel
 import tw.kevinzhang.newshub.ui.collection.EditCollectionScreen
+import tw.kevinzhang.newshub.ui.collection.EditCollectionViewModel
 import tw.kevinzhang.newshub.ui.collection.ManageCollectionsScreen
+import tw.kevinzhang.newshub.ui.collection.SelectedBoard
 import tw.kevinzhang.newshub.ui.component.BodyLargeText
 import tw.kevinzhang.newshub.ui.component.AppBottomBar
 import tw.kevinzhang.newshub.ui.component.AppDrawer
@@ -232,10 +237,14 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                         composable(
                             route = "collection/{collectionId}",
                             arguments = listOf(navArgument("collectionId") { type = NavType.StringType }),
-                        ) {
+                        ) { backStackEntry ->
+                            val collectionId = backStackEntry.arguments?.getString("collectionId") ?: ""
                             CollectionTimelineScreen(
                                 onOpenDrawer = { openDrawer() },
                                 scrollToTopTrigger = collectionScrollToTopTrigger,
+                                onNavigateToBoardPicker = {
+                                    navController.navigate("board_picker/collection/$collectionId")
+                                },
                                 onThreadClick = { summary ->
                                     val threadId = summary.id.encode()
                                     val sourceId = summary.sourceId.encode()
@@ -298,6 +307,18 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                                     popUpTo("create_collection") { inclusive = true }
                                 }
                             },
+                            onNavigateToBoardPicker = { navController.navigate("board_picker/create") },
+                        )
+                    }
+                    composable("board_picker/create") {
+                        val parentEntry = remember(it) { navController.getBackStackEntry("create_collection") }
+                        val createVM: CreateCollectionViewModel = hiltViewModel(parentEntry)
+                        val selectedBoards by createVM.selectedBoards.collectAsStateWithLifecycle()
+                        BoardPickerScreen(
+                            selectedBoards = selectedBoards,
+                            onBoardToggle = createVM::toggleBoard,
+                            onConfirm = { navController.navigateUp() },
+                            onNavigateUp = { navController.navigateUp() },
                         )
                     }
                     composable("manage_collections") {
@@ -310,7 +331,44 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                         route = "edit_collection/{collectionId}",
                         arguments = listOf(navArgument("collectionId") { type = NavType.StringType }),
                     ) {
+                        val collectionId = it.arguments?.getString("collectionId") ?: ""
                         EditCollectionScreen(
+                            onNavigateUp = { navController.navigateUp() },
+                            onNavigateToBoardPicker = { navController.navigate("board_picker/edit/$collectionId") },
+                        )
+                    }
+                    composable(
+                        route = "board_picker/edit/{collectionId}",
+                        arguments = listOf(navArgument("collectionId") { type = NavType.StringType }),
+                    ) {
+                        val parentEntry = remember(it) { navController.getBackStackEntry("edit_collection/{collectionId}") }
+                        val editVM: EditCollectionViewModel = hiltViewModel(parentEntry)
+                        val selectedBoards by editVM.selectedBoards.collectAsStateWithLifecycle()
+                        BoardPickerScreen(
+                            selectedBoards = selectedBoards,
+                            onBoardToggle = editVM::toggleBoard,
+                            onConfirm = { navController.navigateUp() },
+                            onNavigateUp = { navController.navigateUp() },
+                        )
+                    }
+                    composable(
+                        route = "board_picker/collection/{collectionId}",
+                        arguments = listOf(navArgument("collectionId") { type = NavType.StringType }),
+                    ) {
+                        val parentEntry = remember(it) { navController.getBackStackEntry("collection/{collectionId}") }
+                        val collectionVM: CollectionTimelineViewModel = hiltViewModel(parentEntry)
+                        var selectedBoards by remember { mutableStateOf(emptySet<SelectedBoard>()) }
+                        BoardPickerScreen(
+                            selectedBoards = selectedBoards,
+                            onBoardToggle = { board ->
+                                selectedBoards = if (board in selectedBoards) selectedBoards - board else selectedBoards + board
+                            },
+                            onConfirm = {
+                                selectedBoards.forEach { board ->
+                                    collectionVM.addBoardSubscription(board.sourceId, board.boardUrl, board.boardName)
+                                }
+                                navController.navigateUp()
+                            },
                             onNavigateUp = { navController.navigateUp() },
                         )
                     }

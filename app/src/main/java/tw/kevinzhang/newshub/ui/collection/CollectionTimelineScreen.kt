@@ -33,9 +33,6 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -60,24 +57,19 @@ import tw.kevinzhang.newshub.ui.component.View
 fun CollectionTimelineScreen(
     onOpenDrawer: () -> Unit,
     onThreadClick: (ThreadSummary) -> Unit,
+    onNavigateToBoardPicker: () -> Unit,
     scrollToTopTrigger: Int = 0,
     viewModel: CollectionTimelineViewModel = hiltViewModel(),
-    boardPickerViewModel: BoardPickerViewModel = hiltViewModel(),
 ) {
     val items = viewModel.timelinePager.collectAsLazyPagingItems()
     val collectionName by viewModel.collectionName.collectAsStateWithLifecycle()
     val rawImageSourceIds by viewModel.rawImageSourceIds.collectAsStateWithLifecycle()
     val sourceIconUrls: Map<String, String?> by viewModel.sourceIconUrls.collectAsStateWithLifecycle()
     val subscriptions by viewModel.subscriptions.collectAsStateWithLifecycle()
-    val sourcesWithBoards by boardPickerViewModel.sourcesWithBoards.collectAsStateWithLifecycle()
-    val isBoardPickerLoading by boardPickerViewModel.isLoading.collectAsStateWithLifecycle()
 
     val listState = rememberLazyListState()
     val activity = LocalContext.current as Activity
     val pullToRefreshState = rememberPullToRefreshState()
-
-    var showBoardPicker by remember { mutableStateOf(false) }
-    var localSelectedBoards by remember { mutableStateOf(emptySet<SelectedBoard>()) }
 
     if (pullToRefreshState.isRefreshing) {
         LaunchedEffect(true) { items.refresh() }
@@ -176,7 +168,7 @@ fun CollectionTimelineScreen(
                         text = "尚未加入任何 Board",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Button(onClick = { showBoardPicker = true }) {
+                    Button(onClick = onNavigateToBoardPicker) {
                         Text("新增 Board")
                     }
                 }
@@ -189,30 +181,6 @@ fun CollectionTimelineScreen(
         }
     }
 
-    if (showBoardPicker) {
-        BoardPickerDialog(
-            sourcesWithBoards = sourcesWithBoards,
-            isLoading = isBoardPickerLoading,
-            selectedBoards = localSelectedBoards,
-            onBoardToggle = { board ->
-                localSelectedBoards = if (board in localSelectedBoards)
-                    localSelectedBoards - board
-                else
-                    localSelectedBoards + board
-            },
-            onConfirm = {
-                localSelectedBoards.forEach { board ->
-                    viewModel.addBoardSubscription(board.sourceId, board.boardUrl, board.boardName)
-                }
-                localSelectedBoards = emptySet()
-                showBoardPicker = false
-            },
-            onDismiss = {
-                localSelectedBoards = emptySet()
-                showBoardPicker = false
-            },
-        )
-    }
 }
 
 @Composable

@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.emoji2.emojipicker.EmojiPickerView
-import androidx.emoji2.emojipicker.EmojiViewItem
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -53,18 +52,15 @@ import tw.kevinzhang.newshub.ui.component.BodySmallText
 fun CreateCollectionScreen(
     onNavigateUp: () -> Unit,
     onCollectionCreated: (collectionId: String) -> Unit,
+    onNavigateToBoardPicker: () -> Unit,
     viewModel: CreateCollectionViewModel = hiltViewModel(),
-    boardPickerViewModel: BoardPickerViewModel = hiltViewModel(),
 ) {
     val name by viewModel.name.collectAsStateWithLifecycle()
     val description by viewModel.description.collectAsStateWithLifecycle()
     val emoji by viewModel.emoji.collectAsStateWithLifecycle()
     val selectedBoards by viewModel.selectedBoards.collectAsStateWithLifecycle()
-    val sourcesWithBoards by boardPickerViewModel.sourcesWithBoards.collectAsStateWithLifecycle()
-    val isBoardPickerLoading by boardPickerViewModel.isLoading.collectAsStateWithLifecycle()
 
     var showEmojiPicker by remember { mutableStateOf(false) }
-    var showBoardPicker by remember { mutableStateOf(false) }
     val emojiSheetState = rememberModalBottomSheetState()
 
     LaunchedEffect(Unit) {
@@ -93,7 +89,7 @@ fun CreateCollectionScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showBoardPicker = true }) {
+            FloatingActionButton(onClick = onNavigateToBoardPicker) {
                 BadgedBox(
                     badge = {
                         if (selectedBoards.isNotEmpty()) {
@@ -186,15 +182,4 @@ fun CreateCollectionScreen(
         }
     }
 
-    // Board picker bottom sheet
-    if (showBoardPicker) {
-        BoardPickerDialog(
-            sourcesWithBoards = sourcesWithBoards,
-            isLoading = isBoardPickerLoading,
-            selectedBoards = selectedBoards,
-            onBoardToggle = { board -> viewModel.toggleBoard(board) },
-            onConfirm = { showBoardPicker = false },
-            onDismiss = { showBoardPicker = false },
-        )
-    }
 }
