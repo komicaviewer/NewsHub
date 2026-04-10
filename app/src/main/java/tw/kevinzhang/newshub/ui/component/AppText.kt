@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
@@ -448,6 +449,7 @@ fun Paragraph.Link.View() {
             uriHandler.openUri(content)
         },
         contentPadding = PaddingValues(0.dp),
+        shape = RectangleShape,
     ) { Text(content) }
 }
 
@@ -459,6 +461,7 @@ fun Paragraph.Link.Small() {
             uriHandler.openUri(content)
         },
         contentPadding = PaddingValues(0.dp),
+        shape = RectangleShape,
     ) { BodySmallText(content) }
 }
 
