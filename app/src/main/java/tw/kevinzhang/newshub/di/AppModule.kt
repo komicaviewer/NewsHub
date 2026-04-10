@@ -15,9 +15,11 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import javax.inject.Named
 import tw.kevinzhang.newshub.di.ApplicationScope
 
 private val Context.authDataStore: DataStore<Preferences> by preferencesDataStore(name = "auth_status")
+private val Context.repoDataStore: DataStore<Preferences> by preferencesDataStore(name = "repo_settings")
 
 @InstallIn(SingletonComponent::class)
 @Module
@@ -32,6 +34,12 @@ object AppModule {
     @javax.inject.Singleton
     fun provideAuthDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
         context.authDataStore
+
+    @Provides
+    @javax.inject.Singleton
+    @Named("repoDataStore")
+    fun provideRepoDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
+        context.repoDataStore
 
     @Provides
     fun provideBluetoothManager(@ApplicationContext context: Context) =

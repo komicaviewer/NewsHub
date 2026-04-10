@@ -8,7 +8,6 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import tw.kevinzhang.marketplace.MarketplaceRepository
 import tw.kevinzhang.marketplace.MarketplaceRepositoryImpl
-import javax.inject.Named
 import javax.inject.Singleton
 
 @Module
@@ -23,9 +22,5 @@ abstract class MarketplaceModule {
         @Provides
         @Singleton
         fun provideGson(): Gson = Gson()
-
-        @Provides
-        @Named("marketplaceIndexUrl")
-        fun provideIndexUrl(): String = ""  // Default empty; configurable from Settings
     }
 }
