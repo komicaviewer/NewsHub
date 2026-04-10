@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
@@ -70,6 +71,7 @@ fun CollectionTimelineScreen(
     val listState = rememberLazyListState()
     val activity = LocalContext.current as Activity
     val pullToRefreshState = rememberPullToRefreshState()
+    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
 
     if (pullToRefreshState.isRefreshing) {
         LaunchedEffect(true) { items.refresh() }
@@ -87,6 +89,7 @@ fun CollectionTimelineScreen(
     BackHandler { activity.moveTaskToBack(true) }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
                 title = { Text(collectionName) },
@@ -95,6 +98,7 @@ fun CollectionTimelineScreen(
                         Icon(Icons.Default.Menu, contentDescription = "Open drawer")
                     }
                 },
+                scrollBehavior = scrollBehavior,
             )
         }
     ) { innerPadding ->
