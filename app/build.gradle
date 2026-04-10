@@ -75,7 +75,6 @@ dependencies {
     implementation project(':collection')
     implementation project(':marketplace')
     implementation project(':komica-api')
-    implementation project(':gamer-api')
     implementation "com.squareup.okhttp3:okhttp:4.9.3"
     implementation "com.squareup.okhttp3:logging-interceptor:4.9.3"
     // compose

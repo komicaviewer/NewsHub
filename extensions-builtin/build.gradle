@@ -34,7 +34,6 @@ android {
 
 dependencies {
     implementation project(':extension-api')
-    implementation project(':gamer-api')
     implementation project(':komica-api')
     implementation "com.squareup.okhttp3:okhttp:4.9.3"
     // hilt

@@ -9,7 +9,6 @@ import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.extension_loader.ExtensionLoaderImpl
 import tw.kevinzhang.extensions_builtin._2cat._2catSource
-import tw.kevinzhang.extensions_builtin.gamer.GamerSource
 import tw.kevinzhang.extensions_builtin.komica2.Komica2Source
 import tw.kevinzhang.extensions_builtin.sora.SoraSource
 import javax.inject.Named
@@ -28,10 +27,9 @@ abstract class ExtensionModule {
         @Singleton
         @Named("builtInSources")
         fun provideBuiltInSources(
-            gamer: GamerSource,
             sora: SoraSource,
             _2cat: _2catSource,
             komica2: Komica2Source,
-        ): List<Source> = listOf(gamer, sora, _2cat, komica2)
+        ): List<Source> = listOf(sora, _2cat, komica2)
     }
 }

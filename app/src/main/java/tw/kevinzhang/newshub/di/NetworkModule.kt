@@ -6,7 +6,6 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
-import tw.kevinzhang.gamer_api.GamerApi
 import tw.kevinzhang.komica_api.KomicaApi
 import tw.kevinzhang.newshub.BuildConfig
 import tw.kevinzhang.newshub.auth.AppCookieJar
@@ -36,7 +35,4 @@ object NetworkModule {
     @Singleton
     fun provideKomicaApi(client: OkHttpClient) = KomicaApi(client)
 
-    @Provides
-    @Singleton
-    fun provideGamerApi(client: OkHttpClient) = GamerApi(client)
 }
