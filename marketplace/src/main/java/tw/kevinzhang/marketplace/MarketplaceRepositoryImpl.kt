@@ -34,7 +34,7 @@ class MarketplaceRepositoryImpl @Inject constructor(
 
     override suspend fun fetchExtensions(repoUrl: String): List<ExtensionInfo> = withContext(Dispatchers.IO) {
         val rawBase = toRawBase(repoUrl)
-        val json = fetchString("$rawBase/index.json")
+        val json = fetchString("$rawBase/index.min.json")
         val type = object : TypeToken<List<RemoteExtensionDto>>() {}.type
         val dtos: List<RemoteExtensionDto> = gson.fromJson(json, type)
         dtos.map { it.toExtensionInfo(rawBase) }

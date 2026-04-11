@@ -4,6 +4,9 @@ data class RepoMetadata(
     val name: String,
     val description: String,
     val baseUrl: String,
+    val iconUrl: String? = null,
+    val website: String? = null,
+    val signingKeyFingerprint: String? = null,
 )
 
 data class ExtensionInfo(
@@ -20,7 +23,7 @@ data class ExtensionInfo(
     val sources: List<AvailableSource> = emptyList(),
 )
 
-/** Metadata for a single Source inside an extension, as declared in index.json. */
+/** Metadata for a single Source inside an extension, as declared in index.min.json. */
 data class AvailableSource(
     val id: String,
     val name: String,
@@ -28,7 +31,7 @@ data class AvailableSource(
     val baseUrl: String,
 )
 
-// index.json root
+// index.min.json root
 data class ExtensionIndex(val extensions: List<ExtensionInfo>)
 
 enum class InstallState { NOT_INSTALLED, INSTALLED, UPDATE_AVAILABLE }
@@ -43,7 +46,7 @@ enum class InstallStep {
     ERROR,
 }
 
-// Internal DTO matching new index.json flat-array format
+// Internal DTO matching new index.min.json flat-array format
 internal data class RemoteExtensionDto(
     val pkg: String = "",
     val name: String = "",

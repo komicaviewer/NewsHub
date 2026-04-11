@@ -9,7 +9,7 @@ interface MarketplaceRepository {
     /** Fetches repo.json metadata from a GitHub extension repo URL. */
     suspend fun fetchRepoMetadata(repoUrl: String): RepoMetadata
 
-    /** Fetches index.json and returns all extensions from a GitHub extension repo URL. */
+    /** Fetches index.min.json and returns all extensions from a GitHub extension repo URL. */
     suspend fun fetchExtensions(repoUrl: String): List<ExtensionInfo>
 
     fun getInstallState(info: ExtensionInfo): InstallState
