@@ -65,6 +65,7 @@ import tw.kevinzhang.newshub.ui.collection.SelectedBoard
 import tw.kevinzhang.newshub.ui.component.BodyLargeText
 import tw.kevinzhang.newshub.ui.component.AppBottomBar
 import tw.kevinzhang.newshub.ui.component.AppDrawer
+import tw.kevinzhang.newshub.ui.marketplace.ManageReposScreen
 import tw.kevinzhang.newshub.ui.marketplace.MarketplaceScreen
 import tw.kevinzhang.newshub.ui.navigation.MainNavItems
 import tw.kevinzhang.newshub.ui.navigation.mainNavItems
@@ -289,7 +290,14 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                         )
                     }
                     composable("marketplace") {
-                        MarketplaceScreen()
+                        MarketplaceScreen(
+                            onNavigateToManageRepos = { navController.navigate("manage_repos") },
+                        )
+                    }
+                    composable("manage_repos") {
+                        ManageReposScreen(
+                            onNavigateUp = { navController.navigateUp() },
+                        )
                     }
                     composable("settings") {
                         Box(
