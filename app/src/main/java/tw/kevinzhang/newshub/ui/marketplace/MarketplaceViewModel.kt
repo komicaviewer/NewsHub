@@ -1,37 +1,46 @@
 package tw.kevinzhang.newshub.ui.marketplace
 
-import android.content.Context
-import android.content.Intent
-import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import tw.kevinzhang.extension_loader.ExtensionManager
 import tw.kevinzhang.marketplace.MarketplaceRepository
 import tw.kevinzhang.marketplace.data.ExtensionInfo
 import tw.kevinzhang.marketplace.data.InstallState
+import tw.kevinzhang.marketplace.data.InstallStep
+import tw.kevinzhang.marketplace.data.RepoMetadata
 import tw.kevinzhang.newshub.repo.RepoRepository
-import java.io.File
 import javax.inject.Inject
+
+data class RepoGroup(
+    val repoUrl: String,
+    val metadata: RepoMetadata,
+    val extensions: List<ExtensionInfo>,
+)
 
 @HiltViewModel
 class MarketplaceViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
-    private val repository: MarketplaceRepository,
+    private val marketplaceRepository: MarketplaceRepository,
     private val repoRepository: RepoRepository,
+    private val extensionManager: ExtensionManager,
 ) : ViewModel() {
 
     val repoUrls = repoRepository.getRepoUrls()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
-    private val _extensions = MutableStateFlow<List<Pair<ExtensionInfo, InstallState>>>(emptyList())
-    val extensions = _extensions.asStateFlow()
+    private val _repoGroups = MutableStateFlow<List<RepoGroup>>(emptyList())
+    val repoGroups = _repoGroups.asStateFlow()
+
+    /** pkg → install step */
+    private val _installSteps = MutableStateFlow<Map<String, InstallStep>>(emptyMap())
+    val installSteps = _installSteps.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
@@ -40,7 +49,6 @@ class MarketplaceViewModel @Inject constructor(
     val error = _error.asStateFlow()
 
     init {
-        // Auto-refresh when repo list changes
         viewModelScope.launch {
             repoUrls.collect { refresh() }
         }
@@ -49,21 +57,23 @@ class MarketplaceViewModel @Inject constructor(
     fun refresh() {
         viewModelScope.launch {
             _isLoading.value = true
-            _extensions.value = emptyList()
+            _repoGroups.value = emptyList()
             try {
                 val urls = repoUrls.value
                 if (urls.isEmpty()) return@launch
-                val all = urls.flatMap { url ->
+                val groups = urls.mapNotNull { url ->
                     try {
-                        repository.fetchExtensions(url)
+                        val metadata = marketplaceRepository.fetchRepoMetadata(url)
+                        val extensions = marketplaceRepository.fetchExtensions(url)
+                        RepoGroup(repoUrl = url, metadata = metadata, extensions = extensions)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
                         _error.value = "Failed to load $url: ${e.message}"
-                        emptyList()
+                        null
                     }
                 }
-                _extensions.value = all.map { it to repository.getInstallState(it) }
+                _repoGroups.value = groups
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -74,11 +84,36 @@ class MarketplaceViewModel @Inject constructor(
         }
     }
 
+    fun getInstallState(info: ExtensionInfo): InstallState =
+        marketplaceRepository.getInstallState(info)
+
+    fun install(info: ExtensionInfo) {
+        viewModelScope.launch {
+            setStep(info.id, InstallStep.DOWNLOADING)
+            try {
+                val apkFile = marketplaceRepository.downloadApk(info.apkUrl, info.sha256)
+                setStep(info.id, InstallStep.INSTALLING)
+                extensionManager.installExtension(apkFile)
+                // Step resets to IDLE after system dialog; installer broadcast updates state
+                setStep(info.id, InstallStep.IDLE)
+            } catch (e: CancellationException) {
+                setStep(info.id, InstallStep.IDLE)
+                throw e
+            } catch (e: Exception) {
+                setStep(info.id, InstallStep.ERROR)
+                _error.value = "Failed to install ${info.name}: ${e.message}"
+            }
+        }
+    }
+
+    fun uninstall(pkg: String) {
+        extensionManager.uninstallExtension(pkg)
+    }
+
     fun addRepo(url: String) {
         viewModelScope.launch {
             try {
-                // Validate by fetching metadata
-                repository.fetchRepoMetadata(url)
+                marketplaceRepository.fetchRepoMetadata(url)
                 repoRepository.addRepoUrl(url)
             } catch (e: CancellationException) {
                 throw e
@@ -89,37 +124,12 @@ class MarketplaceViewModel @Inject constructor(
     }
 
     fun removeRepo(url: String) {
-        viewModelScope.launch {
-            repoRepository.removeRepoUrl(url)
-        }
-    }
-
-    fun install(info: ExtensionInfo) {
-        viewModelScope.launch {
-            try {
-                context.cacheDir.listFiles { f -> f.extension == "apk" }?.forEach { it.delete() }
-                val apkFile = repository.downloadApk(info.apkUrl, info.sha256)
-                installExtension(apkFile)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                _error.value = "Failed to install ${info.name}: ${e.message}"
-            }
-        }
+        viewModelScope.launch { repoRepository.removeRepoUrl(url) }
     }
 
     fun clearError() { _error.value = null }
 
-    // Keep backward compat name
-    fun clearInstallError() = clearError()
-
-    private fun installExtension(apkFile: File) {
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", apkFile)
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        context.startActivity(intent)
+    private fun setStep(pkg: String, step: InstallStep) {
+        _installSteps.update { it + (pkg to step) }
     }
 }
