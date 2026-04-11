@@ -291,6 +291,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     }
                     composable("marketplace") {
                         MarketplaceScreen(
+                            onNavigateUp = { navController.navigateUp() },
                             onNavigateToManageRepos = { navController.navigate("manage_repos") },
                         )
                     }

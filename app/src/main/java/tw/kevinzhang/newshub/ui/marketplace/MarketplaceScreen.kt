@@ -28,10 +28,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,6 +60,7 @@ import tw.kevinzhang.newshub.ui.component.TitleMediumText
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun MarketplaceScreen(
+    onNavigateUp: () -> Unit,
     onNavigateToManageRepos: () -> Unit,
     viewModel: MarketplaceViewModel = hiltViewModel(),
 ) {
@@ -77,6 +82,11 @@ fun MarketplaceScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Marketplace") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateUp) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                },
                 actions = {
                     TextButton(onClick = onNavigateToManageRepos) {
                         Text("管理來源")
