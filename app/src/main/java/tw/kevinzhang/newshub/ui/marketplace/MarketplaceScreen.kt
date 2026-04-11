@@ -1,8 +1,5 @@
 package tw.kevinzhang.newshub.ui.marketplace
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -75,17 +72,6 @@ fun MarketplaceScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedInfo by remember { mutableStateOf<ExtensionInfo?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val context = androidx.compose.ui.platform.LocalContext.current
-
-    LaunchedEffect(Unit) {
-        viewModel.effects.collect { effect ->
-            when (effect) {
-                is MarketplaceEffect.LaunchIntent -> {
-                    (context.findActivity() ?: context).startActivity(effect.intent)
-                }
-            }
-        }
-    }
 
     LaunchedEffect(error) {
         val msg = error ?: return@LaunchedEffect
@@ -469,8 +455,3 @@ private fun SourceRow(source: AvailableSource) {
     }
 }
 
-private tailrec fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
-}

@@ -86,30 +86,40 @@ class ExtensionManager @Inject constructor(
     }
 
     /**
-     * Creates an Intent to trigger the system package installer to install an APK file.
-     * The APK must have been downloaded to the app's cache directory.
+     * Triggers the system package installer to install an APK file.
      * Requires android.permission.REQUEST_INSTALL_PACKAGES.
      */
-    fun createInstallIntent(apkFile: File): Intent {
+    @Suppress("DEPRECATION")
+    fun installExtension(apkFile: File) {
         val authority = context.packageName + FILE_PROVIDER_AUTHORITY_SUFFIX
         val uri = FileProvider.getUriForFile(context, authority, apkFile)
-        return Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+        val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
-            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
         }
+        context.startActivity(intent)
     }
 
     /**
-     * Creates an Intent to trigger the system to uninstall the given extension package.
-     * Must be started from an Activity context; FLAG_ACTIVITY_NEW_TASK is set so it
-     * also works if the caller uses ApplicationContext.
+     * Triggers the system uninstaller for the given package.
+     * Requires android.permission.REQUEST_DELETE_PACKAGES.
+     * No-op if the package is not installed.
      */
     @Suppress("DEPRECATION")
-    fun createUninstallIntent(pkgName: String): Intent {
-        return Intent(Intent.ACTION_UNINSTALL_PACKAGE).apply {
+    fun uninstallExtension(pkgName: String) {
+        if (!isPackageInstalled(pkgName)) return
+        val intent = Intent(Intent.ACTION_UNINSTALL_PACKAGE).apply {
             data = Uri.parse("package:$pkgName")
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
+        context.startActivity(intent)
+    }
+
+    fun isPackageInstalled(pkgName: String): Boolean = try {
+        context.packageManager.getApplicationInfo(pkgName, 0)
+        true
+    } catch (e: PackageManager.NameNotFoundException) {
+        false
     }
 
     private fun scanInstalledExtensions(): List<InstalledExtension> {

@@ -1,14 +1,11 @@
 package tw.kevinzhang.newshub.ui.marketplace
 
-import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -23,10 +20,6 @@ import tw.kevinzhang.marketplace.data.RepoMetadata
 import tw.kevinzhang.newshub.repo.RepoRepository
 import javax.inject.Inject
 
-sealed class MarketplaceEffect {
-    data class LaunchIntent(val intent: Intent) : MarketplaceEffect()
-}
-
 data class RepoGroup(
     val repoUrl: String,
     val metadata: RepoMetadata,
@@ -39,9 +32,6 @@ class MarketplaceViewModel @Inject constructor(
     private val repoRepository: RepoRepository,
     private val extensionManager: ExtensionManager,
 ) : ViewModel() {
-
-    private val _effects = MutableSharedFlow<MarketplaceEffect>()
-    val effects = _effects.asSharedFlow()
 
     val repoUrls = repoRepository.getRepoUrls()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
@@ -109,9 +99,7 @@ class MarketplaceViewModel @Inject constructor(
             try {
                 val apkFile = marketplaceRepository.downloadApk(info.apkUrl, info.sha256)
                 setStep(info.id, InstallStep.INSTALLING)
-                val intent = extensionManager.createInstallIntent(apkFile)
-                _effects.emit(MarketplaceEffect.LaunchIntent(intent))
-                // Step resets to IDLE after system dialog; installer broadcast updates state
+                extensionManager.installExtension(apkFile)
                 setStep(info.id, InstallStep.IDLE)
             } catch (e: CancellationException) {
                 setStep(info.id, InstallStep.IDLE)
@@ -124,10 +112,7 @@ class MarketplaceViewModel @Inject constructor(
     }
 
     fun uninstall(pkg: String) {
-        viewModelScope.launch {
-            val intent = extensionManager.createUninstallIntent(pkg)
-            _effects.emit(MarketplaceEffect.LaunchIntent(intent))
-        }
+        extensionManager.uninstallExtension(pkg)
     }
 
     fun addRepo(url: String) {
