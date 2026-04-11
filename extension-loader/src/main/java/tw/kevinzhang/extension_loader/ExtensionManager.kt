@@ -5,9 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dalvik.system.PathClassLoader
 import kotlinx.coroutines.CoroutineScope
@@ -109,7 +109,7 @@ class ExtensionManager @Inject constructor(
     fun uninstallExtension(pkgName: String) {
         if (!isPackageInstalled(pkgName)) return
         val intent = Intent(Intent.ACTION_UNINSTALL_PACKAGE).apply {
-            data = Uri.parse("package:$pkgName")
+            data = "package:$pkgName".toUri()
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         context.startActivity(intent)
@@ -123,6 +123,8 @@ class ExtensionManager @Inject constructor(
     }
 
     private fun scanInstalledExtensions(): List<InstalledExtension> {
+        // FIXME: no call it
+        println("scanInstalledExtensions")
         return context.packageManager
             .getInstalledPackages(PackageManager.GET_META_DATA)
             .filter { pkg ->
@@ -135,7 +137,14 @@ class ExtensionManager @Inject constructor(
     private fun loadExtension(pkg: android.content.pm.PackageInfo): InstalledExtension? {
         return try {
             val appInfo = pkg.applicationInfo ?: return null
-            val className = appInfo.metaData?.getString(SOURCE_CLASS_KEY) ?: return null
+            println("appInfo.name ${appInfo.name}") // null
+            println("appInfo.metaData ${appInfo.metaData}") // Bundle[{newshub.extension.source_lang=zh-TW, newshub.extension.source_name=Gamer 巴哈姆特, newshub.extension.source_id=tw.kevinzhang.gamer, newshub.extension.source_class=.GamerSource, newshub.extension=true, newshub.extension.name=Gamer 巴哈姆特, newshub.extension.source_base_url=https://forum.gamer.com.tw}]
+            println("appInfo.sourceDir ${appInfo.sourceDir}") // /data/app/~~8VecuuAe2DUYlAjmh-jSmA==/tw.kevinzhang.newshub.extension.gamer-NbXj7imz2IRK1BibQu2Mgg==/base.apk
+            val rawClassName =
+                appInfo.metaData?.getString(SOURCE_CLASS_KEY) ?: return null // .GamerSource
+            val className =
+                if (rawClassName.startsWith(".")) pkg.packageName + rawClassName else rawClassName
+            println("rawClassName ${rawClassName} className ${className}") // rawClassName .GamerSource className tw.kevinzhang.newshub.extension.gamer.GamerSource
             val loader = PathClassLoader(appInfo.sourceDir, context.classLoader)
             val clazz = loader.loadClass(className)
             val source = clazz.getDeclaredConstructor().newInstance() as? Source ?: return null
