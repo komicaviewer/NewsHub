@@ -86,29 +86,30 @@ class ExtensionManager @Inject constructor(
     }
 
     /**
-     * Triggers the system package installer to install an APK file.
+     * Creates an Intent to trigger the system package installer to install an APK file.
      * The APK must have been downloaded to the app's cache directory.
      * Requires android.permission.REQUEST_INSTALL_PACKAGES.
      */
-    fun installExtension(apkFile: File) {
+    fun createInstallIntent(apkFile: File): Intent {
         val authority = context.packageName + FILE_PROVIDER_AUTHORITY_SUFFIX
         val uri = FileProvider.getUriForFile(context, authority, apkFile)
-        val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+        return Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
         }
-        context.startActivity(intent)
     }
 
     /**
-     * Triggers the system to uninstall the given extension package.
+     * Creates an Intent to trigger the system to uninstall the given extension package.
+     * Must be started from an Activity context; FLAG_ACTIVITY_NEW_TASK is set so it
+     * also works if the caller uses ApplicationContext.
      */
-    fun uninstallExtension(pkgName: String) {
-        val intent = Intent(Intent.ACTION_DELETE).apply {
+    @Suppress("DEPRECATION")
+    fun createUninstallIntent(pkgName: String): Intent {
+        return Intent(Intent.ACTION_UNINSTALL_PACKAGE).apply {
             data = Uri.parse("package:$pkgName")
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
-        context.startActivity(intent)
     }
 
     private fun scanInstalledExtensions(): List<InstalledExtension> {
