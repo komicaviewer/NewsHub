@@ -66,6 +66,7 @@ fun MarketplaceScreen(
 ) {
     val repoGroups by viewModel.repoGroups.collectAsStateWithLifecycle()
     val installSteps by viewModel.installSteps.collectAsStateWithLifecycle()
+    val installedPackageNames by viewModel.installedPackageNames.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -98,7 +99,7 @@ fun MarketplaceScreen(
     ) { innerPadding ->
 
         selectedInfo?.let { info ->
-            val installState = viewModel.getInstallState(info)
+            val installState = remember(info.id, installedPackageNames) { viewModel.getInstallState(info) }
             val step = installSteps[info.id] ?: InstallStep.IDLE
             ModalBottomSheet(
                 onDismissRequest = { selectedInfo = null },
@@ -182,7 +183,7 @@ fun MarketplaceScreen(
                 }
                 items(group.extensions, key = { it.id }) { info ->
                     val step = installSteps[info.id] ?: InstallStep.IDLE
-                    val installState = viewModel.getInstallState(info)
+                    val installState = remember(info.id, installedPackageNames) { viewModel.getInstallState(info) }
                     ExtensionListItem(
                         info = info,
                         installState = installState,

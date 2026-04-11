@@ -1,12 +1,15 @@
 package tw.kevinzhang.extension_loader
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.core.content.FileProvider
-import dalvik.system.PathClassLoader
 import dagger.hilt.android.qualifiers.ApplicationContext
+import dalvik.system.PathClassLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,6 +39,33 @@ class ExtensionManager @Inject constructor(
 
     init {
         refreshAllExtensions()
+        registerPackageReceiver()
+    }
+
+    private fun registerPackageReceiver() {
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addDataScheme("package")
+        }
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                val pkgName = intent.data?.schemeSpecificPart ?: return
+                when (intent.action) {
+                    Intent.ACTION_PACKAGE_ADDED,
+                    Intent.ACTION_PACKAGE_REPLACED -> notifyPackageChanged(pkgName)
+
+                    Intent.ACTION_PACKAGE_REMOVED -> notifyPackageRemoved(pkgName)
+                }
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            context.registerReceiver(receiver, filter)
+        }
     }
 
     fun refreshAllExtensions() {
@@ -81,13 +111,15 @@ class ExtensionManager @Inject constructor(
         context.startActivity(intent)
     }
 
-    private fun scanInstalledExtensions(): List<InstalledExtension> =
-        context.packageManager
+    private fun scanInstalledExtensions(): List<InstalledExtension> {
+        return context.packageManager
             .getInstalledPackages(PackageManager.GET_META_DATA)
             .filter { pkg ->
                 pkg.applicationInfo?.metaData?.containsKey(EXTENSION_META_KEY) == true
             }
             .mapNotNull { pkg -> loadExtension(pkg) }
+    }
+
 
     private fun loadExtension(pkg: android.content.pm.PackageInfo): InstalledExtension? {
         return try {

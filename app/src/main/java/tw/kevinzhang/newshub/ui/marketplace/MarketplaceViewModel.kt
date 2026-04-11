@@ -7,6 +7,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -34,6 +35,11 @@ class MarketplaceViewModel @Inject constructor(
 
     val repoUrls = repoRepository.getRepoUrls()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    /** 已安裝的 extension package names，供 UI 做 reactive recomposition key */
+    val installedPackageNames = extensionManager.installedExtensions
+        .map { list -> list.map { it.pkgName }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet<String>())
 
     private val _repoGroups = MutableStateFlow<List<RepoGroup>>(emptyList())
     val repoGroups = _repoGroups.asStateFlow()
