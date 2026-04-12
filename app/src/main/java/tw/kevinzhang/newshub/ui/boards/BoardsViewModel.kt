@@ -39,10 +39,17 @@ class BoardsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             _sources.value = extensionLoader.getAllSources().map { source ->
-                source.loginUrl?.let { url ->
-                    if (cookieJar.hasCookiesForUrl(url)) authRepository.restoreLoginStatus(url)
+                // Restore login status from persisted cookies on app restart.
+                if (source.needsLogin) {
+                    val cookieUrl = authRepository.cookieUrls.value[source.id]
+                    if (cookieUrl != null && cookieJar.hasCookiesForUrl(cookieUrl)) {
+                        authRepository.setLoggedIn(source.id, cookieUrl)
+                    }
                 }
-                SourceWithBoards(source = source, boards = runCatching { source.getBoards() }.getOrDefault(emptyList()).distinctBy { it.url })
+                SourceWithBoards(
+                    source = source,
+                    boards = runCatching { source.getBoards() }.getOrDefault(emptyList()).distinctBy { it.url },
+                )
             }
             _isLoading.value = false
         }

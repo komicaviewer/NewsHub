@@ -17,8 +17,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
 import tw.kevinzhang.extension_api.Source
-import tw.kevinzhang.extension_api.SourceContext
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,7 +30,6 @@ private const val FILE_PROVIDER_AUTHORITY_SUFFIX = ".provider"
 @Singleton
 class ExtensionManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val sourceContext: SourceContext,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -123,7 +122,6 @@ class ExtensionManager @Inject constructor(
     }
 
     private fun scanInstalledExtensions(): List<InstalledExtension> {
-        // FIXME: no call it
         println("scanInstalledExtensions")
         return context.packageManager
             .getInstalledPackages(PackageManager.GET_META_DATA)
@@ -133,22 +131,16 @@ class ExtensionManager @Inject constructor(
             .mapNotNull { pkg -> loadExtension(pkg) }
     }
 
-
     private fun loadExtension(pkg: android.content.pm.PackageInfo): InstalledExtension? {
         return try {
             val appInfo = pkg.applicationInfo ?: return null
-            println("appInfo.name ${appInfo.name}") // null
-            println("appInfo.metaData ${appInfo.metaData}") // Bundle[{newshub.extension.source_lang=zh-TW, newshub.extension.source_name=Gamer 巴哈姆特, newshub.extension.source_id=tw.kevinzhang.gamer, newshub.extension.source_class=.GamerSource, newshub.extension=true, newshub.extension.name=Gamer 巴哈姆特, newshub.extension.source_base_url=https://forum.gamer.com.tw}]
-            println("appInfo.sourceDir ${appInfo.sourceDir}") // /data/app/~~8VecuuAe2DUYlAjmh-jSmA==/tw.kevinzhang.newshub.extension.gamer-NbXj7imz2IRK1BibQu2Mgg==/base.apk
             val rawClassName =
-                appInfo.metaData?.getString(SOURCE_CLASS_KEY) ?: return null // .GamerSource
+                appInfo.metaData?.getString(SOURCE_CLASS_KEY) ?: return null
             val className =
                 if (rawClassName.startsWith(".")) pkg.packageName + rawClassName else rawClassName
-            println("rawClassName ${rawClassName} className ${className}") // rawClassName .GamerSource className tw.kevinzhang.newshub.extension.gamer.GamerSource
             val loader = PathClassLoader(appInfo.sourceDir, context.classLoader)
             val clazz = loader.loadClass(className)
             val source = clazz.getDeclaredConstructor().newInstance() as? Source ?: return null
-            source.onAttach(sourceContext)
 
             InstalledExtension(
                 pkgName = pkg.packageName,

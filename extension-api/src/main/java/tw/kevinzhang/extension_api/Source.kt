@@ -1,5 +1,6 @@
 package tw.kevinzhang.extension_api
 
+import okhttp3.OkHttpClient
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.CommentPage
 import tw.kevinzhang.extension_api.model.Post
@@ -29,18 +30,12 @@ interface Source {
      */
     val alwaysUseRawImage: Boolean
 
-    /** Whether this source requires the user to be logged in. Default: false. */
-    val requiresLogin: Boolean
-
-    /** The login page URL to open in a WebView when [requiresLogin] is true. */
-    val loginUrl: String?
-
     /**
-     * Optional JavaScript to execute after the login page finishes loading.
-     * Useful when login is implemented as a JS-triggered modal rather than a separate page
-     * (e.g. `"User.Login.requireLoginIframe();"` for Gamer 巴哈姆特).
+     * If true, the host app will launch this extension's LoginActivity (by package name
+     * convention: `{source.id}.LoginActivity`) when the user needs to authenticate.
+     * For extension sources, [id] must match the APK package name.
      */
-    val loginPageLoadJs: String?
+    val needsLogin: Boolean
 
     suspend fun getBoards(): List<Board>
     suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary>
@@ -56,9 +51,10 @@ interface Source {
     fun getWebUrl(summary: ThreadSummary): String? = null
 
     /**
-     * Called by the host app after the source is loaded, injecting a [SourceContext] that
-     * the source can use to request auth UI. Default implementation is a no-op, so existing
-     * extensions are unaffected.
+     * Called by the host app after the source is loaded, injecting a shared [OkHttpClient]
+     * that includes the host app's persistent cookie jar. Sources that require login should
+     * use this client for all HTTP requests so that login cookies are sent automatically.
+     * Default implementation is a no-op, so built-in sources are unaffected.
      */
-    fun onAttach(context: SourceContext) {}
+    fun onAttach(client: OkHttpClient) {}
 }

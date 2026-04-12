@@ -24,9 +24,7 @@ class _2catSource @Inject constructor(
     override val iconUrl: String = "https://2cat.uk/futaba.ico"
     override val supportsCommentPagination = false
     override val alwaysUseRawImage = true
-    override val requiresLogin = false
-    override val loginUrl = null
-    override val loginPageLoadJs: String? = null
+    override val needsLogin = false
 
     override suspend fun getBoards(): List<ExtBoard> =
         boards()

@@ -1,104 +1,80 @@
 package tw.kevinzhang.newshub.auth
 
-import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import tw.kevinzhang.extension_api.AuthResult
 import tw.kevinzhang.newshub.di.ApplicationScope
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private const val TAG = "AuthRepository"
-private val LOGIN_STATUS_KEY = stringPreferencesKey("login_status_map")
+private val LOGIN_STATUS_KEY = stringPreferencesKey("login_status_map_v2")
+private val LOGIN_COOKIE_URL_KEY = stringPreferencesKey("login_cookie_url_map_v2")
 
-enum class LoginStatus { NONE, LOGGED_IN, FAILED }
-
-data class AuthRequest(val loginUrl: String, val onPageLoadJs: String? = null)
+enum class LoginStatus { NONE, LOGGED_IN }
 
 @Singleton
 class AuthRepository @Inject constructor(
     private val dataStore: DataStore<Preferences>,
     @ApplicationScope private val applicationScope: CoroutineScope,
 ) {
-
     private val gson = Gson()
 
-    private val _authRequests = MutableSharedFlow<AuthRequest>(extraBufferCapacity = 1)
-    val authRequests = _authRequests.asSharedFlow()
-
+    /** Map of sourceId → LoginStatus, persisted across restarts. */
     val loginStatuses = dataStore.data
-        .map { prefs -> deserialize(prefs[LOGIN_STATUS_KEY]) }
+        .map { prefs -> deserializeStatus(prefs[LOGIN_STATUS_KEY]) }
         .stateIn(applicationScope, SharingStarted.Eagerly, emptyMap())
 
-    private var pendingResult: CompletableDeferred<AuthResult>? = null
-    private var pendingLoginUrl: String? = null
+    /** Map of sourceId → cookieUrl, used to clear the right cookies on logout. */
+    val cookieUrls = dataStore.data
+        .map { prefs -> deserializeStrings(prefs[LOGIN_COOKIE_URL_KEY]) }
+        .stateIn(applicationScope, SharingStarted.Eagerly, emptyMap())
 
-    suspend fun requestAuth(loginUrl: String, onPageLoadJs: String? = null): AuthResult {
-        val deferred = CompletableDeferred<AuthResult>()
-        pendingResult = deferred
-        pendingLoginUrl = loginUrl
-        _authRequests.emit(AuthRequest(loginUrl, onPageLoadJs))
-        return deferred.await()
-    }
-
-    fun completeAuth(result: AuthResult) {
-        val loginUrl = pendingLoginUrl ?: return
-        val status = when (result) {
-            AuthResult.Success -> LoginStatus.LOGGED_IN
-            AuthResult.Cancelled -> LoginStatus.FAILED
-        }
-        Log.d(TAG, "completeAuth loginUrl=$loginUrl status=$status")
+    fun setLoggedIn(sourceId: String, cookieUrl: String) {
         applicationScope.launch {
             dataStore.edit { prefs ->
-                val current = deserialize(prefs[LOGIN_STATUS_KEY])
-                prefs[LOGIN_STATUS_KEY] = serialize(current + (loginUrl to status))
-            }
-        }
-        pendingResult?.complete(result)
-        pendingResult = null
-        pendingLoginUrl = null
-    }
-
-    fun restoreLoginStatus(loginUrl: String) {
-        applicationScope.launch {
-            dataStore.edit { prefs ->
-                val current = deserialize(prefs[LOGIN_STATUS_KEY])
-                if (current[loginUrl] == null) {
-                    prefs[LOGIN_STATUS_KEY] = serialize(current + (loginUrl to LoginStatus.LOGGED_IN))
-                }
+                prefs[LOGIN_STATUS_KEY] = serializeStatus(
+                    deserializeStatus(prefs[LOGIN_STATUS_KEY]) + (sourceId to LoginStatus.LOGGED_IN)
+                )
+                prefs[LOGIN_COOKIE_URL_KEY] = serializeStrings(
+                    deserializeStrings(prefs[LOGIN_COOKIE_URL_KEY]) + (sourceId to cookieUrl)
+                )
             }
         }
     }
 
-    fun logout(loginUrl: String) {
-        Log.d(TAG, "logout loginUrl=$loginUrl")
+    fun logout(sourceId: String) {
         applicationScope.launch {
             dataStore.edit { prefs ->
-                val current = deserialize(prefs[LOGIN_STATUS_KEY])
-                prefs[LOGIN_STATUS_KEY] = serialize(current + (loginUrl to LoginStatus.NONE))
+                prefs[LOGIN_STATUS_KEY] = serializeStatus(
+                    deserializeStatus(prefs[LOGIN_STATUS_KEY]) + (sourceId to LoginStatus.NONE)
+                )
             }
         }
     }
 
-    private fun deserialize(json: String?): Map<String, LoginStatus> {
+    private fun deserializeStatus(json: String?): Map<String, LoginStatus> {
         if (json == null) return emptyMap()
         val type = object : TypeToken<Map<String, String>>() {}.type
         val raw: Map<String, String> = gson.fromJson(json, type) ?: return emptyMap()
         return raw.mapValues { (_, v) -> runCatching { LoginStatus.valueOf(v) }.getOrDefault(LoginStatus.NONE) }
     }
 
-    private fun serialize(map: Map<String, LoginStatus>): String =
+    private fun serializeStatus(map: Map<String, LoginStatus>): String =
         gson.toJson(map.mapValues { it.value.name })
+
+    private fun deserializeStrings(json: String?): Map<String, String> {
+        if (json == null) return emptyMap()
+        val type = object : TypeToken<Map<String, String>>() {}.type
+        return gson.fromJson(json, type) ?: emptyMap()
+    }
+
+    private fun serializeStrings(map: Map<String, String>): String = gson.toJson(map)
 }

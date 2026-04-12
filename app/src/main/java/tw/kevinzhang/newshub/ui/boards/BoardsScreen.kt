@@ -54,8 +54,8 @@ import tw.kevinzhang.newshub.ui.component.TitleMediumText
 @Composable
 fun BoardsScreen(
     onNavigateToMarketplace: () -> Unit,
-    onLoginClick: (loginUrl: String, onPageLoadJs: String?) -> Unit = { _, _ -> },
-    onLogoutClick: (loginUrl: String) -> Unit = {},
+    onLoginClick: (sourceId: String) -> Unit = {},
+    onLogoutClick: (sourceId: String) -> Unit = {},
     viewModel: BoardsViewModel = hiltViewModel(),
 ) {
     val sources by viewModel.sources.collectAsStateWithLifecycle()
@@ -117,17 +117,14 @@ fun BoardsScreen(
                                             text = source.name,
                                         )
                                     }
-                                    if (source.requiresLogin && source.loginUrl != null) {
-                                        val status = loginStatuses[source.loginUrl] ?: LoginStatus.NONE
+                                    if (source.needsLogin) {
+                                        val status = loginStatuses[source.id] ?: LoginStatus.NONE
                                         when (status) {
                                             LoginStatus.LOGGED_IN -> TextButton(
-                                                onClick = { onLogoutClick(source.loginUrl!!) },
+                                                onClick = { onLogoutClick(source.id) },
                                             ) { Text("Logout") }
-                                            LoginStatus.FAILED -> TextButton(
-                                                onClick = { onLoginClick(source.loginUrl!!, source.loginPageLoadJs) },
-                                            ) { Text("Retry") }
                                             LoginStatus.NONE -> TextButton(
-                                                onClick = { onLoginClick(source.loginUrl!!, source.loginPageLoadJs) },
+                                                onClick = { onLoginClick(source.id) },
                                             ) { Text("Login") }
                                         }
                                     }

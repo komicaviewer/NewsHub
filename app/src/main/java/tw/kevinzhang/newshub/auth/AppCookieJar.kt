@@ -150,6 +150,17 @@ class AppCookieJar @Inject constructor(
         }
     }
 
+    /**
+     * Parses a raw cookie string returned by [android.webkit.CookieManager.getCookie] and
+     * adds the cookies to the jar. Called after the extension's LoginActivity returns its result.
+     */
+    fun addCookiesFromString(url: String, rawCookies: String) {
+        val httpUrl = runCatching { url.toHttpUrl() }.getOrNull() ?: return
+        val cookies = rawCookies.split(";")
+            .mapNotNull { Cookie.parse(httpUrl, it.trim()) }
+        if (cookies.isNotEmpty()) addCookies(httpUrl, cookies)
+    }
+
 }
 
 /** Strips the leading subdomain to get the eTLD+1 (e.g., www.gamer.com.tw → gamer.com.tw). */
