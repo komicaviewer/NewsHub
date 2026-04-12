@@ -1,5 +1,5 @@
 plugins {
-    id 'kotlin-kapt'
+    id 'com.google.devtools.ksp'
     id 'com.android.library'
     id 'org.jetbrains.kotlin.android'
     id "dagger.hilt.android.plugin"
@@ -38,7 +38,7 @@ dependencies {
     implementation "com.squareup.okhttp3:okhttp:4.9.3"
     // hilt
     implementation "com.google.dagger:hilt-android:$versions.hilt"
-    kapt "com.google.dagger:hilt-android-compiler:$versions.hilt"
+    ksp "com.google.dagger:hilt-android-compiler:$versions.hilt"
     // coroutines
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$versions.coroutines"
     // unit test

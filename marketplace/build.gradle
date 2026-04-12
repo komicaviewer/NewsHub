@@ -1,7 +1,7 @@
 plugins {
     id 'com.android.library'
     id 'org.jetbrains.kotlin.android'
-    id 'kotlin-kapt'
+    id 'com.google.devtools.ksp'
     id 'dagger.hilt.android.plugin'
 }
 android {
@@ -16,7 +16,7 @@ android {
 }
 dependencies {
     implementation "com.google.dagger:hilt-android:$versions.hilt"
-    kapt "com.google.dagger:hilt-android-compiler:$versions.hilt"
+    ksp "com.google.dagger:hilt-android-compiler:$versions.hilt"
     implementation "com.squareup.okhttp3:okhttp:$versions.okhttp"
     implementation "com.google.code.gson:gson:$versions.gson"
     implementation "androidx.core:core-ktx:$versions.core_ktx"

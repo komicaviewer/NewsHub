@@ -1,7 +1,8 @@
 plugins {
-    id 'kotlin-kapt'
+    id 'com.google.devtools.ksp'
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
     id "dagger.hilt.android.plugin"
 }
 
@@ -53,9 +54,7 @@ android {
     buildFeatures {
         compose true
     }
-    composeOptions {
-        kotlinCompilerExtensionVersion "1.5.14"
-    }
+
     packagingOptions {
         resources {
             excludes += '/META-INF/{AL2.0,LGPL2.1}'
@@ -97,7 +96,7 @@ dependencies {
     implementation "androidx.work:work-runtime-ktx:$versions.work"
     // hilt
     implementation "com.google.dagger:hilt-android:$versions.hilt"
-    kapt "com.google.dagger:hilt-android-compiler:$versions.hilt"
+    ksp "com.google.dagger:hilt-android-compiler:$versions.hilt"
     implementation "androidx.hilt:hilt-navigation:$versions.androidx_hilt"
     implementation "androidx.hilt:hilt-navigation-compose:$versions.androidx_hilt"
     implementation "androidx.hilt:hilt-navigation-fragment:$versions.androidx_hilt"
@@ -115,7 +114,7 @@ dependencies {
     implementation "io.coil-kt:coil-video:$versions.coil"
     implementation "androidx.media3:media3-exoplayer:$versions.media3"
     implementation "androidx.media3:media3-ui:$versions.media3"
-    implementation "com.pierfrancescosoffritti.androidyoutubeplayer:core:12.1.0"
+    implementation "com.pierfrancescosoffritti.androidyoutubeplayer:core:13.0.0"
 
 
     // unit test

@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        kotlin_version = '1.9.24'
+        kotlin_version = '2.1.0'
         versions = [
                 appcompat: '1.5.0',
                 compose: '1.6.8',
@@ -11,16 +11,16 @@ buildscript {
                 coil: '2.2.0',
                 paging: '3.2.1',
                 coroutines: '1.6.4',
-                kotlin: '1.9.24',
+                kotlin: '2.1.0',
                 core_ktx: '1.13.1',
                 lifecycle: '2.6.2',
                 okhttp: '4.10.0',
                 jsoup: '1.12.1',
                 junit: '5.3.1',
                 gson: '2.8.5',
-                room: '2.6.1',
-                dagger: '2.51.1',
-                hilt: '2.51.1',
+                room: '2.7.0',
+                dagger: '2.56',
+                hilt: '2.56',
                 androidx_hilt: '1.0.0',
                 datastore: '1.0.0-rc01',
                 work: '2.7.0',
@@ -35,15 +35,17 @@ buildscript {
     }
 
     dependencies {
-        classpath "com.google.dagger:hilt-android-gradle-plugin:2.51.1"
+        classpath "com.google.dagger:hilt-android-gradle-plugin:2.56"
         classpath "de.mannodermaus.gradle.plugins:android-junit5:1.8.2.1"
     }
 }// Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
     id 'com.android.application' version '8.13.2' apply false
     id 'com.android.library' version '8.13.2' apply false
-    id 'org.jetbrains.kotlin.android' version '1.9.24' apply false
-    id 'org.jetbrains.kotlin.jvm' version '1.9.24' apply false
+    id 'org.jetbrains.kotlin.android' version '2.1.0' apply false
+    id 'org.jetbrains.kotlin.jvm' version '2.1.0' apply false
+    id 'org.jetbrains.kotlin.plugin.compose' version '2.1.0' apply false
+    id 'com.google.devtools.ksp' version '2.1.0-1.0.29' apply false
 }
 
 task clean(type: Delete) {
@@ -53,9 +55,9 @@ task clean(type: Delete) {
 subprojects {
     configurations.all {
         resolutionStrategy {
-            force "org.jetbrains.kotlin:kotlin-stdlib:1.9.24"
-            force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24"
-            force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.24"
+            force "org.jetbrains.kotlin:kotlin-stdlib:2.1.0"
+            force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.1.0"
+            force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.1.0"
         }
     }
 }
