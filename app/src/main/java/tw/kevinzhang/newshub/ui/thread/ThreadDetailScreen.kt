@@ -31,10 +31,10 @@ import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -66,13 +66,13 @@ import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.newshub.filterRepliesBy
 import tw.kevinzhang.newshub.ui.component.AppCard
-import tw.kevinzhang.newshub.ui.component.swipeToGoBack
 import tw.kevinzhang.newshub.ui.component.BodySmallText
 import tw.kevinzhang.newshub.ui.component.LabelMediumText
 import tw.kevinzhang.newshub.ui.component.LabelSmallText
 import tw.kevinzhang.newshub.ui.component.Small
 import tw.kevinzhang.newshub.ui.component.View
 import tw.kevinzhang.newshub.ui.component.gallery.PostGallery
+import tw.kevinzhang.newshub.ui.component.swipeToGoBack
 
 private val WEBVIEW_TEXT_ZOOM_STEPS = listOf(75, 100, 125, 150, 175, 200)
 private const val HIGHLIGHT_DURATION_MS = 1500
@@ -119,7 +119,9 @@ fun ThreadDetailScreen(
         if (!isRefreshing) pullToRefreshState.endRefresh()
     }
 
-    Box(modifier = Modifier.fillMaxSize().swipeToGoBack(onNavigateUp)) {
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .swipeToGoBack(onNavigateUp)) {
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -328,7 +330,7 @@ private fun ExtPostCard(
             paragraphs = post.content,
             startIndex = startIndex,
             onDismissRequest = { galleryStartIndex = null },
-            onReplyToClick = { },
+            onReplyToClick = onReplyToClick,
         )
     }
 }

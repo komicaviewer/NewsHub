@@ -409,6 +409,7 @@ fun Paragraph.ReplyTo.View(onReplyToClick: ((String) -> Unit)? = null) {
         TextButton(
             onClick = { onReplyToClick(targetId) },
             contentPadding = PaddingValues(0.dp),
+            shape = RectangleShape,
         ) {
             if (preview == null) {
                 Text(">> $targetId")
@@ -431,6 +432,7 @@ fun Paragraph.ReplyTo.Small(onReplyToClick: ((String) -> Unit)? = null) {
         TextButton(
             onClick = { onReplyToClick(targetId) },
             contentPadding = PaddingValues(0.dp),
+            shape = RectangleShape,
         ) {
             if (preview == null) {
                 Text(">> $targetId")

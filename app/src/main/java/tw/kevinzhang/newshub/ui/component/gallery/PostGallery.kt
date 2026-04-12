@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -108,11 +109,15 @@ fun PostGallery(
             }
 
             // ── 下方文章內容 ──────────────────────────────────────────
+            Surface(
+                tonalElevation = 2.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(0.5f),
+            ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.5f)
-                    .background(MaterialTheme.colorScheme.surface)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
@@ -120,11 +125,12 @@ fun PostGallery(
                     when (paragraph) {
                         is Paragraph.Text -> paragraph.View()
                         is Paragraph.Quote -> paragraph.Small()
-                        is Paragraph.ReplyTo -> paragraph.View()
+                        is Paragraph.ReplyTo -> paragraph.Small(onReplyToClick)
                         is Paragraph.Link -> paragraph.View()
                         is Paragraph.ImageInfo, is Paragraph.VideoInfo -> Unit
                     }
                 }
+            }
             }
         }
     }
