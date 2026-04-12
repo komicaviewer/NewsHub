@@ -1,6 +1,5 @@
 package tw.kevinzhang.newshub.ui.component
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -478,7 +477,7 @@ fun Paragraph.ImageInfo.View(
         if (alwaysUseRawImage) raw else thumb
     var m = Modifier.fillMaxWidth()
     if (onClick != null) {
-        m = m.clickable { onClick() }
+        m = m.appClickable { onClick() }
     }
     url?.let { AsyncImage(model = it, modifier = m, contentDescription = null) }
 }
@@ -496,7 +495,7 @@ fun Paragraph.VideoInfo.View(onClick: (() -> Unit)? = null) {
 
     var m = Modifier.fillMaxWidth()
     if (onClick != null) {
-        m = m.clickable { onClick() }
+        m = m.appClickable { onClick() }
     }
 
     Box(

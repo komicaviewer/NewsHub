@@ -6,7 +6,6 @@ import android.webkit.WebViewClient
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -71,6 +70,7 @@ import tw.kevinzhang.newshub.ui.component.LabelMediumText
 import tw.kevinzhang.newshub.ui.component.LabelSmallText
 import tw.kevinzhang.newshub.ui.component.Small
 import tw.kevinzhang.newshub.ui.component.View
+import tw.kevinzhang.newshub.ui.component.appClickable
 import tw.kevinzhang.newshub.ui.component.gallery.PostGallery
 import tw.kevinzhang.newshub.ui.component.swipeToGoBack
 
@@ -387,7 +387,7 @@ private fun PostCard(
                             modifier = Modifier.size(12.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        BodySmallText("$it", modifier = Modifier.clickable { onShowReplies() })
+                        BodySmallText("$it", modifier = Modifier.appClickable { onShowReplies() })
                     }
                     post.comments.size.takeIf { it > 0 }?.let {
                         Icon(

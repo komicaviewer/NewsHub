@@ -2,7 +2,6 @@ package tw.kevinzhang.newshub.ui.collection
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +44,7 @@ import androidx.emoji2.emojipicker.EmojiPickerView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tw.kevinzhang.newshub.ui.component.BodySmallText
+import tw.kevinzhang.newshub.ui.component.appClickable
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -117,7 +117,7 @@ fun EditCollectionScreen(
                         .clip(RoundedCornerShape(20.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(20.dp))
-                        .clickable { showEmojiPicker = true },
+                        .appClickable { showEmojiPicker = true },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(text = emoji, fontSize = 40.sp)

@@ -1,6 +1,5 @@
 package tw.kevinzhang.newshub.ui.collection
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tw.kevinzhang.newshub.ui.component.LabelMediumText
+import tw.kevinzhang.newshub.ui.component.appClickable
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,7 +100,7 @@ fun BoardPickerScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onBoardToggle(selected) }
+                                .appClickable { onBoardToggle(selected) }
                                 .padding(horizontal = 16.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {

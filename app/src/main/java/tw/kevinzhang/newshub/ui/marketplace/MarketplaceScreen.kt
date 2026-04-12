@@ -2,7 +2,6 @@ package tw.kevinzhang.newshub.ui.marketplace
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +55,7 @@ import tw.kevinzhang.marketplace.data.ExtensionInfo
 import tw.kevinzhang.marketplace.data.InstallState
 import tw.kevinzhang.marketplace.data.InstallStep
 import tw.kevinzhang.newshub.ui.component.TitleMediumText
+import tw.kevinzhang.newshub.ui.component.appClickable
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -215,7 +215,7 @@ private fun ExtensionListItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .appClickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -454,4 +454,3 @@ private fun SourceRow(source: AvailableSource) {
         }
     }
 }
-

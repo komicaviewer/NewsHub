@@ -1,7 +1,6 @@
 package tw.kevinzhang.newshub.ui.boards
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +48,7 @@ import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.newshub.auth.LoginStatus
 import tw.kevinzhang.newshub.ui.component.AppCard
 import tw.kevinzhang.newshub.ui.component.TitleMediumText
+import tw.kevinzhang.newshub.ui.component.appClickable
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -228,7 +228,7 @@ private fun BoardRow(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
+                                .appClickable {
                                     selectedIds = if (collection.id in selectedIds)
                                         selectedIds - collection.id
                                     else
