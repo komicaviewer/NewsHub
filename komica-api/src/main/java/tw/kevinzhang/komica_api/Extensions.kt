@@ -40,6 +40,11 @@ fun String.isImageUrl(): Boolean {
     return imageExtensions.any { lowercase().contains(it) }
 }
 
+fun String.isVideoUrl(): Boolean {
+    val videoExtensions = listOf(".webm")
+    return videoExtensions.any { lowercase().contains(it) }
+}
+
 fun String.replaceJpnWeekday(): String {
     val dict = mapOf(
         "月" to "Mon",

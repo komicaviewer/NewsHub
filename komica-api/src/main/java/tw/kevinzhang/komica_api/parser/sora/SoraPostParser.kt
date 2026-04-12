@@ -7,6 +7,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.TextNode
 import tw.kevinzhang.komica_api.isImageUrl
+import tw.kevinzhang.komica_api.isVideoUrl
 import tw.kevinzhang.komica_api.model.KImageInfo
 import tw.kevinzhang.komica_api.model.KLink
 import tw.kevinzhang.komica_api.model.KParagraph
@@ -15,6 +16,7 @@ import tw.kevinzhang.komica_api.model.KPostBuilder
 import tw.kevinzhang.komica_api.model.KQuote
 import tw.kevinzhang.komica_api.model.KReplyTo
 import tw.kevinzhang.komica_api.model.KText
+import tw.kevinzhang.komica_api.model.KVideoInfo
 import tw.kevinzhang.komica_api.normalizeUrl
 import tw.kevinzhang.komica_api.parser.Parser
 import tw.kevinzhang.komica_api.parser.PostHeadParser
@@ -83,22 +85,31 @@ class SoraPostParser(
             val href = link.attr("href")
             val img = link.selectFirst("img.img")
 
-            if (img != null && href.isNotEmpty() && href.isImageUrl()) {
-                val thumbnailUrl = img.attr("src").ifEmpty {
-                    img.attr("data-original")
-                }
+            if (img != null && href.isNotEmpty()) {
+                if (href.isImageUrl()) {
+                    val thumbnailUrl = img.attr("src").ifEmpty {
+                        img.attr("data-original")
+                    }
 
-                if (href.isNotEmpty() && thumbnailUrl.isNotEmpty()) {
+                    if (thumbnailUrl.isNotEmpty()) {
+                        builder.addContent(
+                            KImageInfo(
+                                thumbnailUrl.normalizeUrl(),
+                                href.normalizeUrl(),
+                            )
+                        )
+                    } else {
+                        builder.addContent(KImageInfo(null, href.normalizeUrl()))
+                    }
+                } else if (href.isVideoUrl()) {
                     builder.addContent(
-                        KImageInfo(
-                            thumbnailUrl.normalizeUrl(),
+                        KVideoInfo(
                             href.normalizeUrl(),
                         )
                     )
-                } else if (href.isNotEmpty()) {
-                    builder.addContent(KImageInfo(null, href.normalizeUrl()))
                 }
             }
+
         }
     }
 }
