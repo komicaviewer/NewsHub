@@ -5,9 +5,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
-import com.pierfrancesco.soffritti.android.youtubeplayer.core.player.YouTubePlayer
-import com.pierfrancesco.soffritti.android.youtubeplayer.core.player.listeners.AbstractYouTubePlayerListener
-import com.pierfrancesco.soffritti.android.youtubeplayer.core.ui.YouTubePlayerView
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 
 @Composable
 fun YouTubePlayer(videoId: String) {
