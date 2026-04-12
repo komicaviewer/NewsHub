@@ -1,8 +1,8 @@
 plugins {
-    id 'com.google.devtools.ksp'
-    id 'com.android.library'
-    id 'org.jetbrains.kotlin.android'
-    id "dagger.hilt.android.plugin"
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.hilt)
 }
 
 android {
@@ -35,13 +35,13 @@ android {
 dependencies {
     implementation project(':extension-api')
     implementation project(':komica-api')
-    implementation "com.squareup.okhttp3:okhttp:4.9.3"
+    implementation libs.okhttp.core
     // hilt
-    implementation "com.google.dagger:hilt-android:$versions.hilt"
-    ksp "com.google.dagger:hilt-android-compiler:$versions.hilt"
+    implementation libs.hilt.android
+    ksp libs.hilt.compiler
     // coroutines
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$versions.coroutines"
+    implementation libs.coroutines.android
     // unit test
-    testImplementation 'junit:junit:4.13.2'
-    testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:$versions.coroutines"
+    testImplementation libs.junit4
+    testImplementation libs.coroutines.test
 }

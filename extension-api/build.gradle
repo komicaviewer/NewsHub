@@ -1,5 +1,5 @@
 plugins {
-    id 'org.jetbrains.kotlin.jvm'
+    alias(libs.plugins.kotlin.jvm)
 }
 
 java {
@@ -12,6 +12,6 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
 }
 
 dependencies {
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    testImplementation 'junit:junit:4.13.2'
+    implementation libs.okhttp.core
+    testImplementation libs.junit4
 }

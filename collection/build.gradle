@@ -1,8 +1,8 @@
 plugins {
-    id 'com.google.devtools.ksp'
-    id 'com.android.library'
-    id 'org.jetbrains.kotlin.android'
-    id "dagger.hilt.android.plugin"
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.hilt)
 }
 
 android {
@@ -34,11 +34,11 @@ android {
 
 dependencies {
     implementation project(':extension-api')
-    implementation "androidx.room:room-runtime:$versions.room"
-    implementation "androidx.room:room-ktx:$versions.room"
-    ksp "androidx.room:room-compiler:$versions.room"
-    implementation "com.google.dagger:hilt-android:$versions.hilt"
-    ksp "com.google.dagger:hilt-android-compiler:$versions.hilt"
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$versions.coroutines"
-    testImplementation 'junit:junit:4.13.2'
+    implementation libs.room.runtime
+    implementation libs.room.ktx
+    ksp libs.room.compiler
+    implementation libs.hilt.android
+    ksp libs.hilt.compiler
+    implementation libs.coroutines.android
+    testImplementation libs.junit4
 }

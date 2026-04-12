@@ -1,9 +1,10 @@
 plugins {
-    id 'com.android.library'
-    id 'org.jetbrains.kotlin.android'
-    id 'com.google.devtools.ksp'
-    id 'dagger.hilt.android.plugin'
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
+
 android {
     compileSdk 34
     defaultConfig {
@@ -20,13 +21,14 @@ android {
     }
     namespace 'tw.kevinzhang.extension_loader'
 }
+
 dependencies {
     implementation project(':extension-api')
     implementation project(':extensions-builtin')
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    implementation "com.google.dagger:hilt-android:$versions.hilt"
-    ksp "com.google.dagger:hilt-android-compiler:$versions.hilt"
-    testImplementation 'junit:junit:4.13.2'
-    testImplementation 'androidx.test:core:1.4.0'
-    testImplementation 'org.robolectric:robolectric:4.9'
+    implementation libs.okhttp.core
+    implementation libs.hilt.android
+    ksp libs.hilt.compiler
+    testImplementation libs.junit4
+    testImplementation libs.test.core
+    testImplementation libs.robolectric
 }
