@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import tw.kevinzhang.extension_api.model.Paragraph
+import tw.kevinzhang.newshub.ui.component.gallery.YouTubePlayer
+import tw.kevinzhang.newshub.ui.component.gallery.extractYouTubeVideoId
 
 @Composable
 fun AppText(
@@ -484,6 +486,14 @@ fun Paragraph.ImageInfo.View(
 
 @Composable
 fun Paragraph.VideoInfo.View(onClick: (() -> Unit)? = null) {
+    if (site == Paragraph.VideoInfo.Site.YOUTUBE) {
+        val videoId = extractYouTubeVideoId(url)
+        if (videoId != null) {
+            YouTubePlayer(videoId = videoId)
+            return
+        }
+    }
+
     var m = Modifier.fillMaxWidth()
     if (onClick != null) {
         m = m.clickable { onClick() }

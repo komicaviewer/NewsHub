@@ -75,7 +75,14 @@ fun PostGallery(
                                 )
                             }
                         }
-                        is Paragraph.VideoInfo -> VideoPlayer(url = item.url)
+                        is Paragraph.VideoInfo -> {
+                            if (item.site == Paragraph.VideoInfo.Site.YOUTUBE) {
+                                val videoId = extractYouTubeVideoId(item.url)
+                                if (videoId != null) YouTubePlayer(videoId = videoId)
+                            } else {
+                                VideoPlayer(url = item.url)
+                            }
+                        }
                         else -> Unit
                     }
                 }
