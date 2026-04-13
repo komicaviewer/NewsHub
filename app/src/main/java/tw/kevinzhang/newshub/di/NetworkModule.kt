@@ -6,7 +6,6 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
-import tw.kevinzhang.komica_api.KomicaApi
 import tw.kevinzhang.newshub.BuildConfig
 import tw.kevinzhang.newshub.auth.AppCookieJar
 import java.util.concurrent.TimeUnit
@@ -30,9 +29,5 @@ object NetworkModule {
             build()
         }
     }
-
-    @Provides
-    @Singleton
-    fun provideKomicaApi(client: OkHttpClient) = KomicaApi(client)
 
 }
