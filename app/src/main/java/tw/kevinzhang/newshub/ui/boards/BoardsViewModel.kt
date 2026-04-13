@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import tw.kevinzhang.collection.CollectionRepository
 import tw.kevinzhang.extension_api.Source
@@ -38,20 +39,23 @@ class BoardsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            _sources.value = extensionLoader.getAllSources().map { source ->
-                // Restore login status from persisted cookies on app restart.
-                if (source.needsLogin) {
-                    val cookieUrl = authRepository.cookieUrls.value[source.id]
-                    if (cookieUrl != null && cookieJar.hasCookiesForUrl(cookieUrl)) {
-                        authRepository.setLoggedIn(source.id, cookieUrl)
+            extensionLoader.sourcesFlow.collectLatest { sources ->
+                _isLoading.value = true
+                _sources.value = sources.map { source ->
+                    // Restore login status from persisted cookies on app restart.
+                    if (source.needsLogin) {
+                        val cookieUrl = authRepository.cookieUrls.value[source.id]
+                        if (cookieUrl != null && cookieJar.hasCookiesForUrl(cookieUrl)) {
+                            authRepository.setLoggedIn(source.id, cookieUrl)
+                        }
                     }
+                    SourceWithBoards(
+                        source = source,
+                        boards = runCatching { source.getBoards() }.getOrDefault(emptyList()).distinctBy { it.url },
+                    )
                 }
-                SourceWithBoards(
-                    source = source,
-                    boards = runCatching { source.getBoards() }.getOrDefault(emptyList()).distinctBy { it.url },
-                )
+                _isLoading.value = false
             }
-            _isLoading.value = false
         }
     }
 
