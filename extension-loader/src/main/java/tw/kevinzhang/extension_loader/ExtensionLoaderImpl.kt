@@ -12,12 +12,10 @@ import kotlinx.coroutines.flow.stateIn
 import okhttp3.OkHttpClient
 import tw.kevinzhang.extension_api.Source
 import javax.inject.Inject
-import javax.inject.Named
 import javax.inject.Singleton
 
 @Singleton
 class ExtensionLoaderImpl @Inject constructor(
-    @Named("builtInSources") private val builtInSources: List<@JvmSuppressWildcards Source>,
     @ApplicationContext private val context: Context,
     private val okHttpClient: OkHttpClient,
     private val extensionManager: ExtensionManager,
@@ -27,13 +25,12 @@ class ExtensionLoaderImpl @Inject constructor(
 
     override val sourcesFlow: StateFlow<List<Source>> = extensionManager.installedExtensions
         .map { installed ->
-            val extensionSources = installed.flatMap { it.sources }
-            (builtInSources + extensionSources).onEach { it.onAttach(okHttpClient) }
+            installed.flatMap { it.sources }.onEach { it.onAttach(okHttpClient) }
         }
         .stateIn(
             scope = scope,
             started = SharingStarted.Eagerly,
-            initialValue = builtInSources.onEach { it.onAttach(okHttpClient) },
+            initialValue = emptyList(),
         )
 
     override fun getAllSources(): List<Source> = sourcesFlow.value

@@ -24,7 +24,6 @@ android {
 
 dependencies {
     implementation project(':extension-api')
-    implementation project(':extensions-builtin')
     implementation libs.okhttp.core
     implementation libs.hilt.android
     ksp libs.hilt.compiler

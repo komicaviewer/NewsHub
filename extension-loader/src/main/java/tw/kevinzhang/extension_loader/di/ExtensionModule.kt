@@ -2,16 +2,10 @@ package tw.kevinzhang.extension_loader.di
 
 import dagger.Binds
 import dagger.Module
-import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.extension_loader.ExtensionLoaderImpl
-import tw.kevinzhang.extensions_builtin._2cat._2catSource
-import tw.kevinzhang.extensions_builtin.komica2.Komica2Source
-import tw.kevinzhang.extensions_builtin.sora.SoraSource
-import javax.inject.Named
 import javax.inject.Singleton
 
 @Module
@@ -21,15 +15,4 @@ abstract class ExtensionModule {
     @Binds
     @Singleton
     abstract fun bindExtensionLoader(impl: ExtensionLoaderImpl): ExtensionLoader
-
-    companion object {
-        @Provides
-        @Singleton
-        @Named("builtInSources")
-        fun provideBuiltInSources(
-            sora: SoraSource,
-            _2cat: _2catSource,
-            komica2: Komica2Source,
-        ): List<Source> = listOf(sora, _2cat, komica2)
-    }
 }

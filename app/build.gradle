@@ -73,7 +73,6 @@ dependencies {
     implementation project(':extension-loader')
     implementation project(':collection')
     implementation project(':marketplace')
-    implementation project(':komica-api')
     implementation libs.bundles.okhttp
     // compose
     implementation libs.bundles.compose.ui

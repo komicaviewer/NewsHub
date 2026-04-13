@@ -66,10 +66,7 @@
 
 ```mermaid
 graph TD
-    komica-api[":komica-api"]
-    gamer-api[":gamer-api"]
     extension-api[":extension-api"]
-    extensions-builtin[":extensions-builtin"]
     extension-loader[":extension-loader"]
     collection[":collection"]
     marketplace[":marketplace"]
@@ -79,23 +76,16 @@ graph TD
     app --> collection
     app --> marketplace
     app --> extension-api
-    extension-loader --> extensions-builtin
     extension-loader --> extension-api
-    extensions-builtin --> komica-api
-    extensions-builtin --> gamer-api
-    extensions-builtin --> extension-api
     collection --> extension-api
 ```
 
-| 模組                    | 說明                                                               |
-|-----------------------|------------------------------------------------------------------|
-| `:extension-api`      | 公開介面：`Source`、資料模型（`Board`、`ThreadSummary`、`Post`、`Paragraph` 等） |
-| `:extensions-builtin` | 內建的 Komica（Sora、2cat）與巴哈姆特實作                                     |
-| `:komica-api`         | Komica HTML 解析器與 HTTP 客戶端                                        |
-| `:gamer-api`          | 巴哈姆特 HTML 解析器與 HTTP 客戶端                                          |
-| `:extension-loader`   | 載入內建與 APK 形式的擴充套件，提供 `ExtensionLoader`                           |
-| `:collection`         | Room 資料庫，管理使用者定義的收藏集與板塊訂閱                                        |
-| `:marketplace`        | 以 GitHub 為基礎的擴充套件商城：索引抓取、APK 下載、安裝狀態追蹤                           |
-| `:app`                | UI（Jetpack Compose）、導航、Hilt 依賴注入                                 |
+| 模組                  | 說明                                                               |
+|---------------------|------------------------------------------------------------------|
+| `:extension-api`    | 公開介面：`Source`、資料模型（`Board`、`ThreadSummary`、`Post`、`Paragraph` 等） |
+| `:extension-loader` | 載入 APK 形式的擴充套件，提供 `ExtensionLoader`                              |
+| `:collection`       | Room 資料庫，管理使用者定義的收藏集與板塊訂閱                                        |
+| `:marketplace`      | 以 GitHub 為基礎的擴充套件商城：索引抓取、APK 下載、安裝狀態追蹤                           |
+| `:app`              | UI（Jetpack Compose）、導航、Hilt 依賴注入                                 |
 
 </details>
