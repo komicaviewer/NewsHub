@@ -10,8 +10,10 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import tw.kevinzhang.collection.CollectionRepository
 import tw.kevinzhang.collection.CollectionRepositoryImpl
+import tw.kevinzhang.collection.ReadingHistoryRepository
 import tw.kevinzhang.collection.data.CollectionDatabase
 import tw.kevinzhang.collection.data.CollectionDao
+import tw.kevinzhang.collection.data.ReadingHistoryDao
 import javax.inject.Singleton
 
 @Module
@@ -21,6 +23,10 @@ abstract class CollectionModule {
     @Binds
     @Singleton
     abstract fun bindCollectionRepository(impl: CollectionRepositoryImpl): CollectionRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindReadingHistoryRepository(impl: CollectionRepositoryImpl): ReadingHistoryRepository
 
     companion object {
         @Provides
@@ -32,5 +38,8 @@ abstract class CollectionModule {
 
         @Provides
         fun provideCollectionDao(db: CollectionDatabase): CollectionDao = db.collectionDao()
+
+        @Provides
+        fun provideReadingHistoryDao(db: CollectionDatabase): ReadingHistoryDao = db.readingHistoryDao()
     }
 }

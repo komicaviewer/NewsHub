@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import tw.kevinzhang.collection.ReadingHistoryRepository
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.CommentPage
@@ -37,6 +38,7 @@ data class CommentUiState(
 class ThreadDetailViewModel @Inject constructor(
     private val extensionLoader: ExtensionLoader,
     private val preferenceStore: PreferenceStore,
+    private val historyRepository: ReadingHistoryRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
     private val threadId: String = checkNotNull(savedStateHandle["threadId"]) {
@@ -130,6 +132,24 @@ class ThreadDetailViewModel @Inject constructor(
         )
         _thread.value = thread
         _commentStates.value = buildInitialCommentStates(source, thread)
+        val firstPost = thread.posts.firstOrNull()
+        val firstImage = firstPost?.content?.filterIsInstance<tw.kevinzhang.extension_api.model.Paragraph.ImageInfo>()?.firstOrNull()
+        historyRepository.recordRead(
+            ThreadSummary(
+                sourceId = sourceId,
+                boardUrl = boardUrl,
+                id = threadId,
+                title = thread.title ?: threadTitle,
+                author = firstPost?.author,
+                createdAt = firstPost?.createdAt,
+                commentCount = null,
+                replyCount = firstPost?.replyCount,
+                thumbnail = firstPost?.thumbnail ?: firstImage?.thumb,
+                rawImage = firstImage?.raw,
+                previewContent = firstPost?.content?.take(3) ?: emptyList(),
+                sourceIconUrl = source.iconUrl,
+            )
+        )
     }
 
     private suspend fun buildInitialCommentStates(

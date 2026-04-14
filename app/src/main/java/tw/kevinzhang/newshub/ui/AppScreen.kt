@@ -66,10 +66,12 @@ import tw.kevinzhang.newshub.ui.collection.SelectedBoard
 import tw.kevinzhang.newshub.ui.component.BodyLargeText
 import tw.kevinzhang.newshub.ui.component.AppBottomBar
 import tw.kevinzhang.newshub.ui.component.AppDrawer
+import tw.kevinzhang.newshub.ui.history.ReadingHistoryScreen
 import tw.kevinzhang.newshub.ui.marketplace.ManageReposScreen
 import tw.kevinzhang.newshub.ui.marketplace.MarketplaceScreen
 import tw.kevinzhang.newshub.ui.navigation.MainNavItems
 import tw.kevinzhang.newshub.ui.navigation.mainNavItems
+import tw.kevinzhang.newshub.ui.settings.SettingsScreen
 import tw.kevinzhang.newshub.ui.theme.NewshubTheme
 import tw.kevinzhang.newshub.ui.thread.ThreadDetailScreen
 
@@ -305,12 +307,28 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             onNavigateUp = { navController.navigateUp() },
                         )
                     }
-                    composable("settings") {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text("Settings — coming soon")
+                    navigation(
+                        route = MainNavItems.Settings.route,
+                        startDestination = "settings_home",
+                    ) {
+                        composable("settings_home") {
+                            SettingsScreen(
+                                onNavigateToReadingHistory = { navController.navigate("reading_history") },
+                            )
+                        }
+                        composable("reading_history") {
+                            ReadingHistoryScreen(
+                                onNavigateUp = { navController.navigateUp() },
+                                onThreadClick = { summary ->
+                                    val threadId = summary.id.encode()
+                                    val sourceId = summary.sourceId.encode()
+                                    val boardUrl = summary.boardUrl.encode()
+                                    val title = summary.title?.encode() ?: ""
+                                    navController.navigate(
+                                        "thread_detail?threadId=$threadId&sourceId=$sourceId&boardUrl=$boardUrl&threadTitle=$title"
+                                    )
+                                },
+                            )
                         }
                     }
                     composable("create_collection") {

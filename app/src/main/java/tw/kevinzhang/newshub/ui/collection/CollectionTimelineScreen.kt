@@ -6,24 +6,18 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -43,15 +37,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
-import coil.compose.AsyncImage
-import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.ThreadSummary
-import tw.kevinzhang.newshub.ui.component.AppCard
 import tw.kevinzhang.newshub.ui.component.BodyLargeText
-import tw.kevinzhang.newshub.ui.component.BodySmallText
-import tw.kevinzhang.newshub.ui.component.Small
-import tw.kevinzhang.newshub.ui.component.TitleMediumText
-import tw.kevinzhang.newshub.ui.component.View
+import tw.kevinzhang.newshub.ui.component.ThreadSummaryCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -187,90 +175,3 @@ fun CollectionTimelineScreen(
 
 }
 
-@Composable
-private fun ThreadSummaryCard(
-    summary: ThreadSummary,
-    alwaysUseRawImage: Boolean,
-    sourceIconUrl: String?,
-    onClick: () -> Unit,
-) {
-    AppCard(onClick = onClick) {
-        Column(modifier = Modifier.padding(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    summary.createdAt?.let {
-                        BodySmallText(
-                            text = android.text.format.DateUtils.getRelativeTimeSpanString(it)
-                                .toString(),
-                        )
-                    }
-                    sourceIconUrl?.let {
-                        AsyncImage(
-                            model = it,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(16.dp),
-                        )
-                    }
-                    BodySmallText(summary.author ?: "Unknown")
-                    BodySmallText(summary.id.takeLast(10))
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    summary.replyCount?.let {
-                        Icon(
-                            imageVector = Icons.Outlined.Email,
-                            contentDescription = null,
-                            modifier = Modifier.size(12.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        BodySmallText("$it")
-                    }
-                    summary.commentCount?.takeIf { it > 0 }?.let {
-                        Icon(
-                            imageVector = Icons.Outlined.ChatBubbleOutline,
-                            contentDescription = null,
-                            modifier = Modifier.size(12.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        BodySmallText("$it")
-                    }
-                }
-            }
-            summary.title?.let { title ->
-                if (title.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    TitleMediumText(text = title)
-                }
-            }
-
-            summary.previewContent.forEach { paragraph ->
-                when (paragraph) {
-                    is Paragraph.Text -> paragraph.View()
-                    is Paragraph.Quote -> paragraph.Small()
-                    is Paragraph.Link -> paragraph.View()
-                    else -> {}
-                }
-            }
-
-            val url = if (alwaysUseRawImage) summary.rawImage else summary.thumbnail
-            url?.let {
-                AsyncImage(
-                    model = it,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-    }
-    Spacer(modifier = Modifier.height(8.dp))
-}

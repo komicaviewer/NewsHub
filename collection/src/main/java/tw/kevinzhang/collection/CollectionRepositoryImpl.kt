@@ -6,13 +6,17 @@ import tw.kevinzhang.collection.data.BoardSubscriptionEntity
 import tw.kevinzhang.collection.data.CollectionDao
 import tw.kevinzhang.collection.data.CollectionDatabase
 import tw.kevinzhang.collection.data.CollectionEntity
+import tw.kevinzhang.collection.data.ParagraphListConverter
+import tw.kevinzhang.collection.data.ReadingHistoryEntity
+import tw.kevinzhang.collection.data.SavedPostEntity
+import tw.kevinzhang.extension_api.model.ThreadSummary
 import java.util.UUID
 import javax.inject.Inject
 
 class CollectionRepositoryImpl @Inject constructor(
     private val dao: CollectionDao,
     private val db: CollectionDatabase,
-) : CollectionRepository {
+) : CollectionRepository, ReadingHistoryRepository, SavedPostRepository {
 
     override fun observeCollections(): Flow<List<CollectionEntity>> = dao.observeAll()
 
@@ -80,5 +84,28 @@ class CollectionRepositoryImpl @Inject constructor(
 
     override suspend fun removeAllSubscriptionsForSource(sourceId: String) {
         dao.deleteSubscriptionsBySource(sourceId)
+    }
+
+    override fun observeReadingHistory() = db.readingHistoryDao().observeAll()
+
+    override suspend fun recordRead(summary: ThreadSummary) {
+        val converter = ParagraphListConverter()
+        db.readingHistoryDao().upsert(
+            ReadingHistoryEntity(
+                sourceId = summary.sourceId,
+                threadId = summary.id,
+                boardUrl = summary.boardUrl,
+                title = summary.title,
+                author = summary.author,
+                createdAt = summary.createdAt,
+                commentCount = summary.commentCount,
+                replyCount = summary.replyCount,
+                thumbnail = summary.thumbnail,
+                rawImage = summary.rawImage,
+                previewContent = converter.toJson(summary.previewContent),
+                sourceIconUrl = summary.sourceIconUrl,
+                readAt = System.currentTimeMillis(),
+            )
+        )
     }
 }
