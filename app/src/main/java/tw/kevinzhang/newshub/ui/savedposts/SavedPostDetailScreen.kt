@@ -1,6 +1,8 @@
 package tw.kevinzhang.newshub.ui.savedposts
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import tw.kevinzhang.newshub.ui.component.BodySmallText
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -117,6 +120,17 @@ fun SavedPostDetailScreen(
                         )
                         if (index < screenshotPaths.lastIndex) {
                             Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(128.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            BodySmallText("沒有更多資料")
                         }
                     }
                 }

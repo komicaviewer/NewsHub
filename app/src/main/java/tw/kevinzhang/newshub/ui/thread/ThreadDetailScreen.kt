@@ -216,6 +216,19 @@ fun ThreadDetailScreen(
                             onZoomChange = onZoomChange,
                         )
                     }
+                    item {
+                        if (!isLoading) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(128.dp),
+                                verticalArrangement = Arrangement.Center,
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                BodySmallText("沒有更多資料")
+                            }
+                        }
+                    }
                 }
             }
         }
