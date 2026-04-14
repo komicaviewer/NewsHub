@@ -11,9 +11,11 @@ import dagger.hilt.components.SingletonComponent
 import tw.kevinzhang.collection.CollectionRepository
 import tw.kevinzhang.collection.CollectionRepositoryImpl
 import tw.kevinzhang.collection.ReadingHistoryRepository
+import tw.kevinzhang.collection.SavedPostRepository
 import tw.kevinzhang.collection.data.CollectionDatabase
 import tw.kevinzhang.collection.data.CollectionDao
 import tw.kevinzhang.collection.data.ReadingHistoryDao
+import tw.kevinzhang.collection.data.SavedPostDao
 import javax.inject.Singleton
 
 @Module
@@ -28,6 +30,10 @@ abstract class CollectionModule {
     @Singleton
     abstract fun bindReadingHistoryRepository(impl: CollectionRepositoryImpl): ReadingHistoryRepository
 
+    @Binds
+    @Singleton
+    abstract fun bindSavedPostRepository(impl: CollectionRepositoryImpl): SavedPostRepository
+
     companion object {
         @Provides
         @Singleton
@@ -41,5 +47,8 @@ abstract class CollectionModule {
 
         @Provides
         fun provideReadingHistoryDao(db: CollectionDatabase): ReadingHistoryDao = db.readingHistoryDao()
+
+        @Provides
+        fun provideSavedPostDao(db: CollectionDatabase): SavedPostDao = db.savedPostDao()
     }
 }

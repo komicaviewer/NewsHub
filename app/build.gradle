@@ -81,7 +81,6 @@ dependencies {
     implementation libs.compose.activity
     implementation libs.compose.navigation
     implementation libs.compose.nav.runtime
-    implementation libs.compose.accompanist
     implementation libs.compose.paging
     // paging
     implementation libs.androidx.paging.runtime

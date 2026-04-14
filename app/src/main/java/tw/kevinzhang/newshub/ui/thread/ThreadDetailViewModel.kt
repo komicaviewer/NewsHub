@@ -4,7 +4,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,14 +18,20 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tw.kevinzhang.collection.ReadingHistoryRepository
+import tw.kevinzhang.collection.SavedPostRepository
+import tw.kevinzhang.collection.data.ParagraphListConverter
+import tw.kevinzhang.collection.data.SavedPostEntity
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.CommentPage
+import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.newshub.data.PreferenceStore
+import com.google.gson.Gson
+import java.io.File
 import javax.inject.Inject
 
 private const val COMMENTS_PAGE_SIZE = 5
@@ -39,12 +47,13 @@ class ThreadDetailViewModel @Inject constructor(
     private val extensionLoader: ExtensionLoader,
     private val preferenceStore: PreferenceStore,
     private val historyRepository: ReadingHistoryRepository,
+    private val savedPostRepository: SavedPostRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
-    private val threadId: String = checkNotNull(savedStateHandle["threadId"]) {
+    val threadId: String = checkNotNull(savedStateHandle["threadId"]) {
         "ThreadDetailViewModel requires 'threadId' in SavedStateHandle"
     }
-    private val sourceId: String = checkNotNull(savedStateHandle["sourceId"]) {
+    val sourceId: String = checkNotNull(savedStateHandle["sourceId"]) {
         "ThreadDetailViewModel requires 'sourceId' in SavedStateHandle"
     }
     private val boardUrl: String = checkNotNull(savedStateHandle["boardUrl"]) {
@@ -75,6 +84,14 @@ class ThreadDetailViewModel @Inject constructor(
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing = _isRefreshing.asStateFlow()
+
+    val isSaved: StateFlow<Boolean> = savedPostRepository
+        .observeSavedPost(sourceId, threadId)
+        .map { it != null }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    private val _isSavingScreenshots = MutableStateFlow(false)
+    val isSavingScreenshots = _isSavingScreenshots.asStateFlow()
 
     private data class InternalCommentState(
         val visibleComments: List<Comment>,
@@ -133,7 +150,7 @@ class ThreadDetailViewModel @Inject constructor(
         _thread.value = thread
         _commentStates.value = buildInitialCommentStates(source, thread)
         val firstPost = thread.posts.firstOrNull()
-        val firstImage = firstPost?.content?.filterIsInstance<tw.kevinzhang.extension_api.model.Paragraph.ImageInfo>()?.firstOrNull()
+        val firstImage = firstPost?.content?.filterIsInstance<Paragraph.ImageInfo>()?.firstOrNull()
         historyRepository.recordRead(
             ThreadSummary(
                 sourceId = sourceId,
@@ -236,5 +253,55 @@ class ThreadDetailViewModel @Inject constructor(
 
     fun setWebViewTextZoom(zoom: Int) {
         viewModelScope.launch { preferenceStore.setWebViewTextZoom(zoom) }
+    }
+
+    fun requestToggleSave(filesDir: File) {
+        if (isSaved.value) {
+            viewModelScope.launch {
+                savedPostRepository.unsavePost(sourceId, threadId)
+                deleteScreenshots(filesDir)
+            }
+        } else {
+            _isSavingScreenshots.value = true
+        }
+    }
+
+    fun onScreenshotsCaptured(screenshotPaths: List<String>) {
+        val thread = _thread.value ?: run {
+            _isSavingScreenshots.value = false
+            return
+        }
+        val firstPost = thread.posts.firstOrNull()
+        val firstImage = firstPost?.content
+            ?.filterIsInstance<Paragraph.ImageInfo>()
+            ?.firstOrNull()
+        val converter = ParagraphListConverter()
+        val entity = SavedPostEntity(
+            sourceId = sourceId,
+            threadId = threadId,
+            boardUrl = boardUrl,
+            title = thread.title ?: threadTitle,
+            author = firstPost?.author,
+            createdAt = firstPost?.createdAt,
+            commentCount = null,
+            replyCount = firstPost?.replyCount,
+            thumbnail = firstPost?.thumbnail ?: firstImage?.thumb,
+            rawImage = firstImage?.raw,
+            previewContent = converter.toJson(firstPost?.content?.take(3) ?: emptyList()),
+            sourceIconUrl = cachedSource?.iconUrl,
+            threadUrl = thread.url,
+            savedAt = System.currentTimeMillis(),
+            screenshotPaths = Gson().toJson(screenshotPaths),
+        )
+        viewModelScope.launch {
+            savedPostRepository.savePost(entity)
+            _isSavingScreenshots.value = false
+        }
+    }
+
+    private suspend fun deleteScreenshots(filesDir: File) {
+        withContext(Dispatchers.IO) {
+            File(filesDir, "saved_posts/${sourceId}_${threadId}").deleteRecursively()
+        }
     }
 }

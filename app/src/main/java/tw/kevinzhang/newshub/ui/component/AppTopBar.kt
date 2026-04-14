@@ -16,7 +16,7 @@ fun NewsHubTopBar(
     onMenuPressed: (() -> Unit)? = null,
     onBackPressed: (() -> Unit)? = null,
 ) {
-    SmallTopAppBar(
+    TopAppBar(
         title = {
             TitleLargeText(
                 text = title,

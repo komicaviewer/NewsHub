@@ -23,9 +23,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material3.AlertDialog
@@ -36,13 +38,13 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,7 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -105,18 +107,32 @@ fun ThreadDetailScreen(
     val useWebViewPosts by viewModel.useWebViewPosts.collectAsStateWithLifecycle()
     val webViewTextZoom by viewModel.webViewTextZoom.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val isSaved by viewModel.isSaved.collectAsStateWithLifecycle()
+    val isSavingScreenshots by viewModel.isSavingScreenshots.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-    val pullToRefreshState = rememberPullToRefreshState()
     var repliesDialogForPostId by remember { mutableStateOf<String?>(null) }
     var highlightedPostId by remember { mutableStateOf<String?>(null) }
 
-    if (pullToRefreshState.isRefreshing) {
-        LaunchedEffect(true) { viewModel.refresh() }
-    }
-    LaunchedEffect(isRefreshing) {
-        if (!isRefreshing) pullToRefreshState.endRefresh()
+    // Trigger screenshot capture when save is requested
+    LaunchedEffect(isSavingScreenshots) {
+        if (isSavingScreenshots) {
+            val activity = context as? android.app.Activity ?: run {
+                viewModel.onScreenshotsCaptured(emptyList())
+                return@LaunchedEffect
+            }
+            val posts = thread?.posts ?: emptyList()
+            val paths = capturePostsAsFiles(
+                activity = activity,
+                posts = posts,
+                alwaysUseRawImage = alwaysUseRawImage,
+                sourceId = viewModel.sourceId,
+                threadId = viewModel.threadId,
+            )
+            viewModel.onScreenshotsCaptured(paths)
+        }
     }
 
     Box(modifier = Modifier
@@ -143,15 +159,35 @@ fun ThreadDetailScreen(
                                 )
                             }
                         }
+                        if (isSavingScreenshots) {
+                            Box(
+                                modifier = Modifier.size(48.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            }
+                        } else {
+                            IconButton(onClick = { viewModel.requestToggleSave(context.filesDir) }) {
+                                Icon(
+                                    imageVector = if (isSaved) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                                    contentDescription = if (isSaved) "取消收藏" else "收藏貼文",
+                                )
+                            }
+                        }
                     }
                 )
             },
         ) { padding ->
-            Box(
+
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = { viewModel.refresh() },
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
-                    .nestedScroll(pullToRefreshState.nestedScrollConnection),
+                    .padding(padding),
             ) {
                 if (thread == null) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -179,10 +215,6 @@ fun ThreadDetailScreen(
                         }
                     }
                 }
-                PullToRefreshContainer(
-                    state = pullToRefreshState,
-                    modifier = Modifier.align(Alignment.TopCenter),
-                )
             }
         }
 
@@ -336,7 +368,7 @@ private fun ExtPostCard(
 }
 
 @Composable
-private fun PostCard(
+internal fun PostCard(
     post: Post,
     highlightAlpha: Float,
     useWebView: Boolean,

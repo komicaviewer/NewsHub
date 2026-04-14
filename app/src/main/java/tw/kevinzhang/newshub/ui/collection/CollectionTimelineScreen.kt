@@ -23,8 +23,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,17 +57,7 @@ fun CollectionTimelineScreen(
 
     val listState = rememberLazyListState()
     val activity = LocalContext.current as Activity
-    val pullToRefreshState = rememberPullToRefreshState()
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
-
-    if (pullToRefreshState.isRefreshing) {
-        LaunchedEffect(true) { items.refresh() }
-    }
-    LaunchedEffect(items.loadState.refresh) {
-        if (items.loadState.refresh !is LoadState.Loading) {
-            pullToRefreshState.endRefresh()
-        }
-    }
 
     LaunchedEffect(scrollToTopTrigger) {
         if (scrollToTopTrigger > 0) listState.animateScrollToItem(0)
@@ -90,11 +79,12 @@ fun CollectionTimelineScreen(
             )
         }
     ) { innerPadding ->
-        Box(
+        PullToRefreshBox(
+            isRefreshing = items.loadState.refresh is LoadState.Loading,
+            onRefresh = { items.refresh() },
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .nestedScroll(pullToRefreshState.nestedScrollConnection)
+                .padding(innerPadding),
         ) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(
@@ -166,10 +156,6 @@ fun CollectionTimelineScreen(
                 }
             }
 
-            PullToRefreshContainer(
-                state = pullToRefreshState,
-                modifier = Modifier.align(Alignment.TopCenter),
-            )
         }
     }
 

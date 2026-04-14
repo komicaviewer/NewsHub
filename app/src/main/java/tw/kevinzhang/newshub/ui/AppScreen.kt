@@ -71,6 +71,8 @@ import tw.kevinzhang.newshub.ui.marketplace.ManageReposScreen
 import tw.kevinzhang.newshub.ui.marketplace.MarketplaceScreen
 import tw.kevinzhang.newshub.ui.navigation.MainNavItems
 import tw.kevinzhang.newshub.ui.navigation.mainNavItems
+import tw.kevinzhang.newshub.ui.savedposts.SavedPostDetailScreen
+import tw.kevinzhang.newshub.ui.savedposts.SavedPostsScreen
 import tw.kevinzhang.newshub.ui.settings.SettingsScreen
 import tw.kevinzhang.newshub.ui.theme.NewshubTheme
 import tw.kevinzhang.newshub.ui.thread.ThreadDetailScreen
@@ -314,6 +316,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                         composable("settings_home") {
                             SettingsScreen(
                                 onNavigateToReadingHistory = { navController.navigate("reading_history") },
+                                onNavigateToSavedPosts = { navController.navigate("saved_posts") },
                             )
                         }
                         composable("reading_history") {
@@ -326,6 +329,34 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                                     val title = summary.title?.encode() ?: ""
                                     navController.navigate(
                                         "thread_detail?threadId=$threadId&sourceId=$sourceId&boardUrl=$boardUrl&threadTitle=$title"
+                                    )
+                                },
+                            )
+                        }
+                        composable("saved_posts") {
+                            SavedPostsScreen(
+                                onNavigateUp = { navController.navigateUp() },
+                                onThreadClick = { entity ->
+                                    val sourceId = entity.sourceId.encode()
+                                    val threadId = entity.threadId.encode()
+                                    navController.navigate("saved_post_detail?sourceId=$sourceId&threadId=$threadId")
+                                },
+                            )
+                        }
+                        composable(
+                            route = "saved_post_detail?sourceId={sourceId}&threadId={threadId}",
+                            arguments = listOf(
+                                navArgument("sourceId") { type = NavType.StringType },
+                                navArgument("threadId") { type = NavType.StringType },
+                            ),
+                        ) {
+                            val context = LocalContext.current
+                            SavedPostDetailScreen(
+                                onNavigateUp = { navController.navigateUp() },
+                                onOpenWebClick = { url ->
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                     )
                                 },
                             )
