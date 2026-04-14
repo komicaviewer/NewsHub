@@ -9,12 +9,13 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import tw.kevinzhang.collection.SavedPostRepository
 import javax.inject.Inject
 
 @HiltViewModel
 class SavedPostDetailViewModel @Inject constructor(
-    repository: SavedPostRepository,
+    private val repository: SavedPostRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
     private val sourceId: String = checkNotNull(savedStateHandle["sourceId"])
@@ -36,4 +37,10 @@ class SavedPostDetailViewModel @Inject constructor(
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun deleteCurrentPost() {
+        viewModelScope.launch {
+            repository.unsavePost(sourceId, threadId)
+        }
+    }
 }

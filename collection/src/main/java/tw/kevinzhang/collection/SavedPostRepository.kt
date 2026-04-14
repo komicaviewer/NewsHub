@@ -8,4 +8,5 @@ interface SavedPostRepository {
     fun observeSavedPost(sourceId: String, threadId: String): Flow<SavedPostEntity?>
     suspend fun savePost(entity: SavedPostEntity)
     suspend fun unsavePost(sourceId: String, threadId: String)
+    suspend fun deleteAllSavedPosts()
 }

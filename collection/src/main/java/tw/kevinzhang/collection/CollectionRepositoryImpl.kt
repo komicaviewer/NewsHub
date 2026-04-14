@@ -109,6 +109,10 @@ class CollectionRepositoryImpl @Inject constructor(
         )
     }
 
+    override suspend fun clearHistory() {
+        db.readingHistoryDao().deleteAll()
+    }
+
     override fun observeSavedPosts(): Flow<List<SavedPostEntity>> = db.savedPostDao().observeAll()
 
     override fun observeSavedPost(sourceId: String, threadId: String): Flow<SavedPostEntity?> =
@@ -120,5 +124,9 @@ class CollectionRepositoryImpl @Inject constructor(
 
     override suspend fun unsavePost(sourceId: String, threadId: String) {
         db.savedPostDao().delete(sourceId, threadId)
+    }
+
+    override suspend fun deleteAllSavedPosts() {
+        db.savedPostDao().deleteAll()
     }
 }

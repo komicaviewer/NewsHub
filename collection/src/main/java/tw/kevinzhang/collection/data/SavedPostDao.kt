@@ -19,4 +19,7 @@ interface SavedPostDao {
 
     @Query("DELETE FROM saved_posts WHERE sourceId = :sourceId AND threadId = :threadId")
     suspend fun delete(sourceId: String, threadId: String)
+
+    @Query("DELETE FROM saved_posts")
+    suspend fun deleteAll()
 }
