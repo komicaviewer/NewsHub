@@ -14,6 +14,12 @@ interface SavedPostDao {
     @Query("SELECT * FROM saved_posts WHERE sourceId = :sourceId AND threadId = :threadId")
     fun observeById(sourceId: String, threadId: String): Flow<SavedPostEntity?>
 
+    @Query("SELECT * FROM saved_posts WHERE sourceId = :sourceId AND threadId = :threadId")
+    suspend fun getById(sourceId: String, threadId: String): SavedPostEntity?
+
+    @Query("SELECT * FROM saved_posts")
+    suspend fun getAll(): List<SavedPostEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: SavedPostEntity)
 

@@ -10,6 +10,9 @@ import tw.kevinzhang.collection.data.ParagraphListConverter
 import tw.kevinzhang.collection.data.ReadingHistoryEntity
 import tw.kevinzhang.collection.data.SavedPostEntity
 import tw.kevinzhang.extension_api.model.ThreadSummary
+import java.io.File
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import java.util.UUID
 import javax.inject.Inject
 
@@ -123,10 +126,32 @@ class CollectionRepositoryImpl @Inject constructor(
     }
 
     override suspend fun unsavePost(sourceId: String, threadId: String) {
-        db.savedPostDao().delete(sourceId, threadId)
+        val entity = db.savedPostDao().getById(sourceId, threadId)
+        if (entity != null) {
+            deleteScreenshots(entity)
+            db.savedPostDao().delete(sourceId, threadId)
+        }
     }
 
     override suspend fun deleteAllSavedPosts() {
+        val allPosts = db.savedPostDao().getAll()
+        allPosts.forEach { deleteScreenshots(it) }
         db.savedPostDao().deleteAll()
+    }
+
+    private val gson = Gson()
+    private val pathListType = object : TypeToken<List<String>>() {}.type
+
+    private fun deleteScreenshots(entity: SavedPostEntity) {
+        try {
+            val paths: List<String> = gson.fromJson(entity.screenshotPaths, pathListType) ?: emptyList()
+            paths.forEach { path ->
+                val file = File(path)
+                if (file.exists()) {
+                    file.delete()
+                }
+            }
+        } catch (_: Exception) {
+        }
     }
 }
