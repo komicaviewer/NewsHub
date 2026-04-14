@@ -11,14 +11,11 @@ NewsHub/
 ├── app/                   # Main Android app (UI, navigation, ViewModels, DI wiring)
 ├── extension-api/         # Source interface + data models (pure Kotlin, no Android)
 ├── extension-loader/      # ExtensionManager + ExtensionLoaderImpl (loads APK extensions)
-├── extensions-builtin/    # Built-in Source implementations (Sora, 2cat, Komica2)
 ├── marketplace/           # Extension repo parsing, APK download, install state
-├── collection/            # Room DB: user collections + board subscriptions
+├── collection/            # Room DB: user collections, board subscriptions, reading history, saved posts
 ├── gamer-api/             # HTTP client for Bahamut Gamer (being phased out as built-in)
 └── komica-api/            # HTTP client for Komica boards
 ```
-
-> **GamerSource has been migrated** to the external repo `komicaviewer/extensions-source` as a third-party APK extension. It still exists in `extensions-builtin` but is scheduled for removal (Task 1-5).
 
 ---
 
@@ -37,8 +34,8 @@ NewsHub/
 - `getAllSources()` / `getSource(id)` — convenience synchronous wrappers
 
 `ExtensionLoaderImpl` combines:
-1. Built-in sources from Hilt DI (`@Named("builtInSources")`)
-2. APK extension sources from `ExtensionManager.installedExtensions`
+
+1. APK extension sources from `ExtensionManager.installedExtensions`
 
 ### ExtensionManager (`extension-loader`)
 Singleton. Scans `PackageManager` for packages with `newshub.extension` meta-data, loads `Source` via `PathClassLoader`. Exposes `installedExtensions: StateFlow<List<InstalledExtension>>`. Handles `installExtension(File)` and `uninstallExtension(pkgName)` via system intents.
@@ -101,15 +98,15 @@ APK URL = `{repo.baseUrl}/apk/{apkName}` · Icon URL = `{repo.baseUrl}/icon/{ico
 
 ## DI Wiring (Hilt)
 
-| Module | Provides |
-|--------|----------|
-| `ExtensionModule` | `@Named("builtInSources") List<Source>`, `ExtensionLoader` |
-| `MarketplaceModule` | `Gson`, `MarketplaceRepository` |
-| `CollectionModule` | `CollectionRepository`, Room DB |
-| `AppModule` | `authDataStore`, `@Named("repoDataStore")`, `ImageLoader`, `ApplicationScope` |
-| `RepoModule` | `RepoRepository` |
-| `AuthModule` | `SourceContext` (→ `AndroidSourceContext`) |
-| `NetworkModule` | `OkHttpClient` |
+| Module              | Provides                                                                                       |
+|---------------------|------------------------------------------------------------------------------------------------|
+| `ExtensionModule`   | `ExtensionLoader`                                                                              |
+| `MarketplaceModule` | `Gson`, `MarketplaceRepository`                                                                |
+| `CollectionModule`  | `CollectionRepository`, `ReadingHistoryRepository`, `SavedPostRepository`, Room DB (version 4) |
+| `AppModule`         | `authDataStore`, `@Named("repoDataStore")`, `ImageLoader`, `ApplicationScope`                  |
+| `RepoModule`        | `RepoRepository`                                                                               |
+| `AuthModule`        | `SourceContext` (→ `AndroidSourceContext`)                                                     |
+| `NetworkModule`     | `OkHttpClient`                                                                                 |
 
 ---
 
@@ -121,14 +118,24 @@ Navigation lives in `AppScreen.kt` + `AppNavigation.kt`. Bottom nav routes:
 |-------|--------|-----------|
 | `collections` | CollectionTimelineScreen | CollectionTimelineViewModel |
 | `boards` | BoardsScreen | BoardsViewModel |
-| `marketplace` | MarketplaceScreen | MarketplaceViewModel |
-| `manage_collections` | ManageCollectionsScreen | ManageCollectionsViewModel |
+| `settings` (nested graph) | SettingsScreen | — |
+
+`settings` nested graph (startDestination: `settings_home`):
+
+| Route | Screen | ViewModel |
+|-------|--------|-----------|
+| `settings_home` | SettingsScreen | — |
+| `reading_history` | ReadingHistoryScreen | ReadingHistoryViewModel |
+| `saved_posts` | SavedPostsScreen | SavedPostsViewModel |
+| `saved_post_detail` | SavedPostDetailScreen | SavedPostDetailViewModel |
 
 Sub-screens (pushed on stack):
 - `BoardPickerScreen` — pick boards to subscribe; observes `ExtensionLoader.sourcesFlow`
-- `ThreadDetailScreen` — renders posts, comments, images
+- `ThreadDetailScreen` — renders posts, comments, images; records reading history on load; supports save/unsave post (screenshots)
 - `AuthWebViewScreen` — WebView login for sources that require auth
 - `CreateCollectionScreen`, `EditCollectionScreen`
+
+`ThreadSummaryCard` — extracted to `ui/component/`, shared by `CollectionTimelineScreen`, `ReadingHistoryScreen`, and `SavedPostsScreen`.
 
 ---
 
@@ -142,6 +149,23 @@ Sub-screens (pushed on stack):
 CI/CD: `extensions-source` builds APKs via GitHub Actions (`build_push.yml`), runs `scripts/generate_index.py` (uses `aapt`), commits result to `extensions` repo.
 
 Required GitHub secrets in `extensions-source`: `SIGNING_KEY`, `KEY_STORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`, `EXTENSIONS_REPO_TOKEN`.
+
+---
+
+## collection Module — Room DB Schema
+
+`CollectionDatabase` version 4. Tables:
+
+| Table | Entity | Purpose |
+|-------|--------|---------|
+| `collections` | `CollectionEntity` | User-created named collections |
+| `board_subscriptions` | `BoardSubscriptionEntity` | Boards subscribed per collection |
+| `reading_history` | `ReadingHistoryEntity` | Thread read history (composite PK: sourceId+threadId) |
+| `saved_posts` | `SavedPostEntity` | Bookmarked threads with screenshot paths |
+
+`ReadingHistoryEntity` and `SavedPostEntity` both mirror `ThreadSummary` fields. `previewContent` stored as JSON via `ParagraphListConverter` (Gson). Both expose `toThreadSummary()` for direct use with `ThreadSummaryCard`.
+
+`CollectionRepositoryImpl` implements all three repository interfaces (`CollectionRepository`, `ReadingHistoryRepository`, `SavedPostRepository`).
 
 ---
 
