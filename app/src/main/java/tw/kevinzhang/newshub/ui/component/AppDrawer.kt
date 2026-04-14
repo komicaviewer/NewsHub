@@ -32,7 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import tw.kevinzhang.collection.data.CollectionEntity
+import tw.kevinzhang.data.domain.CollectionEntity
 import tw.kevinzhang.newshub.R
 import tw.kevinzhang.newshub.ui.collection.CollectionsViewModel
 

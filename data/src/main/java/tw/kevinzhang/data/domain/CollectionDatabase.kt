@@ -1,4 +1,4 @@
-package tw.kevinzhang.collection.data
+package tw.kevinzhang.data.domain
 
 import androidx.room.Database
 import androidx.room.RoomDatabase

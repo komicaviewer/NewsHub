@@ -1,4 +1,4 @@
-package tw.kevinzhang.collection.data
+package tw.kevinzhang.data.domain
 
 import androidx.room.Dao
 import androidx.room.Insert

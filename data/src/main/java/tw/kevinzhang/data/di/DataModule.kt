@@ -1,4 +1,4 @@
-package tw.kevinzhang.collection.di
+package tw.kevinzhang.data.di
 
 import android.content.Context
 import androidx.room.Room
@@ -8,19 +8,19 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import tw.kevinzhang.collection.CollectionRepository
-import tw.kevinzhang.collection.CollectionRepositoryImpl
-import tw.kevinzhang.collection.ReadingHistoryRepository
-import tw.kevinzhang.collection.SavedPostRepository
-import tw.kevinzhang.collection.data.CollectionDatabase
-import tw.kevinzhang.collection.data.CollectionDao
-import tw.kevinzhang.collection.data.ReadingHistoryDao
-import tw.kevinzhang.collection.data.SavedPostDao
+import tw.kevinzhang.data.CollectionRepository
+import tw.kevinzhang.data.CollectionRepositoryImpl
+import tw.kevinzhang.data.ReadingHistoryRepository
+import tw.kevinzhang.data.SavedPostRepository
+import tw.kevinzhang.data.domain.CollectionDao
+import tw.kevinzhang.data.domain.CollectionDatabase
+import tw.kevinzhang.data.domain.ReadingHistoryDao
+import tw.kevinzhang.data.domain.SavedPostDao
 import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class CollectionModule {
+abstract class DataModule {
 
     @Binds
     @Singleton

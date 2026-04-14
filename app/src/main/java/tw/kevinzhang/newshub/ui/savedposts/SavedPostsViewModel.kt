@@ -6,7 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import tw.kevinzhang.collection.SavedPostRepository
+import tw.kevinzhang.data.SavedPostRepository
 import javax.inject.Inject
 
 @HiltViewModel

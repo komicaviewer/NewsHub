@@ -7,8 +7,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import tw.kevinzhang.collection.CollectionRepository
-import tw.kevinzhang.collection.data.CollectionEntity
+import tw.kevinzhang.data.CollectionRepository
+import tw.kevinzhang.data.domain.CollectionEntity
 import javax.inject.Inject
 
 @HiltViewModel

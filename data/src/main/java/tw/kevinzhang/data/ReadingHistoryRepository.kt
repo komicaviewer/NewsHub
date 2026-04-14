@@ -1,7 +1,7 @@
-package tw.kevinzhang.collection
+package tw.kevinzhang.data
 
 import kotlinx.coroutines.flow.Flow
-import tw.kevinzhang.collection.data.ReadingHistoryEntity
+import tw.kevinzhang.data.domain.ReadingHistoryEntity
 import tw.kevinzhang.extension_api.model.ThreadSummary
 
 interface ReadingHistoryRepository {

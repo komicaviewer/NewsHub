@@ -71,7 +71,7 @@ android {
 dependencies {
     implementation project(':extension-api')
     implementation project(':extension-loader')
-    implementation project(':collection')
+    implementation project(':data')
     implementation project(':marketplace')
     implementation libs.bundles.okhttp
     // compose

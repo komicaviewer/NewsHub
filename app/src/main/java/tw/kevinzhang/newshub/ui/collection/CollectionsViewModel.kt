@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
-import tw.kevinzhang.collection.CollectionRepository
+import tw.kevinzhang.data.CollectionRepository
 import javax.inject.Inject
 
 @HiltViewModel

@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import tw.kevinzhang.collection.CollectionRepository
+import tw.kevinzhang.data.CollectionRepository
 import javax.inject.Inject
 
 @HiltViewModel

@@ -1,8 +1,8 @@
-package tw.kevinzhang.collection
+package tw.kevinzhang.data
 
 import kotlinx.coroutines.flow.Flow
-import tw.kevinzhang.collection.data.BoardSubscriptionEntity
-import tw.kevinzhang.collection.data.CollectionEntity
+import tw.kevinzhang.data.domain.BoardSubscriptionEntity
+import tw.kevinzhang.data.domain.CollectionEntity
 
 interface CollectionRepository {
     fun observeCollections(): Flow<List<CollectionEntity>>

@@ -1,18 +1,18 @@
-package tw.kevinzhang.collection
+package tw.kevinzhang.data
 
 import androidx.room.withTransaction
-import kotlinx.coroutines.flow.Flow
-import tw.kevinzhang.collection.data.BoardSubscriptionEntity
-import tw.kevinzhang.collection.data.CollectionDao
-import tw.kevinzhang.collection.data.CollectionDatabase
-import tw.kevinzhang.collection.data.CollectionEntity
-import tw.kevinzhang.collection.data.ParagraphListConverter
-import tw.kevinzhang.collection.data.ReadingHistoryEntity
-import tw.kevinzhang.collection.data.SavedPostEntity
-import tw.kevinzhang.extension_api.model.ThreadSummary
-import java.io.File
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.flow.Flow
+import tw.kevinzhang.data.domain.BoardSubscriptionEntity
+import tw.kevinzhang.data.domain.CollectionDao
+import tw.kevinzhang.data.domain.CollectionDatabase
+import tw.kevinzhang.data.domain.CollectionEntity
+import tw.kevinzhang.data.domain.ParagraphListConverter
+import tw.kevinzhang.data.domain.ReadingHistoryEntity
+import tw.kevinzhang.data.domain.SavedPostEntity
+import tw.kevinzhang.extension_api.model.ThreadSummary
+import java.io.File
 import java.util.UUID
 import javax.inject.Inject
 

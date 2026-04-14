@@ -6,7 +6,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import tw.kevinzhang.collection.data.BoardSubscriptionEntity
+import tw.kevinzhang.data.domain.BoardSubscriptionEntity
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.ThreadSummary

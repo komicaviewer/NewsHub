@@ -1,5 +1,6 @@
 package tw.kevinzhang.newshub.ui.boards
 
+import android.content.Intent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,9 +42,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.content.Intent
 import coil.compose.AsyncImage
-import tw.kevinzhang.collection.data.CollectionEntity
+import tw.kevinzhang.data.domain.CollectionEntity
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.newshub.auth.LoginStatus
 import tw.kevinzhang.newshub.ui.component.AppCard

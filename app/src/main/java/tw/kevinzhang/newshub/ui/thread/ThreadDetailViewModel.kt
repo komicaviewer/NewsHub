@@ -18,10 +18,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import tw.kevinzhang.collection.ReadingHistoryRepository
-import tw.kevinzhang.collection.SavedPostRepository
-import tw.kevinzhang.collection.data.ParagraphListConverter
-import tw.kevinzhang.collection.data.SavedPostEntity
+import tw.kevinzhang.data.ReadingHistoryRepository
+import tw.kevinzhang.data.SavedPostRepository
+import tw.kevinzhang.data.domain.ParagraphListConverter
+import tw.kevinzhang.data.domain.SavedPostEntity
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.CommentPage

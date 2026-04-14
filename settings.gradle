@@ -19,5 +19,5 @@ rootProject.name = "news-hub"
 include ':app'
 include ':extension-api'
 include ':extension-loader'
-include ':collection'
+include ':data'
 include ':marketplace'

@@ -11,8 +11,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import tw.kevinzhang.collection.CollectionRepository
-import tw.kevinzhang.collection.data.BoardSubscriptionEntity
+import tw.kevinzhang.data.CollectionRepository
+import tw.kevinzhang.data.domain.BoardSubscriptionEntity
 import javax.inject.Inject
 
 @HiltViewModel

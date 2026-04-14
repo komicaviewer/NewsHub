@@ -1,7 +1,7 @@
-package tw.kevinzhang.collection
+package tw.kevinzhang.data
 
 import kotlinx.coroutines.flow.Flow
-import tw.kevinzhang.collection.data.SavedPostEntity
+import tw.kevinzhang.data.domain.SavedPostEntity
 
 interface SavedPostRepository {
     fun observeSavedPosts(): Flow<List<SavedPostEntity>>

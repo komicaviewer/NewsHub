@@ -1,4 +1,4 @@
-package tw.kevinzhang.collection.data
+package tw.kevinzhang.data.domain
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
