@@ -7,4 +7,5 @@ import tw.kevinzhang.extension_api.model.ThreadSummary
 interface ReadingHistoryRepository {
     fun observeReadingHistory(): Flow<List<ReadingHistoryEntity>>
     suspend fun recordRead(summary: ThreadSummary)
+    suspend fun clearHistory()
 }

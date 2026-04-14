@@ -13,4 +13,7 @@ interface ReadingHistoryDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: ReadingHistoryEntity)
+
+    @Query("DELETE FROM reading_history")
+    suspend fun deleteAll()
 }
