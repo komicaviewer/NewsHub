@@ -83,7 +83,7 @@ class ThreadDetailViewModel @Inject constructor(
     private var cachedSource: Source? = null
 
     private val _isLoading = MutableStateFlow(true)
-    val isRefreshing = _isLoading.asStateFlow()
+    val isLoading = _isLoading.asStateFlow()
 
     val isSaved: StateFlow<Boolean> = savedPostRepository
         .observeSavedPost(sourceId, threadId)

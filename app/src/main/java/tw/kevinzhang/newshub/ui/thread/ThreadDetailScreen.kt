@@ -105,7 +105,7 @@ fun ThreadDetailScreen(
     val alwaysUseRawImage by viewModel.alwaysUseRawImage.collectAsStateWithLifecycle()
     val useWebViewPosts by viewModel.useWebViewPosts.collectAsStateWithLifecycle()
     val webViewTextZoom by viewModel.webViewTextZoom.collectAsStateWithLifecycle()
-    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val isSaved by viewModel.isSaved.collectAsStateWithLifecycle()
     val isSavingScreenshots by viewModel.isSavingScreenshots.collectAsStateWithLifecycle()
 
@@ -150,14 +150,6 @@ fun ThreadDetailScreen(
                         }
                     },
                     actions = {
-                        if (threadUrl != null) {
-                            IconButton(onClick = { onOpenWebClick(threadUrl!!) }) {
-                                Icon(
-                                    imageVector = Icons.Default.OpenInBrowser,
-                                    contentDescription = "Open in browser",
-                                )
-                            }
-                        }
                         if (isSavingScreenshots) {
                             Box(
                                 modifier = Modifier.size(48.dp),
@@ -169,12 +161,24 @@ fun ThreadDetailScreen(
                                 )
                             }
                         } else {
-                            IconButton(onClick = { viewModel.requestToggleSave(context.filesDir) }) {
+                            IconButton(
+                                onClick = { viewModel.requestToggleSave(context.filesDir) },
+                                enabled = !isLoading,
+                            ) {
                                 Icon(
                                     imageVector = if (isSaved) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                                     contentDescription = if (isSaved) "取消收藏" else "收藏貼文",
                                 )
                             }
+                        }
+                        IconButton(
+                            onClick = { threadUrl?.let { onOpenWebClick(it) } },
+                            enabled = threadUrl != null,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.OpenInBrowser,
+                                contentDescription = "Open in browser",
+                            )
                         }
                     }
                 )
@@ -182,7 +186,7 @@ fun ThreadDetailScreen(
         ) { padding ->
 
             PullToRefreshBox(
-                isRefreshing = isRefreshing,
+                isRefreshing = isLoading,
                 onRefresh = { viewModel.refresh() },
                 modifier = Modifier
                     .fillMaxSize()
