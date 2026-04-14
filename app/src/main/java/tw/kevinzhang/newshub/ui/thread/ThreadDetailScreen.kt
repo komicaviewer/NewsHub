@@ -38,7 +38,6 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -189,30 +188,29 @@ fun ThreadDetailScreen(
                     .fillMaxSize()
                     .padding(padding),
             ) {
-                if (thread == null) {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                } else {
-                    val onReplyToClick =
-                        remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
-                    val onZoomChange =
-                        remember(viewModel) { { zoom: Int -> viewModel.setWebViewTextZoom(zoom) } }
-                    LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                        items(thread!!.posts, key = { it.id }) { post ->
-                            ExtPostCard(
-                                post = post,
-                                isHighlighted = post.id == highlightedPostId,
-                                onHighlightDone = { if (post.id == highlightedPostId) highlightedPostId = null },
-                                useWebView = post.id in useWebViewPosts,
-                                onEnableWebView = { viewModel.enableWebViewForPost(post.id) },
-                                alwaysUseRawImage = alwaysUseRawImage,
-                                commentUiState = commentStates[post.id],
-                                onShowReplies = { repliesDialogForPostId = post.id },
-                                onReplyToClick = onReplyToClick,
-                                onLoadMoreCommentsClick = { viewModel.loadMoreComments(post.id) },
-                                textZoom = webViewTextZoom,
-                                onZoomChange = onZoomChange,
-                            )
-                        }
+
+                val onReplyToClick =
+                    remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
+                val onZoomChange =
+                    remember(viewModel) { { zoom: Int -> viewModel.setWebViewTextZoom(zoom) } }
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                    items(thread?.posts ?: listOf(), key = { it.id }) { post ->
+                        ExtPostCard(
+                            post = post,
+                            isHighlighted = post.id == highlightedPostId,
+                            onHighlightDone = {
+                                if (post.id == highlightedPostId) highlightedPostId = null
+                            },
+                            useWebView = post.id in useWebViewPosts,
+                            onEnableWebView = { viewModel.enableWebViewForPost(post.id) },
+                            alwaysUseRawImage = alwaysUseRawImage,
+                            commentUiState = commentStates[post.id],
+                            onShowReplies = { repliesDialogForPostId = post.id },
+                            onReplyToClick = onReplyToClick,
+                            onLoadMoreCommentsClick = { viewModel.loadMoreComments(post.id) },
+                            textZoom = webViewTextZoom,
+                            onZoomChange = onZoomChange,
+                        )
                     }
                 }
             }

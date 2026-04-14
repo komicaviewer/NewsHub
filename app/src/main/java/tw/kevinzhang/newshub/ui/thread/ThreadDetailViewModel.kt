@@ -3,10 +3,10 @@ package tw.kevinzhang.newshub.ui.thread
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import tw.kevinzhang.collection.ReadingHistoryRepository
 import tw.kevinzhang.collection.SavedPostRepository
 import tw.kevinzhang.collection.data.ParagraphListConverter
@@ -30,7 +31,6 @@ import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.newshub.data.PreferenceStore
-import com.google.gson.Gson
 import java.io.File
 import javax.inject.Inject
 
@@ -82,8 +82,8 @@ class ThreadDetailViewModel @Inject constructor(
 
     private var cachedSource: Source? = null
 
-    private val _isRefreshing = MutableStateFlow(false)
-    val isRefreshing = _isRefreshing.asStateFlow()
+    private val _isLoading = MutableStateFlow(true)
+    val isRefreshing = _isLoading.asStateFlow()
 
     val isSaved: StateFlow<Boolean> = savedPostRepository
         .observeSavedPost(sourceId, threadId)
@@ -117,16 +117,18 @@ class ThreadDetailViewModel @Inject constructor(
             val source = extensionLoader.getSource(sourceId) ?: return@launch
             cachedSource = source
             _alwaysUseRawImage.value = source.alwaysUseRawImage
+            _isLoading.value = true
             loadThread(source)
+            _isLoading.value = false
         }
     }
 
     fun refresh() {
         val source = cachedSource ?: return
         viewModelScope.launch {
-            _isRefreshing.value = true
+            _isLoading.value = true
             loadThread(source)
-            _isRefreshing.value = false
+            _isLoading.value = false
         }
     }
 
