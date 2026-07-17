@@ -28,6 +28,8 @@ fun ThreadSummaryCard(
     sourceIconUrl: String?,
     onClick: () -> Unit,
 ) {
+    val content = summary.cardContent(alwaysUseRawImage)
+
     AppCard(onClick = onClick) {
         Column(modifier = Modifier.padding(8.dp)) {
             Row(
@@ -86,17 +88,17 @@ fun ThreadSummaryCard(
                 }
             }
 
-            summary.previewContent.forEach { paragraph ->
+            content.previewContent.forEach { paragraph ->
                 when (paragraph) {
                     is Paragraph.Text -> paragraph.View()
                     is Paragraph.Quote -> paragraph.Small()
                     is Paragraph.Link -> paragraph.View()
+                    is Paragraph.VideoInfo -> paragraph.View()
                     else -> {}
                 }
             }
 
-            val url = if (alwaysUseRawImage) summary.rawImage else summary.thumbnail
-            url?.let {
+            content.imageUrl?.let {
                 AsyncImage(
                     model = it,
                     contentDescription = null,
@@ -106,4 +108,22 @@ fun ThreadSummaryCard(
         }
     }
     Spacer(modifier = Modifier.height(8.dp))
+}
+
+internal data class ThreadSummaryCardContent(
+    val previewContent: List<Paragraph>,
+    val imageUrl: String?,
+)
+
+internal fun ThreadSummary.cardContent(alwaysUseRawImage: Boolean): ThreadSummaryCardContent {
+    val videoUrls = mutableSetOf<String>()
+    val uniquePreviewContent = previewContent.filter { paragraph ->
+        paragraph !is Paragraph.VideoInfo || videoUrls.add(paragraph.url)
+    }
+    val selectedImageUrl = if (alwaysUseRawImage) rawImage else thumbnail
+
+    return ThreadSummaryCardContent(
+        previewContent = uniquePreviewContent,
+        imageUrl = selectedImageUrl?.takeUnless(videoUrls::contains),
+    )
 }
