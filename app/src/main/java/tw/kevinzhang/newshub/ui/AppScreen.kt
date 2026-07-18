@@ -247,6 +247,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             CollectionTimelineScreen(
                                 onOpenDrawer = { openDrawer() },
                                 scrollToTopTrigger = collectionScrollToTopTrigger,
+                                onNavigateToBoards = { navController.navigate(MainNavItems.Boards.route) },
                                 onNavigateToBoardPicker = {
                                     navController.navigate("board_picker/collection/$collectionId")
                                 },
@@ -278,6 +279,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                         val context = LocalContext.current
                         ThreadDetailScreen(
                             onNavigateUp = { navController.navigateUp() },
+                            onNavigateToBoards = { navController.navigate(MainNavItems.Boards.route) },
                             onOpenWebClick = { url ->
                                 context.startActivity(
                                     Intent(Intent.ACTION_VIEW, Uri.parse(url))

@@ -10,10 +10,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.Cookie
 import okhttp3.CookieJar
@@ -46,8 +43,12 @@ class SourceSessionManager @Inject constructor(
     private val sessions = mutableMapOf<String, SourceSession>()
     private val mutableStates = MutableStateFlow<Map<String, AuthState>>(emptyMap())
     val states: StateFlow<Map<String, AuthState>> = mutableStates.asStateFlow()
-    private val mutableForegroundLoginRequests = MutableSharedFlow<String>(extraBufferCapacity = 1)
-    val foregroundLoginRequests: SharedFlow<String> = mutableForegroundLoginRequests.asSharedFlow()
+    private val mutableAuthenticationRequiredNotice = MutableStateFlow<String?>(null)
+    /**
+     * A pending foreground notice. It is stateful so an authentication failure raised during
+     * initial loading is not lost before the screen's Compose collector has started.
+     */
+    val authenticationRequiredNotice: StateFlow<String?> = mutableAuthenticationRequiredNotice.asStateFlow()
 
     override fun runtimeFor(sourceId: String): SourceRuntime = synchronized(sessions) {
         sessions.getOrPut(sourceId) { SourceSession(sourceId) }.runtime
@@ -63,11 +64,22 @@ class SourceSessionManager @Inject constructor(
 
     fun markExpired(sourceId: String) = session(sourceId).setState(AuthState.Expired)
 
-    /** Called by foreground UI request handlers. Background work must only call [markExpired]. */
-    fun requestForegroundLogin(sourceId: String) {
-        if (stateFor(sourceId) == AuthState.SigningIn) return
+    /**
+     * Called when a foreground request reaches a protected resource. The user explicitly starts
+     * login later from Boards, so this only expires the source session and emits a notice.
+     */
+    fun notifyAuthenticationRequired(sourceId: String) {
         markExpired(sourceId)
-        mutableForegroundLoginRequests.tryEmit(sourceId)
+        // Keep notifying on later foreground attempts: a previous snackbar may have expired
+        // before the user could act on it.
+        mutableAuthenticationRequiredNotice.value = sourceId
+    }
+
+    /** Clears a notice only when it is still for the source that the screen displayed. */
+    fun consumeAuthenticationRequiredNotice(sourceId: String) {
+        if (mutableAuthenticationRequiredNotice.value == sourceId) {
+            mutableAuthenticationRequiredNotice.value = null
+        }
     }
 
     /**

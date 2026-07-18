@@ -40,6 +40,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -95,6 +98,7 @@ private fun String.asWebViewDocument(): String = """
 @Composable
 fun ThreadDetailScreen(
     onNavigateUp: () -> Unit,
+    onNavigateToBoards: () -> Unit,
     onOpenWebClick: (url: String) -> Unit,
     viewModel: ThreadDetailViewModel = hiltViewModel(),
 ) {
@@ -108,12 +112,24 @@ fun ThreadDetailScreen(
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val isSaved by viewModel.isSaved.collectAsStateWithLifecycle()
     val isSavingScreenshots by viewModel.isSavingScreenshots.collectAsStateWithLifecycle()
+    val authenticationRequiredNotice by viewModel.authenticationRequiredNotice.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     var repliesDialogForPostId by remember { mutableStateOf<String?>(null) }
     var highlightedPostId by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(authenticationRequiredNotice) {
+        val sourceId = authenticationRequiredNotice ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = "此看板需要登入，請到 Boards 頁面登入",
+            actionLabel = "前往 Boards",
+        )
+        viewModel.consumeAuthenticationRequiredNotice(sourceId)
+        if (result == SnackbarResult.ActionPerformed) onNavigateToBoards()
+    }
 
     // Trigger screenshot capture when save is requested
     LaunchedEffect(isSavingScreenshots) {
@@ -183,6 +199,7 @@ fun ThreadDetailScreen(
                     }
                 )
             },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { padding ->
 
             PullToRefreshBox(

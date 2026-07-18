@@ -17,6 +17,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -24,6 +27,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -43,6 +47,7 @@ fun CollectionTimelineScreen(
     onOpenDrawer: () -> Unit,
     onThreadClick: (ThreadSummary) -> Unit,
     onNavigateToBoardPicker: () -> Unit,
+    onNavigateToBoards: () -> Unit,
     scrollToTopTrigger: Int = 0,
     viewModel: CollectionTimelineViewModel = hiltViewModel(),
 ) {
@@ -51,6 +56,8 @@ fun CollectionTimelineScreen(
     val rawImageSourceIds by viewModel.rawImageSourceIds.collectAsStateWithLifecycle()
     val sourceIconUrls: Map<String, String?> by viewModel.sourceIconUrls.collectAsStateWithLifecycle()
     val subscriptions by viewModel.subscriptions.collectAsStateWithLifecycle()
+    val authenticationRequiredNotice by viewModel.authenticationRequiredNotice.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val listState = rememberLazyListState()
     val activity = LocalContext.current as Activity
@@ -58,6 +65,16 @@ fun CollectionTimelineScreen(
 
     LaunchedEffect(scrollToTopTrigger) {
         if (scrollToTopTrigger > 0) listState.animateScrollToItem(0)
+    }
+
+    LaunchedEffect(authenticationRequiredNotice) {
+        val sourceId = authenticationRequiredNotice ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = "此看板需要登入，請到 Boards 頁面登入",
+            actionLabel = "前往 Boards",
+        )
+        viewModel.consumeAuthenticationRequiredNotice(sourceId)
+        if (result == SnackbarResult.ActionPerformed) onNavigateToBoards()
     }
 
     BackHandler { activity.moveTaskToBack(true) }
@@ -74,7 +91,8 @@ fun CollectionTimelineScreen(
                 },
                 scrollBehavior = scrollBehavior,
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         PullToRefreshBox(
             isRefreshing = items.loadState.refresh is LoadState.Loading,
@@ -146,4 +164,3 @@ fun CollectionTimelineScreen(
     }
 
 }
-

@@ -96,6 +96,12 @@ class ThreadDetailViewModel @Inject constructor(
     private val _isSavingScreenshots = MutableStateFlow(false)
     val isSavingScreenshots = _isSavingScreenshots.asStateFlow()
 
+    val authenticationRequiredNotice = sessionManager.authenticationRequiredNotice
+
+    fun consumeAuthenticationRequiredNotice(sourceId: String) {
+        sessionManager.consumeAuthenticationRequiredNotice(sourceId)
+    }
+
     private data class InternalCommentState(
         val visibleComments: List<Comment>,
         val hasMore: Boolean,
@@ -136,7 +142,7 @@ class ThreadDetailViewModel @Inject constructor(
         try {
             loadThread(source)
         } catch (_: AuthenticationRequiredException) {
-            sessionManager.requestForegroundLogin(sourceId)
+            sessionManager.notifyAuthenticationRequired(sourceId)
         } finally {
             _isLoading.value = false
         }
@@ -227,6 +233,9 @@ class ThreadDetailViewModel @Inject constructor(
                 val post = _thread.value?.posts?.find { it.id == postId } ?: return@launch
                 val result = try {
                     source.getComments(post, state.nextPage)
+                } catch (_: AuthenticationRequiredException) {
+                    sessionManager.notifyAuthenticationRequired(sourceId)
+                    CommentPage(emptyList(), false)
                 } catch (_: Exception) {
                     CommentPage(emptyList(), false)
                 }

@@ -58,6 +58,12 @@ class CollectionTimelineViewModel @Inject constructor(
         collectionRepo.observeSubscriptions(collectionId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    val authenticationRequiredNotice = sessionManager.authenticationRequiredNotice
+
+    fun consumeAuthenticationRequiredNotice(sourceId: String) {
+        sessionManager.consumeAuthenticationRequiredNotice(sourceId)
+    }
+
     val timelinePager: Flow<PagingData<ThreadSummary>> =
         collectionRepo.observeSubscriptions(collectionId)
             .distinctUntilChanged()
@@ -66,7 +72,7 @@ class CollectionTimelineViewModel @Inject constructor(
                     MergedTimelinePagingSource(
                         subscriptions = subs,
                         sourceResolver = { extensionLoader.getSource(it) },
-                        onAuthenticationRequired = sessionManager::requestForegroundLogin,
+                        onAuthenticationRequired = sessionManager::notifyAuthenticationRequired,
                     )
                 }.flow
             }
