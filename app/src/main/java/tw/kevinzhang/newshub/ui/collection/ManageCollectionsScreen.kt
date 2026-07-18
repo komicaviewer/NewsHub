@@ -109,7 +109,13 @@ fun ManageCollectionsScreen(
                     .padding(padding),
             ) {
                 items(localOrder, key = { it.id }) { collection ->
-                    ReorderableItem(reorderState, key = collection.id) { isDragging ->
+                    ReorderableItem(
+                        state = reorderState,
+                        key = collection.id,
+                        // reorderable 2.3.3 defaults to animateItemPlacement(), which was removed
+                        // from the Compose Foundation version resolved by this app.
+                        animateItemModifier = Modifier,
+                    ) { isDragging ->
                         CollectionManageRow(
                             collection = collection,
                             isDragging = isDragging,
