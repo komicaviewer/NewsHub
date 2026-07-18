@@ -12,13 +12,5 @@ class App: Application(), ImageLoaderFactory {
     @Inject
     lateinit var imageLoader: ImageLoader
 
-    @Inject
-    lateinit var twocatMigrationCoordinator: TwocatMigrationCoordinator
-
-    override fun onCreate() {
-        super.onCreate()
-        twocatMigrationCoordinator.start()
-    }
-
     override fun newImageLoader() = imageLoader
 }

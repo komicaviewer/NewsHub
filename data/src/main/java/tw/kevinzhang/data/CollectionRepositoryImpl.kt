@@ -89,61 +89,6 @@ class CollectionRepositoryImpl @Inject constructor(
         dao.deleteSubscriptionsBySource(sourceId)
     }
 
-    override suspend fun migrateSourceIds(legacySourceIds: Set<String>, currentSourceId: String) {
-        val legacyIds = legacySourceIds.filter { it != currentSourceId }.distinct()
-        if (legacyIds.isEmpty()) return
-
-        db.withTransaction {
-            legacyIds.forEach { legacySourceId ->
-                migrateSubscriptions(legacySourceId, currentSourceId)
-                migrateReadingHistory(legacySourceId, currentSourceId)
-                migrateSavedPosts(legacySourceId, currentSourceId)
-            }
-        }
-    }
-
-    private suspend fun migrateSubscriptions(legacySourceId: String, currentSourceId: String) {
-        val currentKeys = dao.getSubscriptionsBySource(currentSourceId)
-            .mapTo(mutableSetOf()) { it.collectionId to it.boardUrl }
-        dao.getSubscriptionsBySource(legacySourceId).forEach { legacy ->
-            val key = legacy.collectionId to legacy.boardUrl
-            if (key in currentKeys) {
-                dao.deleteSubscription(legacy)
-            } else {
-                dao.insertSubscription(legacy.copy(sourceId = currentSourceId))
-                currentKeys += key
-            }
-        }
-    }
-
-    private suspend fun migrateReadingHistory(legacySourceId: String, currentSourceId: String) {
-        db.readingHistoryDao().getBySource(legacySourceId).forEach { legacy ->
-            val current = db.readingHistoryDao().getById(currentSourceId, legacy.threadId)
-            val winner = when {
-                current == null -> legacy.copy(sourceId = currentSourceId)
-                legacy.readAt > current.readAt -> legacy.copy(sourceId = currentSourceId)
-                else -> current
-            }
-            db.readingHistoryDao().delete(legacySourceId, legacy.threadId)
-            db.readingHistoryDao().upsert(winner)
-        }
-    }
-
-    private suspend fun migrateSavedPosts(legacySourceId: String, currentSourceId: String) {
-        db.savedPostDao().getBySource(legacySourceId).forEach { legacy ->
-            val current = db.savedPostDao().getById(currentSourceId, legacy.threadId)
-            val winner = if (current == null) {
-                legacy.copy(sourceId = currentSourceId)
-            } else {
-                // Preserve the current record's metadata and add legacy screenshot references in
-                // stable order. The files are already stored at absolute paths, so no file move is needed.
-                current.copy(screenshotPaths = mergeScreenshotPaths(current.screenshotPaths, legacy.screenshotPaths))
-            }
-            db.savedPostDao().delete(legacySourceId, legacy.threadId)
-            db.savedPostDao().upsert(winner)
-        }
-    }
-
     override fun observeReadingHistory() = db.readingHistoryDao().observeAll()
 
     override suspend fun recordRead(summary: ThreadSummary) {
@@ -197,21 +142,9 @@ class CollectionRepositoryImpl @Inject constructor(
     private val gson = Gson()
     private val pathListType = object : TypeToken<List<String>>() {}.type
 
-    private fun mergeScreenshotPaths(currentPaths: String, legacyPaths: String): String {
-        val current = readScreenshotPaths(currentPaths)
-        val legacy = readScreenshotPaths(legacyPaths)
-        return gson.toJson((current + legacy).distinct())
-    }
-
-    private fun readScreenshotPaths(value: String): List<String> = try {
-        gson.fromJson<List<String>>(value, pathListType) ?: emptyList()
-    } catch (_: Exception) {
-        emptyList()
-    }
-
     private fun deleteScreenshots(entity: SavedPostEntity) {
         try {
-            val paths = readScreenshotPaths(entity.screenshotPaths)
+            val paths: List<String> = gson.fromJson(entity.screenshotPaths, pathListType) ?: emptyList()
             paths.forEach { path ->
                 val file = File(path)
                 if (file.exists()) {

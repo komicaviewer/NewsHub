@@ -88,11 +88,4 @@ graph TD
 | `:marketplace`      | 以 GitHub 為基礎的擴充套件商城：索引抓取、APK 下載、安裝狀態追蹤                           |
 | `:app`              | UI（Jetpack Compose）、導航、Hilt 依賴注入                                 |
 
-### twocat 改名相容性
-
-正式來源 ID 為 `tw.kevinzhang.twocat`。NewsHub 仍可解析舊版 extension 使用的
-`tw.kevinzhang.site2cat` 與歷史 ID `tw.kevinzhang.2cat`；偵測到正式版 twocat
-extension 後，會以單一 Room transaction 遷移訂閱、閱讀紀錄與收藏資料。僅安裝舊版
-extension 時不會提前遷移，避免資料指向尚未安裝的來源。
-
 </details>

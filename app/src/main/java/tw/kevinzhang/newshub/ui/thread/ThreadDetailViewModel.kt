@@ -23,7 +23,6 @@ import tw.kevinzhang.data.SavedPostRepository
 import tw.kevinzhang.data.domain.ParagraphListConverter
 import tw.kevinzhang.data.domain.SavedPostEntity
 import tw.kevinzhang.extension_api.Source
-import tw.kevinzhang.extension_api.TwocatSourceIds
 import tw.kevinzhang.extension_api.AuthenticationRequiredException
 import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.CommentPage
@@ -57,15 +56,8 @@ class ThreadDetailViewModel @Inject constructor(
     val threadId: String = checkNotNull(savedStateHandle["threadId"]) {
         "ThreadDetailViewModel requires 'threadId' in SavedStateHandle"
     }
-    private val requestedSourceId: String = checkNotNull(savedStateHandle["sourceId"]) {
+    val sourceId: String = checkNotNull(savedStateHandle["sourceId"]) {
         "ThreadDetailViewModel requires 'sourceId' in SavedStateHandle"
-    }
-    // Only rewrite routes once the actual new extension is available. An old-only install must
-    // continue to create records with its own ID until the coordinator can safely migrate them.
-    val sourceId: String = if (extensionLoader.getAllSources().any { it.id == TwocatSourceIds.CURRENT }) {
-        TwocatSourceIds.canonicalize(requestedSourceId)
-    } else {
-        requestedSourceId
     }
     private val boardUrl: String = checkNotNull(savedStateHandle["boardUrl"]) {
         "ThreadDetailViewModel requires 'boardUrl' in SavedStateHandle"

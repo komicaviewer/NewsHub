@@ -29,9 +29,6 @@ android {
     kotlinOptions {
         jvmTarget = '1.8'
     }
-    testOptions {
-        unitTests.includeAndroidResources = true
-    }
     namespace 'tw.kevinzhang.data'
 }
 
@@ -45,6 +42,4 @@ dependencies {
     implementation libs.coroutines.android
     implementation libs.gson
     testImplementation libs.junit4
-    testImplementation libs.test.core
-    testImplementation libs.robolectric
 }

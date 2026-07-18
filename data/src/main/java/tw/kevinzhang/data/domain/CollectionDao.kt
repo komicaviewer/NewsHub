@@ -28,9 +28,6 @@ interface CollectionDao {
     @Query("SELECT * FROM board_subscriptions WHERE collectionId = :collectionId ORDER BY sortOrder")
     fun observeSubscriptions(collectionId: String): Flow<List<BoardSubscriptionEntity>>
 
-    @Query("SELECT * FROM board_subscriptions WHERE sourceId = :sourceId")
-    suspend fun getSubscriptionsBySource(sourceId: String): List<BoardSubscriptionEntity>
-
     @Query("SELECT COUNT(*) FROM board_subscriptions WHERE collectionId = :collectionId AND sourceId = :sourceId AND boardUrl = :boardUrl")
     suspend fun countSubscription(collectionId: String, sourceId: String, boardUrl: String): Int
 

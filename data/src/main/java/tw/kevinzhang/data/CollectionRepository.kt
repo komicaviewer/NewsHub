@@ -15,7 +15,4 @@ interface CollectionRepository {
     suspend fun addBoardSubscription(collectionId: String, sourceId: String, boardUrl: String, boardName: String)
     suspend fun removeBoardSubscription(subscriptionId: String)
     suspend fun removeAllSubscriptionsForSource(sourceId: String)
-
-    /** Moves records created by renamed sources to [currentSourceId]. Safe to call repeatedly. */
-    suspend fun migrateSourceIds(legacySourceIds: Set<String>, currentSourceId: String)
 }
