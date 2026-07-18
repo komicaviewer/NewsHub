@@ -1,9 +1,11 @@
 package tw.kevinzhang.newshub.ui.boards
 
 import android.content.Intent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -54,8 +57,8 @@ import coil.compose.AsyncImage
 import tw.kevinzhang.data.domain.CollectionEntity
 import tw.kevinzhang.extension_api.AuthState
 import tw.kevinzhang.extension_api.AuthenticatedSource
+import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Board
-import tw.kevinzhang.newshub.ui.component.AppCard
 import tw.kevinzhang.newshub.ui.component.TitleMediumText
 import tw.kevinzhang.newshub.ui.component.appClickable
 
@@ -93,46 +96,64 @@ fun BoardsScreen(
             sources.isEmpty() -> Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center,
-            ) { Text("No extensions installed. Browse the Marketplace to install some.") }
-            else -> LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 160.dp),
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                sources.forEach { (source, boards) ->
-                    item(
-                        key = "header:${source.id}",
-                        span = { GridItemSpan(maxLineSpan) },
-                    ) {
-                        SourceHeader(
-                            source = source,
-                            authState = authStates[source.id] ?: AuthState.Unknown,
-                            onLoginClick = onLoginClick,
-                            onLogoutClick = onLogoutClick,
-                        )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("尚未安裝任何 Extension")
+                    TextButton(onClick = onNavigateToMarketplace) {
+                        Text("前往 Marketplace")
                     }
-                    items(
-                        items = buildBoardGroupItems(boards),
-                        key = { item ->
+                }
+            }
+            else -> BoxWithConstraints(
+                modifier = Modifier.fillMaxSize().padding(padding),
+            ) {
+                val columns = if (maxWidth >= 600.dp) 3 else 2
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(columns),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    sources.forEach { (source, boards) ->
+                        item(
+                            key = "header:${source.id}",
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
+                            SourceHeader(
+                                source = source,
+                                boardCount = boards.size,
+                                authState = authStates[source.id] ?: AuthState.Unknown,
+                                onViewAll = { onNavigateToGroupDetail(source.id) },
+                                onLoginClick = onLoginClick,
+                                onLogoutClick = onLogoutClick,
+                            )
+                        }
+                        items(
+                            items = buildBoardGroupItems(boards),
+                            key = { item ->
+                                when (item) {
+                                    is BoardGroupItem.BoardCard -> "${source.id}:${item.board.url}"
+                                    BoardGroupItem.More -> "more:${source.id}"
+                                }
+                            },
+                        ) { item ->
                             when (item) {
-                                is BoardGroupItem.BoardCard -> "${source.id}:${item.board.url}"
-                                BoardGroupItem.More -> "more:${source.id}"
+                                is BoardGroupItem.BoardCard -> BoardGridCard(
+                                    board = item.board,
+                                    collections = collections,
+                                    onAddToCollections = { collectionIds ->
+                                        viewModel.addBoardToCollections(collectionIds, item.board, source)
+                                    },
+                                )
+                                BoardGroupItem.More -> MoreBoardsCard(
+                                    remainingCount = (boards.size - 5).coerceAtLeast(0),
+                                    onClick = { onNavigateToGroupDetail(source.id) },
+                                )
                             }
-                        },
-                    ) { item ->
-                        when (item) {
-                            is BoardGroupItem.BoardCard -> BoardGridCard(
-                                board = item.board,
-                                collections = collections,
-                                onAddToCollections = { collectionIds ->
-                                    viewModel.addBoardToCollections(collectionIds, item.board, source)
-                                },
-                            )
-                            BoardGroupItem.More -> MoreBoardsCard(
-                                onClick = { onNavigateToGroupDetail(source.id) },
-                            )
                         }
                     }
                 }
@@ -216,14 +237,21 @@ internal fun buildBoardGroupItems(boards: List<Board>): List<BoardGroupItem> =
 
 @Composable
 private fun SourceHeader(
-    source: tw.kevinzhang.extension_api.Source,
+    source: Source,
+    boardCount: Int,
     authState: AuthState,
+    onViewAll: () -> Unit,
     onLoginClick: (String) -> Unit,
     onLogoutClick: (String) -> Unit,
 ) {
-    Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 2.dp) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp, bottom = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -240,14 +268,26 @@ private fun SourceHeader(
                 }
                 TitleMediumText(text = source.name)
             }
-            SourceAuthAction(source, authState, onLoginClick, onLogoutClick)
+            TextButton(onClick = onViewAll) {
+                Text("查看全部 $boardCount 個")
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowForward,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+        if (source is AuthenticatedSource) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                SourceAuthAction(source, authState, onLoginClick, onLogoutClick)
+            }
         }
     }
 }
 
 @Composable
 private fun SourceAuthAction(
-    source: tw.kevinzhang.extension_api.Source,
+    source: Source,
     authState: AuthState,
     onLoginClick: (String) -> Unit,
     onLogoutClick: (String) -> Unit,
@@ -263,15 +303,31 @@ private fun SourceAuthAction(
 }
 
 @Composable
-private fun MoreBoardsCard(onClick: () -> Unit) {
-    AppCard(modifier = Modifier.height(116.dp), onClick = onClick) {
+private fun MoreBoardsCard(remainingCount: Int, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.height(132.dp),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        onClick = onClick,
+    ) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(12.dp),
+            modifier = Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
+            horizontalAlignment = Alignment.Start,
         ) {
             Text("查看更多", style = MaterialTheme.typography.titleMedium)
-            Icon(Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = null)
+            Text(
+                text = "還有 $remainingCount 個看板",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Icon(
+                Icons.AutoMirrored.Outlined.ArrowForward,
+                contentDescription = null,
+                modifier = Modifier.align(Alignment.End),
+            )
         }
     }
 }
@@ -292,8 +348,13 @@ private fun BoardRow(
     collections: List<CollectionEntity>,
     onAddToCollections: (List<String>) -> Unit,
 ) {
-    BoardItem(board, collections, onAddToCollections, compact = false)
-    Spacer(modifier = Modifier.height(4.dp))
+    BoardItem(
+        board = board,
+        collections = collections,
+        onAddToCollections = onAddToCollections,
+        compact = false,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -303,49 +364,92 @@ private fun BoardItem(
     collections: List<CollectionEntity>,
     onAddToCollections: (List<String>) -> Unit,
     compact: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     var showSheet by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf(emptySet<String>()) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
 
-    AppCard(
-        modifier = if (compact) Modifier.height(116.dp) else Modifier,
-        onClick = { showSheet = true },
+    val openWebsite = {
+        val intent = Intent(Intent.ACTION_VIEW, board.url.toUri())
+        context.startActivity(intent)
+    }
+    Surface(
+        modifier = modifier.then(if (compact) Modifier.height(132.dp) else Modifier),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        tonalElevation = 1.dp,
+        onClick = openWebsite,
     ) {
-        val openWebsite = {
-            val intent = Intent(Intent.ACTION_VIEW, board.url.toUri())
-            context.startActivity(intent)
-        }
         if (compact) {
-            Column(modifier = Modifier.fillMaxSize().padding(start = 12.dp, top = 12.dp, end = 4.dp)) {
+            Column(modifier = Modifier.fillMaxSize().padding(start = 16.dp, top = 16.dp, end = 8.dp, bottom = 6.dp)) {
                 Text(
                     text = board.name,
+                    style = MaterialTheme.typography.titleMedium,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                Row(modifier = Modifier.align(Alignment.End)) {
-                    IconButton(onClick = openWebsite) {
-                        Icon(Icons.Outlined.Language, contentDescription = "Open in browser")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    TextButton(
+                        onClick = openWebsite,
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                    ) {
+                        Icon(
+                            Icons.Outlined.Language,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text("網站", modifier = Modifier.padding(start = 4.dp))
                     }
-                    IconButton(onClick = { showSheet = true }) {
+                    FilledTonalIconButton(
+                        onClick = { showSheet = true },
+                        modifier = Modifier.size(40.dp),
+                    ) {
                         Icon(Icons.Outlined.Add, contentDescription = "Add to collection")
                     }
                 }
             }
         } else {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 14.dp, end = 8.dp, bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(text = board.name, modifier = Modifier.weight(1f))
-                IconButton(onClick = openWebsite) {
-                    Icon(Icons.Outlined.Language, contentDescription = "Open in browser")
+                Text(text = board.name, style = MaterialTheme.typography.titleMedium)
+                board.description?.takeIf { it.isNotBlank() }?.let { description ->
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
-                IconButton(onClick = { showSheet = true }) {
-                    Icon(Icons.Outlined.Add, contentDescription = "Add to collection")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    TextButton(onClick = openWebsite) {
+                        Icon(
+                            Icons.Outlined.Language,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text("開啟網站", modifier = Modifier.padding(start = 6.dp))
+                    }
+                    FilledTonalIconButton(
+                        onClick = { showSheet = true },
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(Icons.Outlined.Add, contentDescription = "Add to collection")
+                    }
                 }
             }
         }
