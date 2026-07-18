@@ -11,6 +11,9 @@ interface SavedPostDao {
     @Query("SELECT * FROM saved_posts ORDER BY savedAt DESC")
     fun observeAll(): Flow<List<SavedPostEntity>>
 
+    @Query("SELECT * FROM saved_posts WHERE sourceId = :sourceId")
+    suspend fun getBySource(sourceId: String): List<SavedPostEntity>
+
     @Query("SELECT * FROM saved_posts WHERE sourceId = :sourceId AND threadId = :threadId")
     fun observeById(sourceId: String, threadId: String): Flow<SavedPostEntity?>
 
