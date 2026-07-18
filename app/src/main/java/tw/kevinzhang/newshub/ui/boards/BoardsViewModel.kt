@@ -9,12 +9,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import tw.kevinzhang.data.CollectionRepository
+import tw.kevinzhang.extension_api.AuthState
+import tw.kevinzhang.extension_api.AuthenticatedSource
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_loader.ExtensionLoader
-import tw.kevinzhang.newshub.auth.AppCookieJar
-import tw.kevinzhang.newshub.auth.AuthRepository
-import tw.kevinzhang.newshub.auth.LoginStatus
+import tw.kevinzhang.newshub.auth.SourceSessionManager
 import javax.inject.Inject
 
 data class SourceWithBoards(val source: Source, val boards: List<Board>)
@@ -23,11 +23,10 @@ data class SourceWithBoards(val source: Source, val boards: List<Board>)
 class BoardsViewModel @Inject constructor(
     private val extensionLoader: ExtensionLoader,
     private val collectionRepo: CollectionRepository,
-    private val authRepository: AuthRepository,
-    private val cookieJar: AppCookieJar,
+    private val sessionManager: SourceSessionManager,
 ) : ViewModel() {
 
-    val loginStatuses: StateFlow<Map<String, LoginStatus>> = authRepository.loginStatuses
+    val authStates: StateFlow<Map<String, AuthState>> = sessionManager.states
 
     private val _sources = MutableStateFlow<List<SourceWithBoards>>(emptyList())
     val sources = _sources.asStateFlow()
@@ -42,11 +41,11 @@ class BoardsViewModel @Inject constructor(
             extensionLoader.sourcesFlow.collectLatest { sources ->
                 _isLoading.value = true
                 _sources.value = sources.map { source ->
-                    // Restore login status from persisted cookies on app restart.
-                    if (source.needsLogin) {
-                        val cookieUrl = authRepository.cookieUrls.value[source.id]
-                        if (cookieUrl != null && cookieJar.hasCookiesForUrl(cookieUrl)) {
-                            authRepository.setLoggedIn(source.id, cookieUrl)
+                    if (source is AuthenticatedSource && sessionManager.stateFor(source.id) == AuthState.Unknown) {
+                        if (runCatching { source.validateSession() }.getOrDefault(false)) {
+                            sessionManager.markSignedIn(source.id)
+                        } else {
+                            sessionManager.markExpired(source.id)
                         }
                     }
                     SourceWithBoards(

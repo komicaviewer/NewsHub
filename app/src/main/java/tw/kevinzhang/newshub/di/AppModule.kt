@@ -18,7 +18,6 @@ import kotlinx.coroutines.SupervisorJob
 import javax.inject.Named
 import tw.kevinzhang.newshub.di.ApplicationScope
 
-private val Context.authDataStore: DataStore<Preferences> by preferencesDataStore(name = "auth_status")
 private val Context.repoDataStore: DataStore<Preferences> by preferencesDataStore(name = "repo_settings")
 
 @InstallIn(SingletonComponent::class)
@@ -29,11 +28,6 @@ object AppModule {
     @Provides
     @javax.inject.Singleton
     fun provideApplicationScope(): CoroutineScope = CoroutineScope(SupervisorJob())
-
-    @Provides
-    @javax.inject.Singleton
-    fun provideAuthDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
-        context.authDataStore
 
     @Provides
     @javax.inject.Singleton

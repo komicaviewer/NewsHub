@@ -14,9 +14,12 @@ class SourceContractTest {
             override val language = "zh-TW"
             override val version = 1
             override val iconUrl = null
+            override val supportsCommentPagination = false
+            override val alwaysUseRawImage = false
+            override val needsLogin = false
             override suspend fun getBoards() = emptyList<Board>()
             override suspend fun getThreadSummaries(board: Board, page: Int) = emptyList<ThreadSummary>()
-            override suspend fun getThread(summary: ThreadSummary) = Thread("", null, emptyList())
+            override suspend fun getThread(summary: ThreadSummary) = Thread("", null, null, emptyList())
         }
         assertTrue(source.id.isNotBlank())
     }

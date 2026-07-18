@@ -1,10 +1,7 @@
 package tw.kevinzhang.newshub.ui
 
-import android.app.Activity
 import android.content.Intent
 import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
@@ -52,8 +49,10 @@ import androidx.navigation.navArgument
 import androidx.navigation.navigation
 import kotlinx.coroutines.launch
 import tw.kevinzhang.newshub.auth.AuthViewModel
+import tw.kevinzhang.newshub.auth.WebLoginRequest
 import tw.kevinzhang.newshub.encode
 import tw.kevinzhang.newshub.ui.boards.BoardsScreen
+import tw.kevinzhang.newshub.ui.auth.AuthWebViewDialog
 import tw.kevinzhang.newshub.ui.collection.BoardPickerScreen
 import tw.kevinzhang.newshub.ui.collection.CollectionTimelineScreen
 import tw.kevinzhang.newshub.ui.collection.CollectionTimelineViewModel
@@ -84,27 +83,10 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     val authViewModel: AuthViewModel = hiltViewModel()
     val navItems = remember { mainNavItems() }
 
-    var pendingLoginSourceId by remember { mutableStateOf<String?>(null) }
-    val loginLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val sourceId = pendingLoginSourceId ?: return@rememberLauncherForActivityResult
-        pendingLoginSourceId = null
-        if (result.resultCode == Activity.RESULT_OK) {
-            val cookieUrl = result.data?.getStringExtra("cookie_url")
-            val rawCookies = result.data?.getStringExtra("raw_cookies")
-            authViewModel.onLoginSuccess(sourceId, cookieUrl, rawCookies)
-        }
-    }
+    var pendingWebLogin by remember { mutableStateOf<WebLoginRequest?>(null) }
     LaunchedEffect(Unit) {
-        authViewModel.loginRequests.collect { sourceId ->
-            pendingLoginSourceId = sourceId
-            val intent = Intent().setClassName(sourceId, "$sourceId.LoginActivity")
-            try {
-                loginLauncher.launch(intent)
-            } catch (_: Exception) {
-                pendingLoginSourceId = null
-            }
+        authViewModel.webLoginRequests.collect { request ->
+            pendingWebLogin = request
         }
     }
 
@@ -138,6 +120,19 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     }
 
     NewshubTheme {
+        pendingWebLogin?.let { request ->
+            AuthWebViewDialog(
+                request = request,
+                onFinished = {
+                    pendingWebLogin = null
+                    authViewModel.completeWebLogin(request)
+                },
+                onCancelled = {
+                    pendingWebLogin = null
+                    authViewModel.cancelLogin(request.sourceId)
+                },
+            )
+        }
         ModalNavigationDrawer(
             drawerState = drawerState,
             gesturesEnabled = isCollectionRoute || isHomeRoute,

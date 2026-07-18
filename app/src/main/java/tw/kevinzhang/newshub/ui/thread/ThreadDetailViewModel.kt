@@ -23,6 +23,7 @@ import tw.kevinzhang.data.SavedPostRepository
 import tw.kevinzhang.data.domain.ParagraphListConverter
 import tw.kevinzhang.data.domain.SavedPostEntity
 import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.AuthenticationRequiredException
 import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.CommentPage
 import tw.kevinzhang.extension_api.model.Paragraph
@@ -31,6 +32,7 @@ import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.newshub.data.PreferenceStore
+import tw.kevinzhang.newshub.auth.SourceSessionManager
 import java.io.File
 import javax.inject.Inject
 
@@ -48,6 +50,7 @@ class ThreadDetailViewModel @Inject constructor(
     private val preferenceStore: PreferenceStore,
     private val historyRepository: ReadingHistoryRepository,
     private val savedPostRepository: SavedPostRepository,
+    private val sessionManager: SourceSessionManager,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
     val threadId: String = checkNotNull(savedStateHandle["threadId"]) {
@@ -117,17 +120,24 @@ class ThreadDetailViewModel @Inject constructor(
             val source = extensionLoader.getSource(sourceId) ?: return@launch
             cachedSource = source
             _alwaysUseRawImage.value = source.alwaysUseRawImage
-            _isLoading.value = true
-            loadThread(source)
-            _isLoading.value = false
+            loadThreadInForeground(source)
         }
     }
 
     fun refresh() {
         val source = cachedSource ?: return
         viewModelScope.launch {
-            _isLoading.value = true
+            loadThreadInForeground(source)
+        }
+    }
+
+    private suspend fun loadThreadInForeground(source: Source) {
+        _isLoading.value = true
+        try {
             loadThread(source)
+        } catch (_: AuthenticationRequiredException) {
+            sessionManager.requestForegroundLogin(sourceId)
+        } finally {
             _isLoading.value = false
         }
     }
@@ -185,6 +195,8 @@ class ThreadDetailViewModel @Inject constructor(
                                 visibleComments = page.comments,
                                 hasMore = page.hasMore,
                             )
+                        } catch (error: AuthenticationRequiredException) {
+                            throw error
                         } catch (_: Exception) {
                             InternalCommentState(emptyList(), false)
                         }

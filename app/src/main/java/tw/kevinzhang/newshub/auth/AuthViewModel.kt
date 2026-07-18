@@ -1,64 +1,68 @@
 package tw.kevinzhang.newshub.auth
 
-import android.webkit.CookieManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
-import okhttp3.Call
-import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.OkHttpClient
+import tw.kevinzhang.extension_api.AuthSpec
+import tw.kevinzhang.extension_api.AuthenticatedSource
+import tw.kevinzhang.extension_api.AuthenticationRequiredException
+import tw.kevinzhang.extension_loader.ExtensionLoader
 import javax.inject.Inject
 
+data class WebLoginRequest(
+    val sourceId: String,
+    val spec: AuthSpec.WebCookie,
+)
+
+/** Coordinates authentication requests; it deliberately contains no Android WebView code. */
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val authRepository: AuthRepository,
-    val cookieJar: AppCookieJar,
-    private val okHttpClient: OkHttpClient,
+    private val extensionLoader: ExtensionLoader,
+    private val sessionManager: SourceSessionManager,
 ) : ViewModel() {
+    val authStates = sessionManager.states
+    private val _webLoginRequests = MutableSharedFlow<WebLoginRequest>(extraBufferCapacity = 1)
+    val webLoginRequests: SharedFlow<WebLoginRequest> = _webLoginRequests.asSharedFlow()
 
-    val loginStatuses: StateFlow<Map<String, LoginStatus>> = authRepository.loginStatuses
-
-    /** Emits a sourceId whenever the host app should launch that extension's LoginActivity. */
-    private val _loginRequests = MutableSharedFlow<String>(extraBufferCapacity = 1)
-    val loginRequests: SharedFlow<String> = _loginRequests.asSharedFlow()
+    init {
+        viewModelScope.launch {
+            sessionManager.foregroundLoginRequests.collect(::triggerLogin)
+        }
+    }
 
     fun triggerLogin(sourceId: String) {
-        viewModelScope.launch { _loginRequests.emit(sourceId) }
+        val source = extensionLoader.getSource(sourceId) as? AuthenticatedSource ?: return
+        val spec = source.authSpec as? AuthSpec.WebCookie ?: return
+        sessionManager.beginLogin(sourceId)
+        _webLoginRequests.tryEmit(WebLoginRequest(sourceId, spec))
     }
 
-    /**
-     * Called after the extension's LoginActivity returns RESULT_OK.
-     * Parses raw WebView cookies from the Intent extras and stores them in the shared cookie jar.
-     */
-    fun onLoginSuccess(sourceId: String, cookieUrl: String?, rawCookies: String?) {
-        if (cookieUrl != null && rawCookies != null) {
-            cookieJar.addCookiesFromString(cookieUrl, rawCookies)
+    /** Called only after the in-host WebView has completed a permitted login navigation. */
+    fun completeWebLogin(request: WebLoginRequest) {
+        viewModelScope.launch {
+            sessionManager.importWebViewCookies(request.sourceId, request.spec)
+            val source = extensionLoader.getSource(request.sourceId) as? AuthenticatedSource
+            val valid = runCatching { source?.validateSession() == true }.getOrDefault(false)
+            if (valid) sessionManager.markSignedIn(request.sourceId)
+            else sessionManager.markExpired(request.sourceId)
         }
-        authRepository.setLoggedIn(sourceId, cookieUrl ?: "")
     }
+
+    fun cancelLogin(sourceId: String) = sessionManager.markSignedOut(sourceId)
 
     fun logout(sourceId: String) {
-        val cookieUrl = authRepository.cookieUrls.value[sourceId]
-        if (cookieUrl != null) {
-            // Cancel in-flight requests for this domain before clearing cookies.
-            val host = runCatching { cookieUrl.toHttpUrl().host }.getOrNull()
-            if (host != null) {
-                val domain = parentDomain(host)
-                val matchesDomain = { call: Call ->
-                    val callHost = call.request().url.host
-                    callHost == domain || callHost.endsWith(".$domain")
-                }
-                okHttpClient.dispatcher.runningCalls().filter(matchesDomain).forEach { it.cancel() }
-                okHttpClient.dispatcher.queuedCalls().filter(matchesDomain).forEach { it.cancel() }
-            }
-            cookieJar.clearCookiesForUrl(cookieUrl)
-        }
-        CookieManager.getInstance().removeAllCookies(null)
-        authRepository.logout(sourceId)
+        val source = extensionLoader.getSource(sourceId) as? AuthenticatedSource ?: return
+        val spec = source.authSpec as? AuthSpec.WebCookie ?: return
+        sessionManager.logout(sourceId, spec)
+    }
+
+    /** Call from a foreground request handler when an extension throws this exception. */
+    fun onAuthenticationRequired(sourceId: String, error: AuthenticationRequiredException) {
+        sessionManager.markExpired(sourceId)
+        if (error.isUserAction) triggerLogin(sourceId)
     }
 }

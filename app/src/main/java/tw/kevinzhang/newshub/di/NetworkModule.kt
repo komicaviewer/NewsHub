@@ -7,7 +7,8 @@ import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import tw.kevinzhang.newshub.BuildConfig
-import tw.kevinzhang.newshub.auth.AppCookieJar
+import tw.kevinzhang.extension_api.SourceRuntimeProvider
+import tw.kevinzhang.newshub.auth.SourceSessionManager
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
@@ -17,11 +18,13 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(cookieJar: AppCookieJar): OkHttpClient {
+    fun provideOkHttpClient(): OkHttpClient {
         return OkHttpClient.Builder().run {
-            cookieJar(cookieJar)
             if (BuildConfig.DEBUG) {
-                val logging = HttpLoggingInterceptor()
+                val logging = HttpLoggingInterceptor().apply {
+                    redactHeader("Cookie")
+                    redactHeader("Set-Cookie")
+                }
                 addInterceptor(logging.setLevel(HttpLoggingInterceptor.Level.HEADERS))
             }
             readTimeout(10, TimeUnit.SECONDS)
@@ -29,5 +32,9 @@ object NetworkModule {
             build()
         }
     }
+
+    @Provides
+    @Singleton
+    fun provideSourceRuntimeProvider(manager: SourceSessionManager): SourceRuntimeProvider = manager
 
 }

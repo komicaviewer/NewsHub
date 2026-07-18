@@ -8,12 +8,14 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import tw.kevinzhang.data.domain.BoardSubscriptionEntity
 import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.AuthenticationRequiredException
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.ThreadSummary
 
 class MergedTimelinePagingSource(
     private val subscriptions: List<BoardSubscriptionEntity>,
     private val sourceResolver: (String) -> Source?,
+    private val onAuthenticationRequired: (String) -> Unit,
 ) : PagingSource<Int, ThreadSummary>() {
 
     override fun getRefreshKey(state: PagingState<Int, ThreadSummary>): Int? = null
@@ -29,8 +31,13 @@ class MergedTimelinePagingSource(
                         val source = sourceResolver(sub.sourceId) ?: return@mapNotNull null
                         val board = Board(sourceId = sub.sourceId, url = sub.boardUrl, name = sub.boardName)
                         async {
-                            source.getThreadSummaries(board, page)
-                                .map { it.copy(sourceIconUrl = source.iconUrl) }
+                            try {
+                                source.getThreadSummaries(board, page)
+                                    .map { it.copy(sourceIconUrl = source.iconUrl) }
+                            } catch (error: AuthenticationRequiredException) {
+                                onAuthenticationRequired(sub.sourceId)
+                                throw error
+                            }
                         }
                     }
                     .awaitAll()

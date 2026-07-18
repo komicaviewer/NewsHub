@@ -2,7 +2,7 @@
 # Gson
 # -----------------------------------------------------------------------
 
-# Required for TypeToken generic type resolution at runtime (used in AppCookieJar)
+# Required for TypeToken generic type resolution at runtime (used in SourceCookieJar)
 -keepattributes Signature
 -keepattributes *Annotation*
 
@@ -15,7 +15,7 @@
 -keepclassmembers class tw.kevinzhang.marketplace.data.ExtensionIndex { *; }
 
 # SerializableCookie — serialized to/from SharedPreferences with TypeToken<List<...>>
--keepclassmembers class tw.kevinzhang.newshub.auth.AppCookieJar$SerializableCookie { *; }
+-keepclassmembers class tw.kevinzhang.newshub.auth.SourceCookieJar$StoredCookie { *; }
 
 # CommentRes — deserialized from Gamer API JSON response
 -keepclassmembers class tw.kevinzhang.gamer_api.parser.CommentListParser$CommentRes { *; }

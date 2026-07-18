@@ -23,6 +23,7 @@ import tw.kevinzhang.data.CollectionRepository
 import tw.kevinzhang.data.domain.BoardSubscriptionEntity
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extension_loader.ExtensionLoader
+import tw.kevinzhang.newshub.auth.SourceSessionManager
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -30,6 +31,7 @@ import javax.inject.Inject
 class CollectionTimelineViewModel @Inject constructor(
     private val collectionRepo: CollectionRepository,
     private val extensionLoader: ExtensionLoader,
+    private val sessionManager: SourceSessionManager,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -64,6 +66,7 @@ class CollectionTimelineViewModel @Inject constructor(
                     MergedTimelinePagingSource(
                         subscriptions = subs,
                         sourceResolver = { extensionLoader.getSource(it) },
+                        onAuthenticationRequired = sessionManager::requestForegroundLogin,
                     )
                 }.flow
             }

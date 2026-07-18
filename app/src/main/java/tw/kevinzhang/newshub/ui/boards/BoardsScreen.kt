@@ -44,8 +44,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import tw.kevinzhang.data.domain.CollectionEntity
+import tw.kevinzhang.extension_api.AuthState
+import tw.kevinzhang.extension_api.AuthenticatedSource
 import tw.kevinzhang.extension_api.model.Board
-import tw.kevinzhang.newshub.auth.LoginStatus
 import tw.kevinzhang.newshub.ui.component.AppCard
 import tw.kevinzhang.newshub.ui.component.TitleMediumText
 import tw.kevinzhang.newshub.ui.component.appClickable
@@ -61,7 +62,7 @@ fun BoardsScreen(
     val sources by viewModel.sources.collectAsStateWithLifecycle()
     val collections by viewModel.collections.collectAsStateWithLifecycle(emptyList())
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
-    val loginStatuses by viewModel.loginStatuses.collectAsStateWithLifecycle()
+    val authStates by viewModel.authStates.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -117,13 +118,17 @@ fun BoardsScreen(
                                             text = source.name,
                                         )
                                     }
-                                    if (source.needsLogin) {
-                                        val status = loginStatuses[source.id] ?: LoginStatus.NONE
+                                    if (source is AuthenticatedSource) {
+                                        val status = authStates[source.id] ?: AuthState.Unknown
                                         when (status) {
-                                            LoginStatus.LOGGED_IN -> TextButton(
+                                            AuthState.SignedIn -> TextButton(
                                                 onClick = { onLogoutClick(source.id) },
                                             ) { Text("Logout") }
-                                            LoginStatus.NONE -> TextButton(
+                                            AuthState.SigningIn -> Text("登入中…")
+                                            AuthState.Expired -> TextButton(
+                                                onClick = { onLoginClick(source.id) },
+                                            ) { Text("重新登入") }
+                                            AuthState.SignedOut, AuthState.Unknown -> TextButton(
                                                 onClick = { onLoginClick(source.id) },
                                             ) { Text("Login") }
                                         }
