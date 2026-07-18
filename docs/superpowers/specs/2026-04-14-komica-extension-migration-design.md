@@ -11,7 +11,7 @@
 - NewsHub app 不再包含任何內建 Source 實作，所有 Source 均透過 APK extension 機制提供
 - 刪除 `komica-api` 與 `extensions-builtin` 兩個模組
 - 移除 `extension-loader` 的 `builtInSources` 機制
-- extensions-source 新增 `komica-common` 共享 library 與三個薄 extension（sora、2cat、komica2）
+- extensions-source 新增 `komica-common` 共享 library 與三個薄 extension（sora、twocat、komica2）
 
 ---
 
@@ -29,7 +29,7 @@ extensions-source/
     │   └── src/main/java/tw/kevinzhang/komica_api/
     │       (搬移自 NewsHub :komica-api 所有 .kt 原始碼)
     ├── sora/               (新增 APK extension)
-    ├── 2cat/               (新增 APK extension)
+    ├── twocat/             (新增 APK extension)
     └── komica2/            (新增 APK extension)
 ```
 
@@ -47,15 +47,15 @@ graph TD
     extension-api["extension-api (JitPack, compileOnly)"]
     komica-common[":src:komica-common (Android library)"]
     sora[":src:sora (APK extension)"]
-    _2cat[":src:2cat (APK extension)"]
+    twocat[":src:twocat (APK extension)"]
     komica2[":src:komica2 (APK extension)"]
 
     sora --> komica-common
-    _2cat --> komica-common
+    twocat --> komica-common
     komica2 --> komica-common
     komica-common --> extension-api
     sora --> extension-api
-    _2cat --> extension-api
+    twocat --> extension-api
     komica2 --> extension-api
 ```
 
@@ -85,7 +85,7 @@ dependencies {
 | Extension | Source 類別 | Source id |
 |-----------|------------|----------|
 | `src/sora/` | `SoraSource` | `tw.kevinzhang.komica-sora` |
-| `src/2cat/` | `_2catSource` | `tw.kevinzhang.2cat` |
+| `src/twocat/` | `TwocatSource` | `tw.kevinzhang.twocat` |
 | `src/komica2/` | `Komica2Source` | `tw.kevinzhang.komica2` |
 
 `ParagraphMapper.kt`（`KParagraph` → `ExtParagraph`）隨 komica-common 一起搬移，供三個 Source 共用。
@@ -189,7 +189,7 @@ graph TD
 ## 執行順序
 
 1. **extensions-source**：建立 `komica-common` 模組，搬移代碼
-2. **extensions-source**：建立 `sora`、`2cat`、`komica2` 三個 extension，搬移 Source 類別
+2. **extensions-source**：建立 `sora`、`twocat`、`komica2` 三個 extension，搬移 Source 類別
 3. **extensions-source**：更新 `settings.gradle.kts`
 4. **NewsHub**：修改 `ExtensionLoaderImpl` 與 `ExtensionModule`
 5. **NewsHub**：更新 `extension-loader/build.gradle`
