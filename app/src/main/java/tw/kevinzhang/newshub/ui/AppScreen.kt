@@ -51,6 +51,7 @@ import kotlinx.coroutines.launch
 import tw.kevinzhang.newshub.auth.AuthViewModel
 import tw.kevinzhang.newshub.auth.WebLoginRequest
 import tw.kevinzhang.newshub.encode
+import tw.kevinzhang.newshub.ui.boards.BoardGroupDetailScreen
 import tw.kevinzhang.newshub.ui.boards.BoardsScreen
 import tw.kevinzhang.newshub.ui.auth.AuthWebViewDialog
 import tw.kevinzhang.newshub.ui.collection.BoardPickerScreen
@@ -291,6 +292,20 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     composable("boards") {
                         BoardsScreen(
                             onNavigateToMarketplace = { navController.navigate("marketplace") },
+                            onNavigateToGroupDetail = { sourceId ->
+                                navController.navigate("board_group/${sourceId.encode()}")
+                            },
+                            onLoginClick = { sourceId -> authViewModel.triggerLogin(sourceId) },
+                            onLogoutClick = { sourceId -> authViewModel.logout(sourceId) },
+                        )
+                    }
+                    composable(
+                        route = "board_group/{sourceId}",
+                        arguments = listOf(navArgument("sourceId") { type = NavType.StringType }),
+                    ) { backStackEntry ->
+                        BoardGroupDetailScreen(
+                            sourceId = backStackEntry.arguments?.getString("sourceId").orEmpty(),
+                            onNavigateUp = { navController.navigateUp() },
                             onLoginClick = { sourceId -> authViewModel.triggerLogin(sourceId) },
                             onLogoutClick = { sourceId -> authViewModel.logout(sourceId) },
                         )
