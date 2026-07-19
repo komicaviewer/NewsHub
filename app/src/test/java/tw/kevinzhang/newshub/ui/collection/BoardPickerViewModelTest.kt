@@ -5,36 +5,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Board
+import tw.kevinzhang.extension_api.model.BoardPage
+import tw.kevinzhang.extension_api.model.BoardPageRequest
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
 
 class BoardPickerViewModelTest {
     @Test
-    fun filter_ignores_case_and_preserves_source_groups() {
-        val sources = listOf(
-            SourceWithBoards(source("komica"), listOf(board("komica", "a", "Anime"), board("komica", "b", "遊戲"))),
-            SourceWithBoards(source("gamer"), listOf(board("gamer", "a", "ANIMATION"))),
-        )
-
-        val filtered = filterSourceWithBoards(sources, query = "ani", selectedKeys = emptySet(), selectedOnly = false)
-
-        assertEquals(listOf("komica", "gamer"), filtered.map { it.source.id })
-        assertEquals(listOf("Anime"), filtered[0].boards.map(Board::name))
-        assertEquals(listOf("ANIMATION"), filtered[1].boards.map(Board::name))
-    }
-
-    @Test
-    fun selected_only_filters_by_source_and_url_and_counts_each_group() {
+    fun selected_counts_use_source_and_url_as_identity() {
         val sources = listOf(
             SourceWithBoards(source("komica"), listOf(board("komica", "same", "Komica"), board("komica", "other", "Other"))),
             SourceWithBoards(source("gamer"), listOf(board("gamer", "same", "Gamer"))),
         )
         val selected = setOf(selectedBoardKey("komica", "same"))
 
-        val filtered = filterSourceWithBoards(sources, query = "", selectedKeys = selected, selectedOnly = true)
-
-        assertEquals(listOf("komica"), filtered.map { it.source.id })
-        assertEquals(listOf("Komica"), filtered.single().boards.map(Board::name))
         assertEquals(mapOf("komica" to 1, "gamer" to 0), selectedBoardCountsBySource(sources, selected))
     }
 
@@ -59,6 +43,35 @@ class BoardPickerViewModelTest {
             listOf(SourceBoardLoadResult(failing, failure = BoardLoadFailure(failing, IllegalStateException("offline")))),
         )
         assertTrue(allFailed is BoardPickerUiState.AllSourcesFailed)
+
+        val failedSearch = boardPickerUiState(
+            sources = listOf(failing),
+            results = listOf(
+                SourceBoardLoadResult(failing, failure = BoardLoadFailure(failing, IllegalStateException("offline"))),
+            ),
+            query = "遊戲",
+            allowEmptyContent = true,
+        )
+        assertTrue(failedSearch is BoardPickerUiState.Content)
+    }
+
+    @Test
+    fun cached_results_remain_content_when_network_fails() {
+        val offline = source("offline")
+        val state = boardPickerUiState(
+            listOf(offline),
+            listOf(
+                SourceBoardLoadResult(
+                    source = offline,
+                    boards = listOf(board("offline", "cached", "Cached")),
+                    isFromCache = true,
+                    failure = BoardLoadFailure(offline, IllegalStateException("offline")),
+                ),
+            ),
+        ) as BoardPickerUiState.Content
+
+        assertTrue(state.sources.single().isFromCache)
+        assertEquals("Cached", state.sources.single().boards.single().name)
     }
 
     private fun source(id: String): Source = object : Source {
@@ -70,7 +83,7 @@ class BoardPickerViewModelTest {
         override val supportsCommentPagination = false
         override val alwaysUseRawImage = false
         override val needsLogin = false
-        override suspend fun getBoards(): List<Board> = emptyList()
+        override suspend fun getBoardPage(request: BoardPageRequest) = BoardPage(emptyList())
         override suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary> = emptyList()
         override suspend fun getThread(summary: ThreadSummary): Thread = error("Not used")
     }

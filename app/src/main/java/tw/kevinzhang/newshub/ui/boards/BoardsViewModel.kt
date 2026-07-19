@@ -7,12 +7,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import tw.kevinzhang.data.CollectionRepository
 import tw.kevinzhang.extension_api.AuthState
 import tw.kevinzhang.extension_api.AuthenticatedSource
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Board
+import tw.kevinzhang.extension_api.model.BoardPageRequest
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.newshub.auth.SourceSessionManager
 import javax.inject.Inject
@@ -40,18 +44,24 @@ class BoardsViewModel @Inject constructor(
         viewModelScope.launch {
             extensionLoader.sourcesFlow.collectLatest { sources ->
                 _isLoading.value = true
-                _sources.value = sources.map { source ->
-                    if (source is AuthenticatedSource && sessionManager.stateFor(source.id) == AuthState.Unknown) {
-                        if (runCatching { source.validateSession() }.getOrDefault(false)) {
-                            sessionManager.markSignedIn(source.id)
-                        } else {
-                            sessionManager.markExpired(source.id)
+                _sources.value = coroutineScope {
+                    sources.map { source ->
+                        async {
+                            if (source is AuthenticatedSource && sessionManager.stateFor(source.id) == AuthState.Unknown) {
+                                if (runCatching { source.validateSession() }.getOrDefault(false)) {
+                                    sessionManager.markSignedIn(source.id)
+                                } else {
+                                    sessionManager.markExpired(source.id)
+                                }
+                            }
+                            SourceWithBoards(
+                                source = source,
+                                boards = runCatching {
+                                    source.getBoardPage(BoardPageRequest()).boards
+                                }.getOrDefault(emptyList()).distinctBy { it.url },
+                            )
                         }
-                    }
-                    SourceWithBoards(
-                        source = source,
-                        boards = runCatching { source.getBoards() }.getOrDefault(emptyList()).distinctBy { it.url },
-                    )
+                    }.awaitAll()
                 }
                 _isLoading.value = false
             }

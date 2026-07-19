@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -32,10 +34,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -45,6 +44,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.model.BoardCategory
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -56,9 +57,6 @@ fun BoardPickerScreen(
     viewModel: BoardPickerViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var query by rememberSaveable { mutableStateOf("") }
-    var showSelectedOnly by rememberSaveable { mutableStateOf(false) }
-    val selectedCount = selectedBoards.size
 
     Scaffold(
         topBar = {
@@ -71,7 +69,7 @@ fun BoardPickerScreen(
                 },
                 actions = {
                     TextButton(onClick = onConfirm) {
-                        Text("完成（$selectedCount）")
+                        Text("完成（${selectedBoards.size}）")
                     }
                 },
             )
@@ -91,17 +89,17 @@ fun BoardPickerScreen(
                 onRetry = viewModel::retry,
             )
 
-            is BoardPickerUiState.Content -> BoardListContent(
+            is BoardPickerUiState.Content -> BoardCatalogContent(
                 contentPadding = contentPadding,
-                sourcesWithBoards = state.sources,
-                failures = state.failures,
+                state = state,
                 selectedBoards = selectedBoards,
-                query = query,
-                showSelectedOnly = showSelectedOnly,
-                onQueryChange = { query = it },
-                onSelectedOnlyChange = { showSelectedOnly = it },
+                onQueryChange = viewModel::updateQuery,
+                onSourceSelect = viewModel::selectSource,
+                onCategorySelect = viewModel::selectCategory,
                 onBoardToggle = onBoardToggle,
+                onLoadNextPage = viewModel::loadNextPage,
                 onRetry = viewModel::retry,
+                onRetrySource = viewModel::retrySource,
             )
         }
     }
@@ -110,32 +108,18 @@ fun BoardPickerScreen(
 @Composable
 private fun LoadingContent(contentPadding: PaddingValues) {
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(contentPadding),
+        modifier = Modifier.fillMaxSize().padding(contentPadding),
         contentAlignment = Alignment.Center,
-    ) {
-        CircularProgressIndicator()
-    }
+    ) { CircularProgressIndicator() }
 }
 
 @Composable
-private fun EmptyContent(
-    contentPadding: PaddingValues,
-    message: String,
-) {
+private fun EmptyContent(contentPadding: PaddingValues, message: String) {
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(contentPadding)
-            .padding(24.dp),
+        modifier = Modifier.fillMaxSize().padding(contentPadding).padding(24.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Text(message, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -146,22 +130,16 @@ private fun ErrorContent(
     onRetry: () -> Unit,
 ) {
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(contentPadding)
-            .padding(24.dp),
+        modifier = Modifier.fillMaxSize().padding(contentPadding).padding(24.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            Text("無法載入任何來源的看板", style = MaterialTheme.typography.titleMedium)
             Text(
-                text = "無法載入任何來源的看板",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                text = failures.joinToString("、") { it.source.name },
+                failures.joinToString("、") { it.source.name },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
@@ -172,166 +150,216 @@ private fun ErrorContent(
     }
 }
 
+/**
+ * The catalog is deliberately source-grouped: equal board names remain unambiguous, while a
+ * search still starts across every installed source. The ViewModel owns remote requests,
+ * debouncing, pagination, and the recent-result cache; this composable only renders that state.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun BoardListContent(
+private fun BoardCatalogContent(
     contentPadding: PaddingValues,
-    sourcesWithBoards: List<SourceWithBoards>,
-    failures: List<BoardLoadFailure>,
+    state: BoardPickerUiState.Content,
     selectedBoards: Set<SelectedBoard>,
-    query: String,
-    showSelectedOnly: Boolean,
     onQueryChange: (String) -> Unit,
-    onSelectedOnlyChange: (Boolean) -> Unit,
+    onSourceSelect: (String?) -> Unit,
+    onCategorySelect: (String?) -> Unit,
     onBoardToggle: (SelectedBoard) -> Unit,
+    onLoadNextPage: (String) -> Unit,
     onRetry: () -> Unit,
+    onRetrySource: (String) -> Unit,
 ) {
-    val selectedBoardsByKey = remember(selectedBoards) { selectedBoards.associateBy(SelectedBoard::key) }
-    val selectedKeys = selectedBoardsByKey.keys
-    val visibleSources = remember(sourcesWithBoards, query, selectedKeys, showSelectedOnly) {
-        filterSourceWithBoards(
-            sources = sourcesWithBoards,
-            query = query,
-            selectedKeys = selectedKeys,
-            selectedOnly = showSelectedOnly,
-        )
+    val selectedByKey = remember(selectedBoards) { selectedBoards.associateBy(SelectedBoard::key) }
+    val visibleSources = remember(state.sources, state.selectedSourceId, state.query, selectedByKey) {
+        state.sources
+            .filter { state.selectedSourceId == null || it.source.id == state.selectedSourceId }
+            .map { group ->
+                if (state.query.isBlank()) {
+                    group.copy(
+                        boards = group.boards.filterNot { board ->
+                            selectedBoardKey(group.source.id, board.url) in selectedByKey
+                        },
+                    )
+                } else {
+                    group
+                }
+            }
+            .filter {
+                it.boards.isNotEmpty() || it.nextPageToken != null || it.isAppending || it.appendFailure != null
+            }
     }
-    val selectedCounts = remember(sourcesWithBoards, selectedKeys) {
-        selectedBoardCountsBySource(sourcesWithBoards, selectedKeys)
+    val selectedSource = remember(state.sources, state.selectedSourceId) {
+        state.sources.firstOrNull { it.source.id == state.selectedSourceId }
     }
-    val totalCounts = remember(sourcesWithBoards) {
-        sourcesWithBoards.associate { it.source.id to it.boards.size }
+    val sourceNames = remember(state.allSources) { state.allSources.associate { it.id to it.name } }
+    val landingSelectedBoards = remember(selectedBoards, state.selectedSourceId) {
+        selectedBoards.filter { state.selectedSourceId == null || it.sourceId == state.selectedSourceId }
     }
-    val visibleBoardCount = remember(visibleSources) { visibleSources.sumOf { it.boards.size } }
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(contentPadding),
+        modifier = Modifier.fillMaxSize().padding(contentPadding),
     ) {
-        item(key = "search_and_filter") {
-            BoardSearchAndFilter(
-                query = query,
-                showSelectedOnly = showSelectedOnly,
-                selectedCount = selectedBoards.size,
+        item(key = "catalog_controls") {
+            CatalogControls(
+                query = state.query,
+                sources = state.allSources,
+                selectedSourceId = state.selectedSourceId,
+                categories = selectedSource?.categories.orEmpty(),
+                selectedCategoryId = state.selectedCategoryId,
                 onQueryChange = onQueryChange,
-                onSelectedOnlyChange = onSelectedOnlyChange,
+                onSourceSelect = onSourceSelect,
+                onCategorySelect = onCategorySelect,
             )
         }
 
-        if (failures.isNotEmpty()) {
-            item(key = "load_failures") {
-                LoadFailureBanner(
-                    failures = failures,
-                    onRetry = onRetry,
+        if (state.isRefreshing) {
+            item(key = "refreshing") { RefreshingResultsContent() }
+        }
+
+        if (state.failures.isNotEmpty()) {
+            item(key = "initial_load_failures") {
+                LoadFailureBanner(failures = state.failures, onRetry = onRetry)
+            }
+        }
+
+        // The landing page intentionally puts subscriptions first, then the popular catalog.
+        if (state.query.isBlank() && landingSelectedBoards.isNotEmpty()) {
+            item(key = "selected_header") { SelectedBoardsHeader(landingSelectedBoards.size) }
+            items(landingSelectedBoards.sortedWith(compareBy(SelectedBoard::sourceId, SelectedBoard::boardName)), key = { "selected:${it.key}" }) { selected ->
+                BoardListItem(
+                    boardName = selected.boardName,
+                    sourceName = sourceNames[selected.sourceId],
+                    checked = true,
+                    onToggle = { onBoardToggle(selected) },
                 )
             }
         }
 
-        if (visibleBoardCount == 0) {
+        if (!state.isRefreshing && visibleSources.all { it.boards.isEmpty() }) {
             item(key = "empty_results") {
-                val message = when {
-                    query.isNotBlank() -> "找不到符合「${query.trim()}」的看板"
-                    showSelectedOnly -> "尚未選擇任何看板"
-                    else -> "目前沒有可用看板"
-                }
-                EmptyResultsContent(message)
+                EmptyResultsContent(
+                    when {
+                        state.query.isNotBlank() -> "找不到符合「${state.query.trim()}」的看板"
+                        else -> "目前沒有可用看板"
+                    },
+                )
             }
-        } else {
-            visibleSources.forEach { (source, boards) ->
-                stickyHeader(key = "header:${source.id}") {
-                    SourceHeader(
-                        sourceName = source.name,
-                        selectedCount = selectedCounts[source.id] ?: 0,
-                        boardCount = totalCounts[source.id] ?: boards.size,
-                    )
-                }
-                items(boards, key = { "${source.id}:${it.url}" }) { board ->
-                    val selected = SelectedBoard(source.id, board.url, board.name)
-                    val existingSelection = selectedBoardsByKey[selected.key]
-                    BoardListItem(
-                        boardName = board.name,
-                        checked = existingSelection != null,
-                        onToggle = { onBoardToggle(existingSelection ?: selected) },
-                    )
-                }
+        }
+
+        visibleSources.forEach { sourceWithBoards ->
+            val source = sourceWithBoards.source
+            stickyHeader(key = "header:${source.id}") {
+                SourceHeader(
+                    sourceName = source.name,
+                    selectedCount = selectedBoards.count { it.sourceId == source.id },
+                    isFromCache = sourceWithBoards.isFromCache,
+                )
+            }
+            items(sourceWithBoards.boards, key = { "${source.id}:${it.url}" }) { board ->
+                val selection = SelectedBoard(source.id, board.url, board.name)
+                val existing = selectedByKey[selection.key]
+                BoardListItem(
+                    boardName = board.name,
+                    checked = existing != null,
+                    onToggle = { onBoardToggle(existing ?: selection) },
+                )
+            }
+            item(key = "paging:${source.id}") {
+                SourcePagingFooter(
+                    source = source,
+                    nextPageToken = sourceWithBoards.nextPageToken,
+                    isAppending = sourceWithBoards.isAppending,
+                    appendFailure = sourceWithBoards.appendFailure,
+                    onLoadNextPage = { onLoadNextPage(source.id) },
+                    onRetry = { onRetrySource(source.id) },
+                )
             }
         }
     }
 }
 
 @Composable
-private fun BoardSearchAndFilter(
+private fun CatalogControls(
     query: String,
-    showSelectedOnly: Boolean,
-    selectedCount: Int,
+    sources: List<Source>,
+    selectedSourceId: String?,
+    categories: List<BoardCategory>,
+    selectedCategoryId: String?,
     onQueryChange: (String) -> Unit,
-    onSelectedOnlyChange: (Boolean) -> Unit,
+    onSourceSelect: (String?) -> Unit,
+    onCategorySelect: (String?) -> Unit,
 ) {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             singleLine = true,
-            label = { Text("搜尋看板名稱") },
+            label = { Text("搜尋所有來源的看板") },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             trailingIcon = if (query.isNotEmpty()) {
-                {
-                    IconButton(onClick = { onQueryChange("") }) {
-                        Icon(Icons.Filled.Close, contentDescription = "清除搜尋")
-                    }
-                }
-            } else {
-                null
-            },
+                { IconButton(onClick = { onQueryChange("") }) { Icon(Icons.Filled.Close, "清除搜尋") } }
+            } else null,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
-                selected = !showSelectedOnly,
-                onClick = { onSelectedOnlyChange(false) },
-                label = { Text("全部") },
-            )
-            FilterChip(
-                selected = showSelectedOnly,
-                onClick = { onSelectedOnlyChange(true) },
-                label = { Text("已選 $selectedCount") },
-            )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            item {
+                FilterChip(
+                    selected = selectedSourceId == null,
+                    onClick = { onSourceSelect(null) },
+                    label = { Text("全部來源") },
+                )
+            }
+            items(sources, key = Source::id) { source ->
+                FilterChip(
+                    selected = selectedSourceId == source.id,
+                    onClick = { onSourceSelect(source.id) },
+                    label = { Text(source.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
+            }
+        }
+        // Categories are source-owned. Showing them only after a source is selected avoids
+        // implying that names such as "遊戲" are comparable between extensions.
+        if (query.isBlank() && selectedSourceId != null && categories.isNotEmpty()) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item {
+                    FilterChip(
+                        selected = selectedCategoryId == null,
+                        onClick = { onCategorySelect(null) },
+                        label = { Text("全部") },
+                    )
+                }
+                items(categories, key = BoardCategory::id) { category ->
+                    FilterChip(
+                        selected = selectedCategoryId == category.id,
+                        onClick = { onCategorySelect(category.id) },
+                        label = { Text(category.name) },
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun LoadFailureBanner(
-    failures: List<BoardLoadFailure>,
-    onRetry: () -> Unit,
-) {
+private fun LoadFailureBanner(failures: List<BoardLoadFailure>, onRetry: () -> Unit) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         color = MaterialTheme.colorScheme.errorContainer,
         shape = MaterialTheme.shapes.medium,
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Text(
-                text = "部分來源無法載入",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onErrorContainer,
-            )
+            Text("部分來源無法載入", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onErrorContainer)
             failures.forEach { failure ->
-                Text(
-                    text = failure.source.name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Text(failure.source.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
             }
             TextButton(onClick = onRetry) { Text("全部重試") }
         }
@@ -339,47 +367,80 @@ private fun LoadFailureBanner(
 }
 
 @Composable
+private fun SelectedBoardsHeader(count: Int) {
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
+        Text(
+            text = "已選看板（$count）",
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+    }
+}
+
+@Composable
 private fun EmptyResultsContent(message: String) {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 48.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 32.dp),
         contentAlignment = Alignment.Center,
+    ) { Text(message, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+}
+
+@Composable
+private fun RefreshingResultsContent() {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
+        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
         Text(
-            text = message,
-            style = MaterialTheme.typography.bodyLarge,
+            text = "正在更新看板…",
+            modifier = Modifier.padding(start = 8.dp),
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
 @Composable
-private fun SourceHeader(
-    sourceName: String,
-    selectedCount: Int,
-    boardCount: Int,
-) {
+private fun SourceHeader(sourceName: String, selectedCount: Int, isFromCache: Boolean) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = sourceName,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = "$selectedCount / $boardCount",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Text(sourceName, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (isFromCache) Text("最近結果", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (selectedCount > 0) Text("已選 $selectedCount", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SourcePagingFooter(
+    source: Source,
+    nextPageToken: String?,
+    isAppending: Boolean,
+    appendFailure: Throwable?,
+    onLoadNextPage: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    when {
+        isAppending -> Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        appendFailure != null -> Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("${source.name} 的更多看板載入失敗", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = onRetry) { Text("重試") }
+        }
+        nextPageToken != null -> Box(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+            TextButton(onClick = onLoadNextPage) { Text("載入更多") }
         }
     }
 }
@@ -389,23 +450,15 @@ private fun BoardListItem(
     boardName: String,
     checked: Boolean,
     onToggle: () -> Unit,
+    sourceName: String? = null,
 ) {
     ListItem(
         modifier = Modifier
             .fillMaxWidth()
-            .toggleable(
-                value = checked,
-                role = Role.Checkbox,
-                onValueChange = { onToggle() },
-            )
+            .toggleable(value = checked, role = Role.Checkbox, onValueChange = { onToggle() })
             .semantics(mergeDescendants = true) {},
-        headlineContent = {
-            Text(
-                text = boardName,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
+        headlineContent = { Text(boardName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        supportingContent = sourceName?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
         leadingContent = {
             Checkbox(
                 checked = checked,

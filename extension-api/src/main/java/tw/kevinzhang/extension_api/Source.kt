@@ -3,6 +3,9 @@ package tw.kevinzhang.extension_api
 import okhttp3.OkHttpClient
 import kotlinx.coroutines.flow.StateFlow
 import tw.kevinzhang.extension_api.model.Board
+import tw.kevinzhang.extension_api.model.BoardCategory
+import tw.kevinzhang.extension_api.model.BoardPage
+import tw.kevinzhang.extension_api.model.BoardPageRequest
 import tw.kevinzhang.extension_api.model.CommentPage
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.extension_api.model.Thread
@@ -37,7 +40,14 @@ interface Source {
      */
     val needsLogin: Boolean
 
-    suspend fun getBoards(): List<Board>
+    /** Source-defined browse categories. Return an empty list when categories are unsupported. */
+    suspend fun getBoardCategories(): List<BoardCategory> = emptyList()
+
+    /**
+     * Browses or searches the board catalog one page at a time.
+     * An empty [BoardPageRequest.query] text means popular boards, not the entire catalog.
+     */
+    suspend fun getBoardPage(request: BoardPageRequest): BoardPage
     suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary>
     suspend fun getThread(summary: ThreadSummary): Thread
 

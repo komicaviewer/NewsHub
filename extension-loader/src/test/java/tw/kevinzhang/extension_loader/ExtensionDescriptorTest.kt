@@ -7,6 +7,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Board
+import tw.kevinzhang.extension_api.model.BoardPage
+import tw.kevinzhang.extension_api.model.BoardPageRequest
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
 
@@ -92,7 +94,7 @@ class ExtensionDescriptorTest {
         override val supportsCommentPagination = false
         override val alwaysUseRawImage = false
         override val needsLogin = false
-        override suspend fun getBoards() = emptyList<Board>()
+        override suspend fun getBoardPage(request: BoardPageRequest) = BoardPage(emptyList())
         override suspend fun getThreadSummaries(board: Board, page: Int) = emptyList<ThreadSummary>()
         override suspend fun getThread(summary: ThreadSummary) = Thread("", null, null, emptyList())
     }

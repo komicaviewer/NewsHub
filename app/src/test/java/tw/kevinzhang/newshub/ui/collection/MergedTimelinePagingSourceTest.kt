@@ -9,6 +9,8 @@ import tw.kevinzhang.data.domain.BoardSubscriptionEntity
 import tw.kevinzhang.extension_api.AuthenticationRequiredException
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Board
+import tw.kevinzhang.extension_api.model.BoardPage
+import tw.kevinzhang.extension_api.model.BoardPageRequest
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
 
@@ -26,7 +28,7 @@ class MergedTimelinePagingSourceTest {
             override val alwaysUseRawImage = false
             override val needsLogin = false
 
-            override suspend fun getBoards(): List<Board> = emptyList()
+            override suspend fun getBoardPage(request: BoardPageRequest) = BoardPage(emptyList())
 
             override suspend fun getThreadSummaries(
                 board: Board,

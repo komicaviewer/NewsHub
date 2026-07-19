@@ -24,7 +24,9 @@ NewsHub/
 ### Source (`extension-api`)
 `tw.kevinzhang.extension_api.Source` — the plugin interface every news source must implement.
 - `id`, `name`, `language`, `version`, `iconUrl`
-- `getBoards()`, `getThreadSummaries(board, page)`, `getThread(summary)`
+- `getBoardCategories()`, `getBoardPage(request)`, `getThreadSummaries(board, page)`, `getThread(summary)`
+- Board catalogs are source-owned and paged. An empty query returns the source's popular
+  boards; non-empty queries search remotely or within that source's catalog.
 - `onAttach(SourceContext)` — injected by host app for auth callbacks
 - `requiresLogin`, `loginUrl`, `loginPageLoadJs` — WebView auth support
 
@@ -146,7 +148,8 @@ Navigation lives in `AppScreen.kt` + `AppNavigation.kt`. Bottom nav routes:
 | `saved_post_detail` | SavedPostDetailScreen | SavedPostDetailViewModel |
 
 Sub-screens (pushed on stack):
-- `BoardPickerScreen` — pick boards to subscribe; observes `ExtensionLoader.sourcesFlow`
+- `BoardPickerScreen` — paged, cross-source board search grouped by source, with source-owned
+  categories, source filter chips, selected/popular landing content, and recent-result fallback
 - `ThreadDetailScreen` — renders posts, comments, images; records reading history on load; supports save/unsave post (screenshots)
 - `AuthWebViewScreen` — WebView login for sources that require auth
 - `CreateCollectionScreen`, `EditCollectionScreen`
