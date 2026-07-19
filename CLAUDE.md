@@ -57,17 +57,33 @@ Persists user-configured repo URLs in DataStore (`repo_settings`). Interface: `g
 
 ---
 
-## Extension APK Manifest Metadata Keys
+## Extension APK Registry Contract
 
 | Key | Value |
 |-----|-------|
 | `newshub.extension` | `"true"` (marker) |
-| `newshub.extension.source_class` | Fully-qualified class name |
-| `newshub.extension.name` | Display name |
-| `newshub.extension.source_id` | Source `id` field |
-| `newshub.extension.source_name` | Source display name |
-| `newshub.extension.source_lang` | BCP-47 language tag |
-| `newshub.extension.source_base_url` | Site base URL |
+| `newshub.extension.registry` | Registry asset filename, normally `newshub-extension.json` |
+
+The registry uses schema version 1 and lets one APK expose multiple Sources:
+
+```json
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "className": "tw.kevinzhang.extension.example.ExampleSource",
+      "id": "tw.kevinzhang.example",
+      "name": "Example",
+      "lang": "zh-TW",
+      "baseUrl": "https://example.com"
+    }
+  ]
+}
+```
+
+The loader validates the registry metadata against every instantiated Source.
+See [`docs/extension-bundles.md`](docs/extension-bundles.md) for the complete
+manifest, registry, and marketplace index contract.
 
 ---
 

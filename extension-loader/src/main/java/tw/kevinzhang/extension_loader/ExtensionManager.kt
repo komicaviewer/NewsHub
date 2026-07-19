@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -24,8 +25,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val EXTENSION_META_KEY = "newshub.extension"
-private const val SOURCE_CLASS_KEY = "newshub.extension.source_class"
+private const val EXTENSION_REGISTRY_KEY = "newshub.extension.registry"
 private const val FILE_PROVIDER_AUTHORITY_SUFFIX = ".provider"
+private const val TAG = "ExtensionManager"
 
 @Singleton
 class ExtensionManager @Inject constructor(
@@ -134,23 +136,41 @@ class ExtensionManager @Inject constructor(
     private fun loadExtension(pkg: android.content.pm.PackageInfo): InstalledExtension? {
         return try {
             val appInfo = pkg.applicationInfo ?: return null
-            val rawClassName =
-                appInfo.metaData?.getString(SOURCE_CLASS_KEY) ?: return null
-            val className =
-                if (rawClassName.startsWith(".")) pkg.packageName + rawClassName else rawClassName
+            val registryAsset = appInfo.metaData?.getString(EXTENSION_REGISTRY_KEY)
+                ?.trim()
+                ?.takeIf(String::isNotEmpty)
+                ?: return null
+            val descriptor = context.createPackageContext(pkg.packageName, 0)
+                .assets
+                .open(registryAsset)
+                .bufferedReader()
+                .use { ExtensionDescriptorJson.parse(it.readText()) }
             val loader = PathClassLoader(appInfo.sourceDir, context.classLoader)
-            val clazz = loader.loadClass(className)
-            val source = clazz.getDeclaredConstructor().newInstance() as? Source ?: return null
+            val sources = descriptor.sources.map { sourceDescriptor ->
+                val clazz = loader.loadClass(sourceDescriptor.className)
+                val source = clazz.getDeclaredConstructor().newInstance() as? Source
+                    ?: throw IllegalArgumentException(
+                        "${sourceDescriptor.className} does not implement ${Source::class.java.name}",
+                    )
+                ExtensionDescriptorValidator.validateRuntimeSource(sourceDescriptor, source)
+                source
+            }
 
             InstalledExtension(
                 pkgName = pkg.packageName,
-                name = appInfo.metaData?.getString("newshub.extension.name") ?: source.name,
+                name = descriptor.name,
                 versionName = pkg.versionName ?: "1.0",
                 versionCode = androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(pkg),
-                lang = source.language,
-                sources = listOf(source),
+                lang = descriptor.sources.map(SourceDescriptor::lang).distinct().singleOrNull() ?: "",
+                sources = sources,
             )
         } catch (e: Exception) {
+            Log.w(TAG, "Ignoring invalid extension bundle ${pkg.packageName}", e)
+            null
+        } catch (e: LinkageError) {
+            // A broken extension can reference a class absent from its APK; it must not stop
+            // discovery of the remaining installed bundles.
+            Log.w(TAG, "Ignoring extension bundle with unresolved classes ${pkg.packageName}", e)
             null
         }
     }

@@ -89,3 +89,7 @@ graph TD
 | `:app`              | UI（Jetpack Compose）、導航、Hilt 依賴注入                                 |
 
 </details>
+
+第三方擴充 APK可以包含多個 `Source`，並透過 APK內的 JSON registry 宣告。
+Manifest、registry schema、驗證規則與發佈索引關係請參閱
+[Extension bundle contract](docs/extension-bundles.md)。
