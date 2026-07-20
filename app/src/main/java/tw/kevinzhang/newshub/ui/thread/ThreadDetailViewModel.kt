@@ -30,6 +30,8 @@ import tw.kevinzhang.extension_api.model.CommentPage
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.extension_api.model.Thread
+import tw.kevinzhang.extension_api.model.ThreadPage
+import tw.kevinzhang.extension_api.model.ThreadPageMetadata
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.newshub.data.PreferenceStore
@@ -125,6 +127,10 @@ class ThreadDetailViewModel @Inject constructor(
     private val _loadError = MutableStateFlow<String?>(null)
     val loadError = _loadError.asStateFlow()
 
+    private val _threadPaging = MutableStateFlow(ThreadPagingState())
+    internal val threadPaging = _threadPaging.asStateFlow()
+    private var threadLoadGeneration = 0L
+
     val isSaved: StateFlow<Boolean> = savedPostRepository
         .observeSavedPost(sourceId, threadId)
         .map { it != null }
@@ -193,37 +199,74 @@ class ThreadDetailViewModel @Inject constructor(
     }
 
     private suspend fun loadThreadInForeground(source: Source) {
+        val generation = ++threadLoadGeneration
         _isLoading.value = true
         _loadError.value = null
+        // A refresh supersedes an in-flight append; its result must not update the new page set.
+        _threadPaging.update { it.copy(isAppending = false, appendError = null) }
         try {
-            loadThread(source)
+            val page = getThreadPage(source, pageToken = null)
+            if (generation != threadLoadGeneration) return
+            val thread = prepareThread(page, source)
+            val initialCommentStates = buildCommentStates(source, thread.posts)
+            if (generation != threadLoadGeneration) return
+            updateHistorySummary(thread, source)
+            _thread.value = thread
+            _threadPaging.value = ThreadPagingState().forInitialPage(page.nextPageToken)
+            _commentStates.value = initialCommentStates
+            markLoadedPostsReadIfNeeded(thread.posts)
         } catch (_: AuthenticationRequiredException) {
             sessionManager.notifyAuthenticationRequired(sourceId)
         } catch (error: Exception) {
+            if (generation != threadLoadGeneration) return
             _loadError.value = error.localizedMessage?.takeIf(String::isNotBlank)
                 ?: "無法載入討論串，請稍後再試。"
         } finally {
-            _isLoading.value = false
+            if (generation == threadLoadGeneration) _isLoading.value = false
         }
     }
 
-    private suspend fun loadThread(source: Source) {
-        val summary = ThreadSummary(
-            sourceId = sourceId,
-            boardUrl = boardUrl,
-            id = threadId,
-            title = threadTitle,
-            author = null,
-            createdAt = null,
-            commentCount = null,
-            thumbnail = null,
-            rawImage = null,
-            previewContent = emptyList(),
+    private fun threadSummary(): ThreadSummary = ThreadSummary(
+        sourceId = sourceId,
+        boardUrl = boardUrl,
+        id = threadId,
+        title = threadTitle,
+        author = null,
+        createdAt = null,
+        commentCount = null,
+        thumbnail = null,
+        rawImage = null,
+        previewContent = emptyList(),
+    )
+
+    private suspend fun getThreadPage(source: Source, pageToken: String?): ThreadPage = try {
+        source.getThreadPage(threadSummary(), pageToken)
+    } catch (error: AbstractMethodError) {
+        // Older extension APKs do not have the new interface method yet.
+        if (pageToken != null) throw error
+        val thread = source.getThread(threadSummary())
+        ThreadPage(
+            posts = thread.posts,
+            nextPageToken = null,
+            metadata = ThreadPageMetadata(thread.id, thread.url, thread.title),
         )
-        val rawThread = source.getThread(summary)
-        val thread = rawThread.copy(
-            posts = rawThread.posts.map { it.copy(sourceIconUrl = source.iconUrl) }
+    }
+
+    private fun prepareThread(page: ThreadPage, source: Source): Thread {
+        val metadata = page.metadata
+        check(metadata == null || metadata.id.isBlank() || metadata.id == threadId) {
+            "內容來源回傳了不相符的討論串。"
+        }
+        return Thread(
+            // A few legacy sources leave the thread ID empty; the navigation ID is authoritative.
+            id = metadata?.id?.ifBlank { threadId } ?: threadId,
+            url = metadata?.url ?: source.getWebUrl(threadSummary()),
+            title = metadata?.title ?: threadTitle,
+            posts = page.posts.map { it.copy(sourceIconUrl = source.iconUrl) },
         )
+    }
+
+    private fun updateHistorySummary(thread: Thread, source: Source) {
         val firstPost = thread.posts.firstOrNull()
         val firstImage = firstPost?.content?.filterIsInstance<Paragraph.ImageInfo>()?.firstOrNull()
         historySummary = ThreadSummary(
@@ -240,13 +283,82 @@ class ThreadDetailViewModel @Inject constructor(
             previewContent = firstPost?.content?.take(3) ?: emptyList(),
             sourceIconUrl = source.iconUrl,
         )
-        _thread.value = thread
-        _commentStates.value = buildInitialCommentStates(source, thread)
+    }
+
+    private suspend fun markLoadedPostsReadIfNeeded(posts: List<Post>) {
         if (
             preferenceStore.observable.first().readingPreferences.readTrackingMode ==
             ReadTrackingMode.THREAD_OPENED
         ) {
-            markPostsRead(thread.posts.map(Post::id))
+            markPostsRead(posts.map(Post::id))
+        }
+    }
+
+    fun loadMorePosts() {
+        val paging = _threadPaging.value
+        val appending = paging.startAppend() ?: return
+        val pageToken = paging.nextPageToken ?: return
+        val generation = threadLoadGeneration
+        _threadPaging.value = appending
+
+        viewModelScope.launch {
+            val source = cachedSource ?: extensionLoader.getSource(sourceId)
+            if (source == null) {
+                if (generation == threadLoadGeneration) {
+                    _threadPaging.update {
+                        it.appendFailed("找不到這個內容來源，可能需要重新安裝擴充套件。")
+                    }
+                }
+                return@launch
+            }
+            try {
+                val page = getThreadPage(source, pageToken)
+                if (generation != threadLoadGeneration) return@launch
+                val currentThread = _thread.value ?: return@launch
+                val preparedPage = prepareThread(page, source)
+                val mergedPosts = mergePostsById(currentThread.posts, preparedPage.posts)
+                val addedPosts = preparedPage.posts.filter { post ->
+                    currentThread.posts.none { it.id == post.id }
+                }
+                _thread.value = currentThread.copy(posts = mergedPosts)
+                _threadPaging.update { current ->
+                    if (current.nextPageToken == pageToken) {
+                        current.appendSucceeded(pageToken, page.nextPageToken)
+                    } else {
+                        current
+                    }
+                }
+                try {
+                    initializeCommentStatesForNewPosts(
+                        source = source,
+                        posts = addedPosts,
+                        expectedGeneration = generation,
+                    )
+                } catch (_: AuthenticationRequiredException) {
+                    if (generation != threadLoadGeneration) return@launch
+                    _commentStates.update { states ->
+                        states + addedPosts
+                            .filter { it.id !in states }
+                            .associate { it.id to InternalCommentState(emptyList(), hasMore = false) }
+                    }
+                    sessionManager.notifyAuthenticationRequired(sourceId)
+                }
+                if (generation == threadLoadGeneration) markLoadedPostsReadIfNeeded(addedPosts)
+            } catch (_: AuthenticationRequiredException) {
+                if (generation == threadLoadGeneration) {
+                    _threadPaging.update { it.appendFailed("需要登入才能載入更多貼文。") }
+                    sessionManager.notifyAuthenticationRequired(sourceId)
+                }
+            } catch (error: Exception) {
+                if (generation == threadLoadGeneration) {
+                    _threadPaging.update {
+                        it.appendFailed(
+                            error.localizedMessage?.takeIf(String::isNotBlank)
+                                ?: "無法載入更多貼文，請稍後再試。"
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -293,13 +405,27 @@ class ThreadDetailViewModel @Inject constructor(
         historyRepository.recordRead(summary)
     }
 
-    private suspend fun buildInitialCommentStates(
+    private suspend fun initializeCommentStatesForNewPosts(
         source: Source,
-        thread: Thread,
+        posts: List<Post>,
+        expectedGeneration: Long = threadLoadGeneration,
+    ) {
+        val newPosts = posts.filter { it.id !in _commentStates.value }
+        if (newPosts.isEmpty()) return
+        val newStates = buildCommentStates(source, newPosts)
+        if (expectedGeneration != threadLoadGeneration) return
+        _commentStates.update { existing ->
+            existing + newStates.filterKeys { it !in existing }
+        }
+    }
+
+    private suspend fun buildCommentStates(
+        source: Source,
+        posts: List<Post>,
     ): Map<String, InternalCommentState> {
         return if (source.supportsCommentPagination) {
             coroutineScope {
-                thread.posts.map { post ->
+                posts.map { post ->
                     async {
                         post.id to try {
                             val page = source.getComments(post, 1)
@@ -316,7 +442,7 @@ class ThreadDetailViewModel @Inject constructor(
                 }.awaitAll().toMap()
             }
         } else {
-            thread.posts.associate { post ->
+            posts.associate { post ->
                 post.id to InternalCommentState(
                     visibleComments = post.comments.take(COMMENTS_PAGE_SIZE),
                     hasMore = post.comments.size > COMMENTS_PAGE_SIZE,

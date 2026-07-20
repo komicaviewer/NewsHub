@@ -133,6 +133,7 @@ fun ThreadDetailScreen(
     val readPostIds by viewModel.readPostIds.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val loadError by viewModel.loadError.collectAsStateWithLifecycle()
+    val threadPaging by viewModel.threadPaging.collectAsStateWithLifecycle()
     val isSaved by viewModel.isSaved.collectAsStateWithLifecycle()
     val isSavingScreenshots by viewModel.isSavingScreenshots.collectAsStateWithLifecycle()
     val authenticationRequiredNotice by viewModel.authenticationRequiredNotice.collectAsStateWithLifecycle()
@@ -413,19 +414,13 @@ fun ThreadDetailScreen(
                                 onZoomChange = onZoomChange,
                             )
                         }
-                        if (displayedPosts.isNotEmpty()) {
+                        if (thread != null) {
                             item(key = "thread-footer") {
-                                if (!isLoading) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(128.dp),
-                                        verticalArrangement = Arrangement.Center,
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                    ) {
-                                        BodySmallText("沒有更多資料")
-                                    }
-                                }
+                                ThreadPagingFooter(
+                                    paging = threadPaging,
+                                    isRefreshing = isLoading,
+                                    onLoadMore = viewModel::loadMorePosts,
+                                )
                             }
                         }
                     }
@@ -525,6 +520,38 @@ fun ThreadDetailScreen(
                     }
                 },
             )
+        }
+    }
+}
+
+@Composable
+private fun ThreadPagingFooter(
+    paging: ThreadPagingState,
+    isRefreshing: Boolean,
+    onLoadMore: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(128.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        when {
+            paging.isAppending -> CircularProgressIndicator(modifier = Modifier.size(28.dp))
+            paging.appendError != null -> {
+                Text(
+                    text = paging.appendError,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    color = MaterialTheme.colorScheme.error,
+                )
+                TextButton(onClick = onLoadMore) { Text("重試載入更多") }
+            }
+            paging.hasMore -> FilledTonalButton(
+                onClick = onLoadMore,
+                enabled = !isRefreshing,
+            ) { Text("載入更多") }
+            !isRefreshing -> BodySmallText("沒有更多資料")
         }
     }
 }

@@ -51,6 +51,27 @@ The loader rejects the entire bundle when its registry or any Source is invalid.
 Valid bundles are flattened into `ExtensionLoader.sourcesFlow`, and the existing
 attachment flow gives each Source its HTTP client or source-scoped runtime.
 
+## Thread pagination
+
+`Source.getThreadPage(summary, pageToken)` is the forward-compatible thread
+pagination contract. A source owns `nextPageToken`: it is opaque to NewsHub and
+must be passed back unchanged as the next `pageToken`. Do not encode assumptions
+about its format in a host or another extension.
+
+`ThreadPage.posts` contains only the posts fetched for that request. Every
+`Post.id` must remain the source's stable post identifier so the host can
+distinguish and de-duplicate posts when pages are appended; a page token is not
+a post ID and must never be inferred from one. The optional first-page
+`ThreadPage.metadata` carries the canonical thread ID, title, and URL. If later
+pages repeat metadata, they must keep the same thread ID.
+
+For an existing source that only implements `getThread(summary)`, the API's
+default `getThreadPage(summary, null)` bridges to that legacy method and returns
+`nextPageToken = null`. Passing a non-null token to such a source throws
+`UnsupportedOperationException`. Sources with real pagination must override
+`getThreadPage` and return their own opaque continuation token. They must also
+keep `getThread` returning the first page for hosts built against the older API.
+
 ## Distribution index
 
 The release repository's `index.json` remains the download index. Its

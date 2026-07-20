@@ -9,6 +9,8 @@ import tw.kevinzhang.extension_api.model.BoardPageRequest
 import tw.kevinzhang.extension_api.model.CommentPage
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.extension_api.model.Thread
+import tw.kevinzhang.extension_api.model.ThreadPage
+import tw.kevinzhang.extension_api.model.ThreadPageMetadata
 import tw.kevinzhang.extension_api.model.ThreadSummary
 
 interface Source {
@@ -50,6 +52,28 @@ interface Source {
     suspend fun getBoardPage(request: BoardPageRequest): BoardPage
     suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary>
     suspend fun getThread(summary: ThreadSummary): Thread
+
+    /**
+     * Loads a page of posts for [summary]. [pageToken] is source-defined and opaque to the host.
+     *
+     * The default null-token bridge preserves the legacy [getThread] contract. Sources that
+     * support additional pages must override this method and handle their own page tokens.
+     */
+    suspend fun getThreadPage(summary: ThreadSummary, pageToken: String?): ThreadPage {
+        if (pageToken != null) {
+            throw UnsupportedOperationException("This source does not support thread pagination")
+        }
+        val thread = getThread(summary)
+        return ThreadPage(
+            posts = thread.posts,
+            nextPageToken = null,
+            metadata = ThreadPageMetadata(
+                id = thread.id,
+                url = thread.url,
+                title = thread.title,
+            ),
+        )
+    }
 
     /**
      * Called only when [supportsCommentPagination] is true.

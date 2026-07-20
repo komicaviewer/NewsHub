@@ -17,6 +17,12 @@
 # SerializableCookie — serialized to/from SharedPreferences with TypeToken<List<...>>
 -keepclassmembers class tw.kevinzhang.newshub.auth.SourceCookieJar$StoredCookie { *; }
 
+# Extension API is loaded across APK/class-loader boundaries. Keep its JVM ABI,
+# including Kotlin compatibility default-method bridges, stable for extensions.
+-keep class tw.kevinzhang.extension_api.** { *; }
+-keep interface tw.kevinzhang.extension_api.** { *; }
+-keep class tw.kevinzhang.extension_api.**$DefaultImpls { *; }
+
 # CommentRes — deserialized from Gamer API JSON response
 -keepclassmembers class tw.kevinzhang.gamer_api.parser.CommentListParser$CommentRes { *; }
 
