@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,6 +24,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,10 +38,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -48,6 +53,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navigation
 import kotlinx.coroutines.launch
+import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.newshub.auth.AuthViewModel
 import tw.kevinzhang.newshub.auth.WebLoginRequest
 import tw.kevinzhang.newshub.encode
@@ -74,8 +80,59 @@ import tw.kevinzhang.newshub.ui.navigation.mainNavItems
 import tw.kevinzhang.newshub.ui.savedposts.SavedPostDetailScreen
 import tw.kevinzhang.newshub.ui.savedposts.SavedPostsScreen
 import tw.kevinzhang.newshub.ui.settings.SettingsScreen
+import tw.kevinzhang.newshub.ui.settings.ReadingPreferencesScreen
 import tw.kevinzhang.newshub.ui.theme.NewshubTheme
 import tw.kevinzhang.newshub.ui.thread.ThreadDetailScreen
+
+private const val THREAD_DETAIL_ROUTE =
+    "thread_detail?threadId={threadId}&sourceId={sourceId}&boardUrl={boardUrl}" +
+        "&threadTitle={threadTitle}&boardName={boardName}"
+
+private fun ThreadSummary.threadDetailRoute(boardName: String? = null): String {
+    val encodedThreadId = id.encode()
+    val encodedSourceId = sourceId.encode()
+    val encodedBoardUrl = boardUrl.encode()
+    val encodedTitle = title?.encode() ?: ""
+    val encodedBoardName = boardName?.encode() ?: ""
+    return "thread_detail?threadId=$encodedThreadId&sourceId=$encodedSourceId" +
+        "&boardUrl=$encodedBoardUrl&threadTitle=$encodedTitle&boardName=$encodedBoardName"
+}
+
+private fun NavGraphBuilder.threadDetailDestination(
+    onNavigateUp: () -> Unit,
+    onNavigateToBoards: () -> Unit,
+) {
+    composable(
+        route = THREAD_DETAIL_ROUTE,
+        arguments = listOf(
+            navArgument("threadId") { type = NavType.StringType },
+            navArgument("sourceId") { type = NavType.StringType },
+            navArgument("boardUrl") { type = NavType.StringType },
+            navArgument("threadTitle") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            },
+            navArgument("boardName") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            },
+        ),
+    ) {
+        val context = LocalContext.current
+        ThreadDetailScreen(
+            onNavigateUp = onNavigateUp,
+            onNavigateToBoards = onNavigateToBoards,
+            onOpenWebClick = { url ->
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            },
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -245,50 +302,88 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             arguments = listOf(navArgument("collectionId") { type = NavType.StringType }),
                         ) { backStackEntry ->
                             val collectionId = backStackEntry.arguments?.getString("collectionId") ?: ""
-                            CollectionTimelineScreen(
-                                onOpenDrawer = { openDrawer() },
-                                scrollToTopTrigger = collectionScrollToTopTrigger,
-                                onNavigateToBoards = { navController.navigate(MainNavItems.Boards.route) },
-                                onNavigateToBoardPicker = {
-                                    navController.navigate("board_picker/collection/$collectionId")
-                                },
-                                onThreadClick = { summary ->
-                                    val threadId = summary.id.encode()
-                                    val sourceId = summary.sourceId.encode()
-                                    val boardUrl = summary.boardUrl.encode()
-                                    val title = summary.title?.encode() ?: ""
-                                    navController.navigate(
-                                        "thread_detail?threadId=$threadId&sourceId=$sourceId&boardUrl=$boardUrl&threadTitle=$title"
+                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                                val useTwoPane = maxWidth >= 840.dp
+                                if (useTwoPane) {
+                                    val detailNavController = rememberNavController()
+                                    Row(modifier = Modifier.fillMaxSize()) {
+                                        Box(modifier = Modifier.weight(0.42f)) {
+                                            CollectionTimelineScreen(
+                                                onOpenDrawer = { openDrawer() },
+                                                scrollToTopTrigger = collectionScrollToTopTrigger,
+                                                onNavigateToBoards = {
+                                                    navController.navigate(MainNavItems.Boards.route)
+                                                },
+                                                onNavigateToBoardPicker = {
+                                                    navController.navigate("board_picker/collection/$collectionId")
+                                                },
+                                                onThreadClick = { summary, boardName ->
+                                                    detailNavController.navigate(
+                                                        summary.threadDetailRoute(boardName),
+                                                    ) {
+                                                        popUpTo("detail_empty")
+                                                        launchSingleTop = true
+                                                    }
+                                                },
+                                            )
+                                        }
+                                        VerticalDivider()
+                                        Box(modifier = Modifier.weight(0.58f)) {
+                                            NavHost(
+                                                navController = detailNavController,
+                                                startDestination = "detail_empty",
+                                                enterTransition = { EnterTransition.None },
+                                                exitTransition = { ExitTransition.None },
+                                                popEnterTransition = { EnterTransition.None },
+                                                popExitTransition = { ExitTransition.None },
+                                            ) {
+                                                composable("detail_empty") {
+                                                    Box(
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        contentAlignment = Alignment.Center,
+                                                    ) {
+                                                        BodyLargeText(
+                                                            text = "選擇一篇貼文開始閱讀",
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        )
+                                                    }
+                                                }
+                                                threadDetailDestination(
+                                                    onNavigateUp = {
+                                                        detailNavController.popBackStack(
+                                                            route = "detail_empty",
+                                                            inclusive = false,
+                                                        )
+                                                    },
+                                                    onNavigateToBoards = {
+                                                        navController.navigate(MainNavItems.Boards.route)
+                                                    },
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    CollectionTimelineScreen(
+                                        onOpenDrawer = { openDrawer() },
+                                        scrollToTopTrigger = collectionScrollToTopTrigger,
+                                        onNavigateToBoards = {
+                                            navController.navigate(MainNavItems.Boards.route)
+                                        },
+                                        onNavigateToBoardPicker = {
+                                            navController.navigate("board_picker/collection/$collectionId")
+                                        },
+                                        onThreadClick = { summary, boardName ->
+                                            navController.navigate(summary.threadDetailRoute(boardName))
+                                        },
                                     )
-                                },
-                            )
+                                }
+                            }
                         }
                     }
-                    composable(
-                        route = "thread_detail?threadId={threadId}&sourceId={sourceId}&boardUrl={boardUrl}&threadTitle={threadTitle}",
-                        arguments = listOf(
-                            navArgument("threadId") { type = NavType.StringType },
-                            navArgument("sourceId") { type = NavType.StringType },
-                            navArgument("boardUrl") { type = NavType.StringType },
-                            navArgument("threadTitle") {
-                                type = NavType.StringType
-                                nullable = true
-                                defaultValue = null
-                            },
-                        ),
-                    ) {
-                        val context = LocalContext.current
-                        ThreadDetailScreen(
-                            onNavigateUp = { navController.navigateUp() },
-                            onNavigateToBoards = { navController.navigate(MainNavItems.Boards.route) },
-                            onOpenWebClick = { url ->
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                )
-                            },
-                        )
-                    }
+                    threadDetailDestination(
+                        onNavigateUp = { navController.navigateUp() },
+                        onNavigateToBoards = { navController.navigate(MainNavItems.Boards.route) },
+                    )
                     composable("boards") {
                         BoardsScreen(
                             onNavigateToMarketplace = { navController.navigate("marketplace") },
@@ -329,19 +424,19 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             SettingsScreen(
                                 onNavigateToReadingHistory = { navController.navigate("reading_history") },
                                 onNavigateToSavedPosts = { navController.navigate("saved_posts") },
+                                onNavigateToReadingPreferences = {
+                                    navController.navigate("reading_preferences")
+                                },
                             )
+                        }
+                        composable("reading_preferences") {
+                            ReadingPreferencesScreen(onNavigateUp = { navController.navigateUp() })
                         }
                         composable("reading_history") {
                             ReadingHistoryScreen(
                                 onNavigateUp = { navController.navigateUp() },
                                 onThreadClick = { summary ->
-                                    val threadId = summary.id.encode()
-                                    val sourceId = summary.sourceId.encode()
-                                    val boardUrl = summary.boardUrl.encode()
-                                    val title = summary.title?.encode() ?: ""
-                                    navController.navigate(
-                                        "thread_detail?threadId=$threadId&sourceId=$sourceId&boardUrl=$boardUrl&threadTitle=$title"
-                                    )
+                                    navController.navigate(summary.threadDetailRoute())
                                 },
                             )
                         }

@@ -4,13 +4,18 @@ import android.app.Activity
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -38,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import tw.kevinzhang.extension_api.model.ThreadSummary
+import tw.kevinzhang.newshub.data.TimelineDisplayMode
 import tw.kevinzhang.newshub.ui.component.BodyLargeText
 import tw.kevinzhang.newshub.ui.component.ThreadSummaryCard
 
@@ -45,7 +51,7 @@ import tw.kevinzhang.newshub.ui.component.ThreadSummaryCard
 @Composable
 fun CollectionTimelineScreen(
     onOpenDrawer: () -> Unit,
-    onThreadClick: (ThreadSummary) -> Unit,
+    onThreadClick: (ThreadSummary, boardName: String?) -> Unit,
     onNavigateToBoardPicker: () -> Unit,
     onNavigateToBoards: () -> Unit,
     scrollToTopTrigger: Int = 0,
@@ -55,6 +61,10 @@ fun CollectionTimelineScreen(
     val collectionName by viewModel.collectionName.collectAsStateWithLifecycle()
     val rawImageSourceIds by viewModel.rawImageSourceIds.collectAsStateWithLifecycle()
     val sourceIconUrls: Map<String, String?> by viewModel.sourceIconUrls.collectAsStateWithLifecycle()
+    val sourceNames by viewModel.sourceNames.collectAsStateWithLifecycle()
+    val timelineDisplayMode by viewModel.timelineDisplayMode.collectAsStateWithLifecycle()
+    val readThreadKeys by viewModel.readThreadKeys.collectAsStateWithLifecycle()
+    val sourceLoadFailures by viewModel.sourceLoadFailures.collectAsStateWithLifecycle()
     val subscriptions by viewModel.subscriptions.collectAsStateWithLifecycle()
     val authenticationRequiredNotice by viewModel.authenticationRequiredNotice.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -89,6 +99,15 @@ fun CollectionTimelineScreen(
                         Icon(Icons.Default.Menu, contentDescription = "Open drawer")
                     }
                 },
+                actions = {
+                    IconButton(onClick = viewModel::toggleTimelineDisplayMode) {
+                        val compact = timelineDisplayMode == TimelineDisplayMode.COMPACT
+                        Icon(
+                            imageVector = if (compact) Icons.Outlined.PhotoLibrary else Icons.Outlined.ViewAgenda,
+                            contentDescription = if (compact) "切換為媒體優先瀏覽" else "切換為高密度掃讀",
+                        )
+                    }
+                },
                 scrollBehavior = scrollBehavior,
             )
         },
@@ -96,33 +115,64 @@ fun CollectionTimelineScreen(
     ) { innerPadding ->
         PullToRefreshBox(
             isRefreshing = items.loadState.refresh is LoadState.Loading,
-            onRefresh = { items.refresh() },
+            onRefresh = {
+                viewModel.clearSourceLoadFailures()
+                items.refresh()
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                items(
-                    count = items.itemCount,
-                ) { index ->
-                    val summary = items[index] ?: return@items
-                    ThreadSummaryCard(
-                        summary = summary,
-                        alwaysUseRawImage = summary.sourceId in rawImageSourceIds,
-                        sourceIconUrl = sourceIconUrls[summary.sourceId],
-                        onClick = { onThreadClick(summary) },
-                    )
-                }
-                item {
-                    when (val appendState = items.loadState.append) {
-                        is LoadState.Error -> {
-                            LaunchedEffect(appendState.error) {
-                                Log.e("CollectionTimeline", "Append load failed", appendState.error)
-                            }
-                            Text("Failed to load more")
+            Box(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 720.dp)
+                        .align(Alignment.TopCenter),
+                ) {
+                    if (sourceLoadFailures.isNotEmpty()) {
+                        item(key = "source-load-failures") {
+                            SourceFailureNotice(
+                                failures = sourceLoadFailures,
+                                onRetry = {
+                                    viewModel.clearSourceLoadFailures()
+                                    items.refresh()
+                                },
+                            )
                         }
+                    }
+                    items(
+                        count = items.itemCount,
+                    ) { index ->
+                        val summary = items[index] ?: return@items
+                        val subscription = subscriptions?.firstOrNull {
+                            it.sourceId == summary.sourceId && it.boardUrl == summary.boardUrl
+                        }
+                        ThreadSummaryCard(
+                            summary = summary,
+                            alwaysUseRawImage = summary.sourceId in rawImageSourceIds,
+                            sourceIconUrl = sourceIconUrls[summary.sourceId],
+                            sourceName = sourceNames[summary.sourceId],
+                            boardName = subscription?.boardName,
+                            displayMode = timelineDisplayMode,
+                            isRead = (summary.sourceId to summary.id) in readThreadKeys,
+                            onClick = { onThreadClick(summary, subscription?.boardName) },
+                        )
+                    }
+                    item {
+                        when (val appendState = items.loadState.append) {
+                            is LoadState.Error -> {
+                                LaunchedEffect(appendState.error) {
+                                    Log.e("CollectionTimeline", "Append load failed", appendState.error)
+                                }
+                                Button(onClick = items::retry) {
+                                    Text("重新載入更多內容")
+                                }
+                            }
 
-                        else -> {}
+                            else -> {}
+                        }
                     }
                 }
             }
@@ -133,10 +183,19 @@ fun CollectionTimelineScreen(
                         Log.e("CollectionTimeline", "Refresh failed", refreshState.error)
                     }
                     if (items.itemCount == 0) {
-                        Text(
-                            text = "Error loading timeline",
+                        Column(
                             modifier = Modifier.align(Alignment.Center),
-                        )
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text("無法載入時間軸")
+                            Button(onClick = {
+                                viewModel.clearSourceLoadFailures()
+                                items.refresh()
+                            }) {
+                                Text("重新整理")
+                            }
+                        }
                     }
                 }
 
@@ -163,4 +222,26 @@ fun CollectionTimelineScreen(
         }
     }
 
+}
+
+@Composable
+private fun SourceFailureNotice(
+    failures: List<SourceLoadFailure>,
+    onRetry: () -> Unit,
+) {
+    val boards = failures.map { it.boardName }.distinct().joinToString("、")
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = "部分來源暫時無法更新：$boards",
+            color = MaterialTheme.colorScheme.error,
+        )
+        Button(onClick = onRetry) {
+            Text("重新整理")
+        }
+    }
 }

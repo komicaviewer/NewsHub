@@ -20,18 +20,23 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import tw.kevinzhang.data.CollectionRepository
+import tw.kevinzhang.data.ReadingHistoryRepository
 import tw.kevinzhang.data.domain.BoardSubscriptionEntity
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.newshub.auth.SourceSessionManager
+import tw.kevinzhang.newshub.data.PreferenceStore
+import tw.kevinzhang.newshub.data.TimelineDisplayMode
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class CollectionTimelineViewModel @Inject constructor(
     private val collectionRepo: CollectionRepository,
+    readingHistoryRepository: ReadingHistoryRepository,
     private val extensionLoader: ExtensionLoader,
     private val sessionManager: SourceSessionManager,
+    private val preferenceStore: PreferenceStore,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -39,16 +44,34 @@ class CollectionTimelineViewModel @Inject constructor(
         "CollectionTimelineViewModel requires 'collectionId' in SavedStateHandle. Check navigation setup."
     }
 
-    val rawImageSourceIds: StateFlow<Set<String>> = MutableStateFlow(
-        extensionLoader.getAllSources()
+    val rawImageSourceIds: StateFlow<Set<String>> = extensionLoader.sourcesFlow
+        .map { sources ->
+            sources
             .filter { it.alwaysUseRawImage }
             .map { it.id }
             .toSet()
-    ).asStateFlow()
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
-    val sourceIconUrls: StateFlow<Map<String, String?>> = MutableStateFlow(
-        extensionLoader.getAllSources().associate { it.id to it.iconUrl }
-    ).asStateFlow()
+    val sourceIconUrls: StateFlow<Map<String, String?>> = extensionLoader.sourcesFlow
+        .map { sources -> sources.associate { it.id to it.iconUrl } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    val sourceNames: StateFlow<Map<String, String>> = extensionLoader.sourcesFlow
+        .map { sources -> sources.associate { it.id to it.name } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    val timelineDisplayMode: StateFlow<TimelineDisplayMode> = preferenceStore.observable
+        .map { it.timelineDisplayMode }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TimelineDisplayMode.COMPACT)
+
+    val readThreadKeys: StateFlow<Set<Pair<String, String>>> = readingHistoryRepository
+        .observeReadingHistory()
+        .map { history -> history.mapTo(mutableSetOf()) { it.sourceId to it.threadId } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    private val _sourceLoadFailures = MutableStateFlow<List<SourceLoadFailure>>(emptyList())
+    val sourceLoadFailures: StateFlow<List<SourceLoadFailure>> = _sourceLoadFailures.asStateFlow()
 
     val collectionName: StateFlow<String> = collectionRepo.observeCollections()
         .map { list -> list.firstOrNull { it.id == collectionId }?.name ?: "" }
@@ -64,6 +87,22 @@ class CollectionTimelineViewModel @Inject constructor(
         sessionManager.consumeAuthenticationRequiredNotice(sourceId)
     }
 
+    fun toggleTimelineDisplayMode() {
+        viewModelScope.launch {
+            preferenceStore.setTimelineDisplayMode(
+                if (timelineDisplayMode.value == TimelineDisplayMode.COMPACT) {
+                    TimelineDisplayMode.MEDIA_FIRST
+                } else {
+                    TimelineDisplayMode.COMPACT
+                },
+            )
+        }
+    }
+
+    fun clearSourceLoadFailures() {
+        _sourceLoadFailures.value = emptyList()
+    }
+
     val timelinePager: Flow<PagingData<ThreadSummary>> =
         collectionRepo.observeSubscriptions(collectionId)
             .distinctUntilChanged()
@@ -73,6 +112,7 @@ class CollectionTimelineViewModel @Inject constructor(
                         subscriptions = subs,
                         sourceResolver = { extensionLoader.getSource(it) },
                         onAuthenticationRequired = sessionManager::notifyAuthenticationRequired,
+                        onSourceLoadFailures = { failures -> _sourceLoadFailures.value = failures },
                     )
                 }.flow
             }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bookmark
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -21,6 +22,7 @@ import tw.kevinzhang.newshub.ui.component.appClickable
 fun SettingsScreen(
     onNavigateToReadingHistory: () -> Unit,
     onNavigateToSavedPosts: () -> Unit,
+    onNavigateToReadingPreferences: () -> Unit = {},
 ) {
     Scaffold(
         topBar = {
@@ -32,6 +34,14 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            ListItem(
+                headlineContent = { Text("閱讀體驗") },
+                supportingContent = { Text("時間軸、回覆顯示與已讀判定") },
+                leadingContent = {
+                    Icon(Icons.Outlined.Tune, contentDescription = null)
+                },
+                modifier = Modifier.appClickable(onClick = onNavigateToReadingPreferences),
+            )
             ListItem(
                 headlineContent = { Text("閱讀紀錄") },
                 leadingContent = {

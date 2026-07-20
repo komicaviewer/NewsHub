@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -32,6 +33,8 @@ import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.newshub.data.PreferenceStore
+import tw.kevinzhang.newshub.data.ReadTrackingMode
+import tw.kevinzhang.newshub.data.ReplyDisplayMode
 import tw.kevinzhang.newshub.auth.SourceSessionManager
 import java.io.File
 import javax.inject.Inject
@@ -62,10 +65,21 @@ class ThreadDetailViewModel @Inject constructor(
     private val boardUrl: String = checkNotNull(savedStateHandle["boardUrl"]) {
         "ThreadDetailViewModel requires 'boardUrl' in SavedStateHandle"
     }
+    private val boardName: String? = savedStateHandle["boardName"]
     private val threadTitle: String? = savedStateHandle["threadTitle"]
 
     private val _thread = MutableStateFlow<Thread?>(null)
     val thread = _thread.asStateFlow()
+
+    private val _sourceName = MutableStateFlow("")
+    val sourceName = _sourceName.asStateFlow()
+
+    val sourceBoardLabel: StateFlow<String> = _sourceName
+        .map { source ->
+            listOfNotNull(source.takeIf(String::isNotBlank), boardName?.takeIf(String::isNotBlank))
+                .joinToString(" · ")
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
     val threadUrl: StateFlow<String?> = _thread
         .map { it?.url }
@@ -83,10 +97,33 @@ class ThreadDetailViewModel @Inject constructor(
         .map { it.webViewTextZoom }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 100)
 
+    val replyDisplayMode: StateFlow<ReplyDisplayMode> = preferenceStore.observable
+        .map { it.readingPreferences.replyDisplayMode }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            ReplyDisplayMode.CONTEXTUAL,
+        )
+
+    val readTrackingMode: StateFlow<ReadTrackingMode> = preferenceStore.observable
+        .map { it.readingPreferences.readTrackingMode }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            ReadTrackingMode.POST_VISIBLE,
+        )
+
+    val readPostIds: StateFlow<Set<String>> = historyRepository
+        .observeReadPostIds(sourceId, threadId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
     private var cachedSource: Source? = null
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
+
+    private val _loadError = MutableStateFlow<String?>(null)
+    val loadError = _loadError.asStateFlow()
 
     val isSaved: StateFlow<Boolean> = savedPostRepository
         .observeSavedPost(sourceId, threadId)
@@ -121,28 +158,50 @@ class ThreadDetailViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
+    private var historySummary: ThreadSummary? = null
+    private var historyRecorded = false
+    private val pendingReadPostIds = mutableSetOf<String>()
+
     init {
         viewModelScope.launch {
-            val source = extensionLoader.getSource(sourceId) ?: return@launch
+            val source = extensionLoader.getSource(sourceId)
+            if (source == null) {
+                _loadError.value = "找不到這個內容來源，可能需要重新安裝擴充套件。"
+                _isLoading.value = false
+                return@launch
+            }
             cachedSource = source
+            _sourceName.value = source.name
             _alwaysUseRawImage.value = source.alwaysUseRawImage
             loadThreadInForeground(source)
         }
     }
 
     fun refresh() {
-        val source = cachedSource ?: return
         viewModelScope.launch {
+            val source = cachedSource ?: extensionLoader.getSource(sourceId)
+            if (source == null) {
+                _loadError.value = "找不到這個內容來源，可能需要重新安裝擴充套件。"
+                _isLoading.value = false
+                return@launch
+            }
+            cachedSource = source
+            _sourceName.value = source.name
+            _alwaysUseRawImage.value = source.alwaysUseRawImage
             loadThreadInForeground(source)
         }
     }
 
     private suspend fun loadThreadInForeground(source: Source) {
         _isLoading.value = true
+        _loadError.value = null
         try {
             loadThread(source)
         } catch (_: AuthenticationRequiredException) {
             sessionManager.notifyAuthenticationRequired(sourceId)
+        } catch (error: Exception) {
+            _loadError.value = error.localizedMessage?.takeIf(String::isNotBlank)
+                ?: "無法載入討論串，請稍後再試。"
         } finally {
             _isLoading.value = false
         }
@@ -165,26 +224,73 @@ class ThreadDetailViewModel @Inject constructor(
         val thread = rawThread.copy(
             posts = rawThread.posts.map { it.copy(sourceIconUrl = source.iconUrl) }
         )
-        _thread.value = thread
-        _commentStates.value = buildInitialCommentStates(source, thread)
         val firstPost = thread.posts.firstOrNull()
         val firstImage = firstPost?.content?.filterIsInstance<Paragraph.ImageInfo>()?.firstOrNull()
-        historyRepository.recordRead(
-            ThreadSummary(
-                sourceId = sourceId,
-                boardUrl = boardUrl,
-                id = threadId,
-                title = thread.title ?: threadTitle,
-                author = firstPost?.author,
-                createdAt = firstPost?.createdAt,
-                commentCount = null,
-                replyCount = firstPost?.replyCount,
-                thumbnail = firstPost?.thumbnail ?: firstImage?.thumb,
-                rawImage = firstImage?.raw,
-                previewContent = firstPost?.content?.take(3) ?: emptyList(),
-                sourceIconUrl = source.iconUrl,
-            )
+        historySummary = ThreadSummary(
+            sourceId = sourceId,
+            boardUrl = boardUrl,
+            id = threadId,
+            title = thread.title ?: threadTitle,
+            author = firstPost?.author,
+            createdAt = firstPost?.createdAt,
+            commentCount = null,
+            replyCount = firstPost?.replyCount,
+            thumbnail = firstPost?.thumbnail ?: firstImage?.thumb,
+            rawImage = firstImage?.raw,
+            previewContent = firstPost?.content?.take(3) ?: emptyList(),
+            sourceIconUrl = source.iconUrl,
         )
+        _thread.value = thread
+        _commentStates.value = buildInitialCommentStates(source, thread)
+        if (
+            preferenceStore.observable.first().readingPreferences.readTrackingMode ==
+            ReadTrackingMode.THREAD_OPENED
+        ) {
+            markPostsRead(thread.posts.map(Post::id))
+        }
+    }
+
+    fun setReplyDisplayMode(mode: ReplyDisplayMode) {
+        viewModelScope.launch { preferenceStore.setReplyDisplayMode(mode) }
+    }
+
+    fun setReadTrackingMode(mode: ReadTrackingMode) {
+        viewModelScope.launch { preferenceStore.setReadTrackingMode(mode) }
+    }
+
+    fun markPostRead(postId: String) {
+        if (postId in readPostIds.value || !pendingReadPostIds.add(postId)) {
+            viewModelScope.launch { recordHistoryIfNeeded() }
+            return
+        }
+        viewModelScope.launch {
+            recordHistoryIfNeeded()
+            historyRepository.markPostRead(sourceId, threadId, postId)
+        }
+    }
+
+    fun markAllPostsRead() {
+        markPostsRead(_thread.value?.posts.orEmpty().map(Post::id))
+    }
+
+    private fun markPostsRead(postIds: Collection<String>) {
+        val unreadIds = postIds.filterNot { it in readPostIds.value || it in pendingReadPostIds }
+        if (unreadIds.isEmpty()) {
+            viewModelScope.launch { recordHistoryIfNeeded() }
+            return
+        }
+        pendingReadPostIds += unreadIds
+        viewModelScope.launch {
+            recordHistoryIfNeeded()
+            historyRepository.markPostsRead(sourceId, threadId, unreadIds)
+        }
+    }
+
+    private suspend fun recordHistoryIfNeeded() {
+        if (historyRecorded) return
+        val summary = historySummary ?: return
+        historyRecorded = true
+        historyRepository.recordRead(summary)
     }
 
     private suspend fun buildInitialCommentStates(

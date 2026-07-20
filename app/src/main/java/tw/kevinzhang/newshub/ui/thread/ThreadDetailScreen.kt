@@ -6,6 +6,7 @@ import android.webkit.WebViewClient
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,15 +16,20 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.ArrowBack
@@ -31,7 +37,10 @@ import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -54,20 +63,29 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.newshub.filterRepliesBy
+import tw.kevinzhang.newshub.data.ReadTrackingMode
+import tw.kevinzhang.newshub.data.ReplyDisplayMode
 import tw.kevinzhang.newshub.ui.component.AppCard
 import tw.kevinzhang.newshub.ui.component.BodySmallText
 import tw.kevinzhang.newshub.ui.component.LabelMediumText
@@ -109,7 +127,12 @@ fun ThreadDetailScreen(
     val alwaysUseRawImage by viewModel.alwaysUseRawImage.collectAsStateWithLifecycle()
     val useWebViewPosts by viewModel.useWebViewPosts.collectAsStateWithLifecycle()
     val webViewTextZoom by viewModel.webViewTextZoom.collectAsStateWithLifecycle()
+    val sourceBoardLabel by viewModel.sourceBoardLabel.collectAsStateWithLifecycle()
+    val replyDisplayMode by viewModel.replyDisplayMode.collectAsStateWithLifecycle()
+    val readTrackingMode by viewModel.readTrackingMode.collectAsStateWithLifecycle()
+    val readPostIds by viewModel.readPostIds.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val loadError by viewModel.loadError.collectAsStateWithLifecycle()
     val isSaved by viewModel.isSaved.collectAsStateWithLifecycle()
     val isSavingScreenshots by viewModel.isSavingScreenshots.collectAsStateWithLifecycle()
     val authenticationRequiredNotice by viewModel.authenticationRequiredNotice.collectAsStateWithLifecycle()
@@ -120,6 +143,67 @@ fun ThreadDetailScreen(
     val listState = rememberLazyListState()
     var repliesDialogForPostId by remember { mutableStateOf<String?>(null) }
     var highlightedPostId by remember { mutableStateOf<String?>(null) }
+    var preferencesMenuExpanded by remember { mutableStateOf(false) }
+
+    val displayedPosts = remember(thread?.posts, replyDisplayMode) {
+        val posts = thread?.posts.orEmpty()
+        if (replyDisplayMode == ReplyDisplayMode.NESTED) {
+            posts.asThreadedPosts(maxDepth = 3)
+        } else {
+            posts.map { ThreadedPost(it, 0) }
+        }
+    }
+    val jumpToPost: (String) -> Unit = { postId ->
+        val postIndex = displayedPosts.indexOfFirst { it.post.id == postId }
+        if (postIndex >= 0) {
+            coroutineScope.launch {
+                val returnIndex = listState.firstVisibleItemIndex
+                val returnOffset = listState.firstVisibleItemScrollOffset
+                val errorOffset = if (loadError != null && thread != null) 1 else 0
+                listState.animateScrollToItem(postIndex + errorOffset)
+                highlightedPostId = postId
+                val result = snackbarHostState.showSnackbar(
+                    message = "已跳到貼文 ${postId.takeLast(10)}",
+                    actionLabel = "返回原位置",
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    listState.animateScrollToItem(returnIndex, returnOffset)
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(readTrackingMode, thread?.posts) {
+        if (readTrackingMode == ReadTrackingMode.THREAD_OPENED && thread != null) {
+            viewModel.markAllPostsRead()
+        }
+    }
+
+    LaunchedEffect(listState, displayedPosts, readTrackingMode) {
+        if (readTrackingMode != ReadTrackingMode.POST_VISIBLE) return@LaunchedEffect
+        val postIds = displayedPosts.mapTo(mutableSetOf()) { it.post.id }
+
+        fun visiblePostIds(): Set<String> {
+            val layoutInfo = listState.layoutInfo
+            return layoutInfo.visibleItemsInfo.mapNotNullTo(mutableSetOf()) { itemInfo ->
+                val postId = itemInfo.key as? String ?: return@mapNotNullTo null
+                postId.takeIf {
+                    it in postIds && visibleFraction(
+                        itemOffset = itemInfo.offset,
+                        itemSize = itemInfo.size,
+                        viewportStartOffset = layoutInfo.viewportStartOffset,
+                        viewportEndOffset = layoutInfo.viewportEndOffset,
+                    ) >= 0.5f
+                }
+            }
+        }
+
+        snapshotFlow(::visiblePostIds).collectLatest { candidates ->
+            if (candidates.isEmpty()) return@collectLatest
+            delay(500)
+            candidates.intersect(visiblePostIds()).forEach(viewModel::markPostRead)
+        }
+    }
 
     LaunchedEffect(authenticationRequiredNotice) {
         val sourceId = authenticationRequiredNotice ?: return@LaunchedEffect
@@ -156,7 +240,22 @@ fun ThreadDetailScreen(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(thread?.title ?: "") },
+                    title = {
+                        Column {
+                            Text(
+                                text = thread?.title?.takeIf(String::isNotBlank) ?: "無題",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (sourceBoardLabel.isNotBlank()) {
+                                BodySmallText(
+                                    text = sourceBoardLabel,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    },
                     navigationIcon = {
                         IconButton(onClick = onNavigateUp) {
                             Icon(
@@ -196,6 +295,68 @@ fun ThreadDetailScreen(
                                 contentDescription = "Open in browser",
                             )
                         }
+                        Box {
+                            IconButton(onClick = { preferencesMenuExpanded = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "閱讀顯示設定",
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = preferencesMenuExpanded,
+                                onDismissRequest = { preferencesMenuExpanded = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("時間序＋脈絡跳轉") },
+                                    leadingIcon = {
+                                        if (replyDisplayMode == ReplyDisplayMode.CONTEXTUAL) {
+                                            Icon(Icons.Default.Check, contentDescription = null)
+                                        }
+                                    },
+                                    onClick = {
+                                        viewModel.setReplyDisplayMode(ReplyDisplayMode.CONTEXTUAL)
+                                        preferencesMenuExpanded = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("遞迴縮排") },
+                                    leadingIcon = {
+                                        if (replyDisplayMode == ReplyDisplayMode.NESTED) {
+                                            Icon(Icons.Default.Check, contentDescription = null)
+                                        }
+                                    },
+                                    onClick = {
+                                        viewModel.setReplyDisplayMode(ReplyDisplayMode.NESTED)
+                                        preferencesMenuExpanded = false
+                                    },
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("滑過貼文才算已讀") },
+                                    leadingIcon = {
+                                        if (readTrackingMode == ReadTrackingMode.POST_VISIBLE) {
+                                            Icon(Icons.Default.Check, contentDescription = null)
+                                        }
+                                    },
+                                    onClick = {
+                                        viewModel.setReadTrackingMode(ReadTrackingMode.POST_VISIBLE)
+                                        preferencesMenuExpanded = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("進入串就算已讀") },
+                                    leadingIcon = {
+                                        if (readTrackingMode == ReadTrackingMode.THREAD_OPENED) {
+                                            Icon(Icons.Default.Check, contentDescription = null)
+                                        }
+                                    },
+                                    onClick = {
+                                        viewModel.setReadTrackingMode(ReadTrackingMode.THREAD_OPENED)
+                                        preferencesMenuExpanded = false
+                                    },
+                                )
+                            }
+                        }
                     }
                 )
             },
@@ -210,41 +371,74 @@ fun ThreadDetailScreen(
                     .padding(padding),
             ) {
 
-                val onReplyToClick =
-                    remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
-                val onZoomChange =
-                    remember(viewModel) { { zoom: Int -> viewModel.setWebViewTextZoom(zoom) } }
-                LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                    items(thread?.posts ?: listOf(), key = { it.id }) { post ->
-                        ExtPostCard(
-                            post = post,
-                            isHighlighted = post.id == highlightedPostId,
-                            onHighlightDone = {
-                                if (post.id == highlightedPostId) highlightedPostId = null
-                            },
-                            useWebView = post.id in useWebViewPosts,
-                            onEnableWebView = { viewModel.enableWebViewForPost(post.id) },
-                            alwaysUseRawImage = alwaysUseRawImage,
-                            commentUiState = commentStates[post.id],
-                            onShowReplies = { repliesDialogForPostId = post.id },
-                            onReplyToClick = onReplyToClick,
-                            onLoadMoreCommentsClick = { viewModel.loadMoreComments(post.id) },
-                            textZoom = webViewTextZoom,
-                            onZoomChange = onZoomChange,
-                        )
-                    }
-                    item {
-                        if (!isLoading) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(128.dp),
-                                verticalArrangement = Arrangement.Center,
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                BodySmallText("沒有更多資料")
+                Box(modifier = Modifier.fillMaxSize()) {
+                    val onReplyToClick =
+                        remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
+                    val onZoomChange =
+                        remember(viewModel) { { zoom: Int -> viewModel.setWebViewTextZoom(zoom) } }
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .widthIn(max = 840.dp)
+                            .align(Alignment.TopCenter),
+                    ) {
+                        if (loadError != null && thread != null) {
+                            item(key = "refresh-error") {
+                                ErrorNotice(message = loadError.orEmpty(), onRetry = viewModel::refresh)
                             }
                         }
+                        items(displayedPosts, key = { it.post.id }) { threadedPost ->
+                            val post = threadedPost.post
+                            ExtPostCard(
+                                post = post,
+                                modifier = Modifier.padding(
+                                    start = (threadedPost.depth * 12).dp,
+                                    end = if (threadedPost.depth > 0) 4.dp else 0.dp,
+                                ),
+                                isOriginalPost = post.id == thread?.posts?.firstOrNull()?.id,
+                                isRead = post.id in readPostIds,
+                                isHighlighted = post.id == highlightedPostId,
+                                onHighlightDone = {
+                                    if (post.id == highlightedPostId) highlightedPostId = null
+                                },
+                                useWebView = post.id in useWebViewPosts,
+                                onEnableWebView = { viewModel.enableWebViewForPost(post.id) },
+                                alwaysUseRawImage = alwaysUseRawImage,
+                                commentUiState = commentStates[post.id],
+                                onShowReplies = { repliesDialogForPostId = post.id },
+                                onReplyToClick = onReplyToClick,
+                                onLoadMoreCommentsClick = { viewModel.loadMoreComments(post.id) },
+                                textZoom = webViewTextZoom,
+                                onZoomChange = onZoomChange,
+                            )
+                        }
+                        if (displayedPosts.isNotEmpty()) {
+                            item(key = "thread-footer") {
+                                if (!isLoading) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(128.dp),
+                                        verticalArrangement = Arrangement.Center,
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        BodySmallText("沒有更多資料")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    when {
+                        thread == null && isLoading -> CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                        thread == null && loadError != null -> ErrorState(
+                            message = loadError.orEmpty(),
+                            onRetry = viewModel::refresh,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
                     }
                 }
             }
@@ -254,16 +448,30 @@ fun ThreadDetailScreen(
             AlertDialog(
                 onDismissRequest = { viewModel.dismissPreview() },
                 confirmButton = {
-                    TextButton(onClick = { viewModel.dismissPreview() }) { Text("Close") }
+                    TextButton(onClick = { viewModel.dismissPreview() }) { Text("關閉") }
                 },
-                title = { Text("Post ${post.id}") },
-                text = {
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            viewModel.dismissPreview()
+                            jumpToPost(post.id)
+                        },
+                    ) { Text("跳到原文") }
+                },
+                title = {
                     Column {
-                        ParagraphsContent(
-                            paragraphs = post.content,
-                            alwaysUseRawImage = alwaysUseRawImage,
+                        Text("引用貼文")
+                        BodySmallText(
+                            text = "${post.author ?: "未知作者"} · ${post.id}",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                },
+                text = {
+                    QuotePreviewContent(
+                        post = post,
+                        alwaysUseRawImage = alwaysUseRawImage,
+                    )
                 },
             )
         }
@@ -284,13 +492,7 @@ fun ThreadDetailScreen(
                             AppCard(
                                 onClick = {
                                     repliesDialogForPostId = null
-                                    val index = thread!!.posts.indexOfFirst { it.id == reply.id }
-                                    if (index >= 0) {
-                                        coroutineScope.launch {
-                                            listState.animateScrollToItem(index)
-                                            highlightedPostId = reply.id
-                                        }
-                                    }
+                                    jumpToPost(reply.id)
                                 }
                             ) {
                                 Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
@@ -328,8 +530,78 @@ fun ThreadDetailScreen(
 }
 
 @Composable
+private fun ErrorNotice(message: String, onRetry: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = message,
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.error,
+        )
+        TextButton(onClick = onRetry) { Text("重試") }
+    }
+}
+
+@Composable
+private fun ErrorState(
+    message: String,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(text = message, color = MaterialTheme.colorScheme.error)
+        Button(onClick = onRetry) { Text("重新載入") }
+    }
+}
+
+@Composable
+private fun QuotePreviewContent(post: Post, alwaysUseRawImage: Boolean) {
+    val nonMediaParagraphs = remember(post.content) {
+        post.content.filterNot { it is Paragraph.ImageInfo || it is Paragraph.VideoInfo }
+    }
+    val mediaModel = remember(post.content, alwaysUseRawImage) {
+        post.content.firstNotNullOfOrNull { paragraph ->
+            when (paragraph) {
+                is Paragraph.ImageInfo -> if (alwaysUseRawImage) paragraph.raw else paragraph.thumb ?: paragraph.raw
+                is Paragraph.VideoInfo -> paragraph.url
+                else -> null
+            }
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ParagraphsContent(
+            paragraphs = nonMediaParagraphs,
+            alwaysUseRawImage = alwaysUseRawImage,
+        )
+        mediaModel?.let { model ->
+            AsyncImage(
+                model = model,
+                contentDescription = "引用貼文媒體預覽",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 240.dp)
+                    .aspectRatio(16f / 9f),
+                contentScale = ContentScale.Fit,
+            )
+        }
+    }
+}
+
+@Composable
 private fun ExtPostCard(
     post: Post,
+    modifier: Modifier = Modifier,
+    isOriginalPost: Boolean,
+    isRead: Boolean,
     isHighlighted: Boolean,
     onHighlightDone: () -> Unit,
     useWebView: Boolean,
@@ -354,6 +626,9 @@ private fun ExtPostCard(
 
     PostCard(
         post = post,
+        modifier = modifier,
+        isOriginalPost = isOriginalPost,
+        isRead = isRead,
         highlightAlpha = highlightAlpha.value,
         useWebView = useWebView,
         onEnableWebView = onEnableWebView,
@@ -402,6 +677,9 @@ private fun ExtPostCard(
 @Composable
 internal fun PostCard(
     post: Post,
+    modifier: Modifier = Modifier,
+    isOriginalPost: Boolean = false,
+    isRead: Boolean = true,
     highlightAlpha: Float,
     useWebView: Boolean,
     onEnableWebView: () -> Unit,
@@ -412,7 +690,7 @@ internal fun PostCard(
     textZoom: Int,
     onZoomChange: (Int) -> Unit,
 ) {
-    AppCard {
+    AppCard(modifier = modifier) {
         Box {
         Column(modifier = Modifier.padding(8.dp)) {
             Row(
@@ -424,6 +702,18 @@ internal fun PostCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    if (isOriginalPost) {
+                        LabelSmallText(
+                            text = "OP",
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    if (!isRead) {
+                        LabelSmallText(
+                            text = "未讀",
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     post.createdAt?.let {
                         BodySmallText(
                             text = android.text.format.DateUtils.getRelativeTimeSpanString(it)
@@ -445,13 +735,21 @@ internal fun PostCard(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     post.replyCount?.let {
-                        Icon(
-                            imageVector = Icons.Outlined.Email,
-                            contentDescription = null,
-                            modifier = Modifier.size(12.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        BodySmallText("$it", modifier = Modifier.appClickable { onShowReplies() })
+                        TextButton(
+                            onClick = onShowReplies,
+                            modifier = Modifier
+                                .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                .semantics { contentDescription = "查看 $it 則回覆" },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Email,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            BodySmallText("$it")
+                        }
                     }
                     post.comments.size.takeIf { it > 0 }?.let {
                         Icon(

@@ -14,6 +14,7 @@ import tw.kevinzhang.data.ReadingHistoryRepository
 import tw.kevinzhang.data.SavedPostRepository
 import tw.kevinzhang.data.domain.CollectionDao
 import tw.kevinzhang.data.domain.CollectionDatabase
+import tw.kevinzhang.data.domain.PostReadDao
 import tw.kevinzhang.data.domain.ReadingHistoryDao
 import tw.kevinzhang.data.domain.SavedPostDao
 import javax.inject.Singleton
@@ -39,6 +40,7 @@ abstract class DataModule {
         @Singleton
         fun provideCollectionDatabase(@ApplicationContext context: Context): CollectionDatabase =
             Room.databaseBuilder(context, CollectionDatabase::class.java, "collection.db")
+                .addMigrations(CollectionDatabase.MIGRATION_4_5)
                 .fallbackToDestructiveMigration()
                 .build()
 
@@ -50,5 +52,8 @@ abstract class DataModule {
 
         @Provides
         fun provideSavedPostDao(db: CollectionDatabase): SavedPostDao = db.savedPostDao()
+
+        @Provides
+        fun providePostReadDao(db: CollectionDatabase): PostReadDao = db.postReadDao()
     }
 }

@@ -24,6 +24,9 @@ class PreferenceStore @Inject constructor(
     private object Keys {
         val KEY_DEFAULT_COLLECTION_ID = stringPreferencesKey("default_collection_id")
         val KEY_WEBVIEW_TEXT_ZOOM = intPreferencesKey("webview_text_zoom")
+        val KEY_TIMELINE_DISPLAY_MODE = stringPreferencesKey("timeline_display_mode")
+        val KEY_REPLY_DISPLAY_MODE = stringPreferencesKey("reply_display_mode")
+        val KEY_READ_TRACKING_MODE = stringPreferencesKey("read_tracking_mode")
     }
 
     private val dataStore = appContext.dataStore
@@ -52,15 +55,54 @@ class PreferenceStore @Inject constructor(
         }
     }
 
+    suspend fun setTimelineDisplayMode(mode: TimelineDisplayMode) {
+        dataStore.edit { prefs ->
+            prefs[Keys.KEY_TIMELINE_DISPLAY_MODE] = mode.name
+        }
+    }
+
+    suspend fun setReplyDisplayMode(mode: ReplyDisplayMode) {
+        dataStore.edit { prefs ->
+            prefs[Keys.KEY_REPLY_DISPLAY_MODE] = mode.name
+        }
+    }
+
+    suspend fun setReadTrackingMode(mode: ReadTrackingMode) {
+        dataStore.edit { prefs ->
+            prefs[Keys.KEY_READ_TRACKING_MODE] = mode.name
+        }
+    }
+
     private fun mapPreference(preferences: Preferences): Preference {
         return Preference(
             defaultCollectionId = preferences[Keys.KEY_DEFAULT_COLLECTION_ID],
             webViewTextZoom = preferences[Keys.KEY_WEBVIEW_TEXT_ZOOM] ?: 100,
+            readingPreferences = ReadingPreferences(
+                timelineDisplayMode = TimelineDisplayMode.fromStoredValue(
+                    preferences[Keys.KEY_TIMELINE_DISPLAY_MODE],
+                ),
+                replyDisplayMode = ReplyDisplayMode.fromStoredValue(
+                    preferences[Keys.KEY_REPLY_DISPLAY_MODE],
+                ),
+                readTrackingMode = ReadTrackingMode.fromStoredValue(
+                    preferences[Keys.KEY_READ_TRACKING_MODE],
+                ),
+            ),
         )
     }
 
     data class Preference(
         val defaultCollectionId: String?,
         val webViewTextZoom: Int,
-    )
+        val readingPreferences: ReadingPreferences = ReadingPreferences(),
+    ) {
+        val timelineDisplayMode: TimelineDisplayMode
+            get() = readingPreferences.timelineDisplayMode
+
+        val replyDisplayMode: ReplyDisplayMode
+            get() = readingPreferences.replyDisplayMode
+
+        val readTrackingMode: ReadTrackingMode
+            get() = readingPreferences.readTrackingMode
+    }
 }

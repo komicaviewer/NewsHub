@@ -4,11 +4,13 @@ import androidx.room.withTransaction
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import tw.kevinzhang.data.domain.BoardSubscriptionEntity
 import tw.kevinzhang.data.domain.CollectionDao
 import tw.kevinzhang.data.domain.CollectionDatabase
 import tw.kevinzhang.data.domain.CollectionEntity
 import tw.kevinzhang.data.domain.ParagraphListConverter
+import tw.kevinzhang.data.domain.PostReadEntity
 import tw.kevinzhang.data.domain.ReadingHistoryEntity
 import tw.kevinzhang.data.domain.SavedPostEntity
 import tw.kevinzhang.extension_api.model.ThreadSummary
@@ -91,6 +93,9 @@ class CollectionRepositoryImpl @Inject constructor(
 
     override fun observeReadingHistory() = db.readingHistoryDao().observeAll()
 
+    override fun observeReadPostIds(sourceId: String, threadId: String): Flow<Set<String>> =
+        db.postReadDao().observeReadPostIds(sourceId, threadId).map { it.toSet() }
+
     override suspend fun recordRead(summary: ThreadSummary) {
         val converter = ParagraphListConverter()
         db.readingHistoryDao().upsert(
@@ -109,6 +114,32 @@ class CollectionRepositoryImpl @Inject constructor(
                 sourceIconUrl = summary.sourceIconUrl,
                 readAt = System.currentTimeMillis(),
             )
+        )
+    }
+
+    override suspend fun markPostRead(sourceId: String, threadId: String, postId: String) {
+        db.postReadDao().upsert(
+            PostReadEntity(
+                sourceId = sourceId,
+                threadId = threadId,
+                postId = postId,
+                readAt = System.currentTimeMillis(),
+            )
+        )
+    }
+
+    override suspend fun markPostsRead(sourceId: String, threadId: String, postIds: Collection<String>) {
+        if (postIds.isEmpty()) return
+        val readAt = System.currentTimeMillis()
+        db.postReadDao().upsertAll(
+            postIds.distinct().map { postId ->
+                PostReadEntity(
+                    sourceId = sourceId,
+                    threadId = threadId,
+                    postId = postId,
+                    readAt = readAt,
+                )
+            }
         )
     }
 
