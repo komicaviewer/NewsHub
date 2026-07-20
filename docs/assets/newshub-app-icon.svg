@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 108 108" role="img" aria-labelledby="title desc">
+  <title id="title">NewsHub app icon</title>
+  <desc id="desc">A deep navy rounded-square app icon with a three-colour flowing N mark.</desc>
+  <defs>
+    <clipPath id="normal-mask"><path d="M54 0C79 0 90 0 99 9s9 20 9 45-0 36-9 45-20 9-45 9-36 0-45-9-9-20-9-45S0 18 9 9 29 0 54 0Z"/></clipPath>
+  </defs>
+  <g clip-path="url(#normal-mask)">
+    <rect width="108" height="108" fill="#1E2B4B"/>
+    <path fill="#101A33" d="M25 83V25h17l24 31V25h17v58H66L42 52v31Z"/>
+    <path fill="#8090FF" d="M30 78V30h8v48Z"/>
+    <path fill="#B3BDFF" d="M71 30v48h7V30Z"/>
+    <path fill="#CF5BF7" d="M38 30h7l26 33v14h-7L38 44Z"/>
+  </g>
+</svg>
