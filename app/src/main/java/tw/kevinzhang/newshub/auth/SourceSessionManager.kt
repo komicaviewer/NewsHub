@@ -24,6 +24,7 @@ import tw.kevinzhang.extension_api.SourceRuntime
 import tw.kevinzhang.extension_api.SourceRuntimeProvider
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
+import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -90,11 +91,14 @@ class SourceSessionManager @Inject constructor(
         val jar = session(sourceId).jar
         val cookieManager = CookieManager.getInstance()
         cookieManager.flush()
-        spec.validCookieOrigins().forEach { origin ->
-            val url = origin.toHttpsUrlOrNull() ?: return@forEach
-            val raw = cookieManager.getCookie(url.toString()) ?: return@forEach
-            val cookies = raw.split(';').mapNotNull { Cookie.parse(url, it.trim()) }
-            if (cookies.isNotEmpty()) jar.saveFromResponse(url, cookies)
+        val originHeaders = buildList {
+            spec.validCookieOrigins().forEach { url ->
+                val raw = cookieManager.getCookie(url.toString()) ?: return@forEach
+                add(url to raw)
+            }
+        }
+        saveWebViewCookieBatch(originHeaders) { cookies ->
+            jar.saveAllFromResponses(cookies)
         }
     }
 
@@ -102,8 +106,7 @@ class SourceSessionManager @Inject constructor(
     fun logout(sourceId: String, spec: AuthSpec.WebCookie) {
         val jar = session(sourceId).jar
         val cookieManager = CookieManager.getInstance()
-        spec.validCookieOrigins().forEach { origin ->
-            val url = origin.toHttpsUrlOrNull() ?: return@forEach
+        spec.validCookieOrigins().forEach { url ->
             val cookieNames = buildSet {
                 addAll(jar.cookiesFor(url).map { it.name })
                 cookieManager.getCookie(url.toString())
@@ -155,9 +158,46 @@ private fun String.toHttpsUrlOrNull(): HttpUrl? = runCatching {
     toHttpUrl().takeIf { it.isHttps }
 }.getOrNull()
 
-private fun AuthSpec.WebCookie.validCookieOrigins(): Set<String> = cookieOrigins.filterTo(mutableSetOf()) { origin ->
-    val host = origin.toHttpsUrlOrNull()?.host ?: return@filterTo false
-    host in allowedHosts.map { it.lowercase() }
+private fun AuthSpec.WebCookie.validCookieOrigins(): Set<HttpUrl> {
+    val normalizedAllowedHosts = allowedHosts.asSequence()
+        .map { it.lowercase(Locale.ROOT) }
+        .toHashSet()
+
+    return cookieOrigins.mapNotNullTo(linkedSetOf()) { origin ->
+        val url = origin.toHttpsUrlOrNull() ?: return@mapNotNullTo null
+        url.takeIf { it.host.lowercase(Locale.ROOT) in normalizedAllowedHosts }
+    }
+}
+
+/**
+ * Parses cookies from every approved WebView origin before saving one persistence batch.
+ * The URL supplied to [Cookie.parse] makes cookies without a Domain attribute host-only.
+ */
+internal fun saveWebViewCookieBatch(
+    originHeaders: Iterable<Pair<HttpUrl, String>>,
+    saveBatch: (List<Cookie>) -> Unit,
+) {
+    val cookies = originHeaders.flatMap { (url, raw) ->
+        raw.split(';').mapNotNull { Cookie.parse(url, it.trim()) }
+    }
+    if (cookies.isNotEmpty()) saveBatch(cookies)
+}
+
+/** Applies an RFC cookie-identity merge without persisting; useful for batching and unit tests. */
+internal fun mergeCookieBatch(
+    existingCookies: List<Cookie>,
+    incomingCookies: Iterable<Cookie>,
+    now: Long = System.currentTimeMillis(),
+): List<Cookie> {
+    val mergedCookies = existingCookies.toMutableList()
+    incomingCookies.forEach { incoming ->
+        // RFC cookie identity includes path. Do not collapse same-name cookies from paths.
+        mergedCookies.removeAll {
+            it.name == incoming.name && it.domain == incoming.domain && it.path == incoming.path
+        }
+        if (incoming.expiresAt >= now) mergedCookies += incoming
+    }
+    return mergedCookies
 }
 
 /** Cookie jar isolated by source id. Android 23+ cookies are AES-GCM encrypted at rest. */
@@ -173,12 +213,13 @@ internal class SourceCookieJar(context: Context, private val sourceId: String) :
 
     init { load() }
 
-    override fun saveFromResponse(url: HttpUrl, newCookies: List<Cookie>) = synchronized(cookies) {
-        newCookies.forEach { incoming ->
-            // RFC cookie identity includes path. Do not collapse same-name cookies from paths.
-            cookies.removeAll { it.name == incoming.name && it.domain == incoming.domain && it.path == incoming.path }
-            if (incoming.expiresAt >= System.currentTimeMillis()) cookies += incoming
-        }
+    override fun saveFromResponse(url: HttpUrl, newCookies: List<Cookie>) = saveAllFromResponses(newCookies)
+
+    /** Merges cookies collected from several WebView origins and persists exactly once. */
+    fun saveAllFromResponses(newCookies: Iterable<Cookie>) = synchronized(cookies) {
+        val mergedCookies = mergeCookieBatch(cookies, newCookies)
+        cookies.clear()
+        cookies += mergedCookies
         persist()
     }
 

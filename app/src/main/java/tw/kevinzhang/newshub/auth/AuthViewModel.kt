@@ -4,11 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import tw.kevinzhang.extension_api.AuthSpec
 import tw.kevinzhang.extension_api.AuthenticatedSource
 import tw.kevinzhang.extension_loader.ExtensionLoader
@@ -95,9 +97,11 @@ class AuthViewModel @Inject constructor(
         _webLoginUiState.value = WebLoginStateReducer.beginVerification(_webLoginUiState.value)
         validationJob = viewModelScope.launch {
             val result = runCatching {
-                sessionManager.importWebViewCookies(request.sourceId, request.spec)
-                val source = extensionLoader.getSource(request.sourceId) as? AuthenticatedSource
-                source?.validateSession() == true
+                withContext(Dispatchers.IO) {
+                    sessionManager.importWebViewCookies(request.sourceId, request.spec)
+                    val source = extensionLoader.getSource(request.sourceId) as? AuthenticatedSource
+                    source?.validateSession() == true
+                }
             }
             // Preserve coroutine cancellation semantics. In particular, a ViewModel being
             // cleared must not turn into a visible "login failed" state.
@@ -137,7 +141,11 @@ class AuthViewModel @Inject constructor(
         }
         val source = extensionLoader.getSource(sourceId) as? AuthenticatedSource ?: return
         val spec = source.authSpec as? AuthSpec.WebCookie ?: return
-        sessionManager.logout(sourceId, spec)
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                sessionManager.logout(sourceId, spec)
+            }
+        }
     }
 
     private fun cancelPendingValidation(markActiveSourceSignedOut: Boolean) {
