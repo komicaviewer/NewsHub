@@ -79,7 +79,37 @@ class ThreadSummaryCardTest {
         )
     }
 
+    @Test
+    fun `placeholder title promotes first preview line`() {
+        val summary = summary(
+            title = "無題",
+            previewContent = listOf(
+                Paragraph.Text("真正的第一行"),
+                Paragraph.Text("後續摘要"),
+            ),
+        )
+
+        val presentation = summary.cardPresentation(summary.cardContent(alwaysUseRawImage = false))
+
+        assertEquals("真正的第一行", presentation.title)
+        assertEquals("後續摘要", presentation.preview)
+    }
+
+    @Test
+    fun `meaningful title keeps complete preview`() {
+        val summary = summary(
+            title = "討論標題",
+            previewContent = listOf(Paragraph.Text("摘要內容")),
+        )
+
+        val presentation = summary.cardPresentation(summary.cardContent(alwaysUseRawImage = false))
+
+        assertEquals("討論標題", presentation.title)
+        assertEquals("摘要內容", presentation.preview)
+    }
+
     private fun summary(
+        title: String? = null,
         thumbnail: String? = null,
         rawImage: String? = null,
         previewContent: List<Paragraph> = emptyList(),
@@ -87,7 +117,7 @@ class ThreadSummaryCardTest {
         sourceId = "source",
         boardUrl = "https://example.com/board",
         id = "thread",
-        title = null,
+        title = title,
         author = null,
         createdAt = null,
         commentCount = null,

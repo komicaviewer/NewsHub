@@ -7,7 +7,7 @@ import tw.kevinzhang.extension_api.model.Post
 
 class ReplyThreadingTest {
     @Test
-    fun `threaded posts use depth first order and cap visual depth`() {
+    fun `threaded posts use depth first order while retaining actual depth`() {
         val posts = listOf(
             post("op"),
             post("sibling", "op"),
@@ -17,13 +17,32 @@ class ReplyThreadingTest {
             post("second-root"),
         )
 
-        val result = posts.asThreadedPosts(maxDepth = 3)
+        val result = posts.asThreadedPosts(maxDepth = 9)
 
         assertEquals(
             listOf("op", "sibling", "child", "grandchild", "great-grandchild", "second-root"),
             result.map { it.post.id },
         )
-        assertEquals(listOf(0, 1, 2, 3, 3, 0), result.map(ThreadedPost::depth))
+        assertEquals(listOf(0, 1, 2, 3, 4, 0), result.map(ThreadedPost::actualDepth))
+        assertEquals(listOf(0, 1, 2, 3, 3, 0), result.map(ThreadedPost::visualDepth))
+        assertEquals(listOf(null, "op", "sibling", "child", "grandchild", null), result.map(ThreadedPost::parentId))
+    }
+
+    @Test
+    fun `threading connects replies after posts from separate pages are combined`() {
+        // A later page can contain both a descendant and an earlier parent. Building from the
+        // combined list keeps the branch together instead of treating the descendant as a root.
+        val firstPage = listOf(post("op"), post("first-reply", "op"))
+        val nextPage = listOf(post("deep-reply", "first-reply"), post("second-reply", "op"))
+
+        val result = (firstPage + nextPage).asThreadedPosts(maxDepth = 3)
+
+        assertEquals(
+            listOf("op", "first-reply", "deep-reply", "second-reply"),
+            result.map { it.post.id },
+        )
+        assertEquals(listOf(0, 1, 2, 1), result.map(ThreadedPost::actualDepth))
+        assertEquals(listOf(0, 1, 2, 1), result.map(ThreadedPost::visualDepth))
     }
 
     @Test

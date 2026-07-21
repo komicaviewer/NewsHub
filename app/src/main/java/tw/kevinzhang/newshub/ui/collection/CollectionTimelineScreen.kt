@@ -6,6 +6,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -17,6 +19,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -25,9 +28,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,8 +39,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -71,7 +75,6 @@ fun CollectionTimelineScreen(
 
     val listState = rememberLazyListState()
     val activity = LocalContext.current as Activity
-    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
 
     LaunchedEffect(scrollToTopTrigger) {
         if (scrollToTopTrigger > 0) listState.animateScrollToItem(0)
@@ -90,7 +93,6 @@ fun CollectionTimelineScreen(
     BackHandler { activity.moveTaskToBack(true) }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
                 title = { Text(collectionName) },
@@ -108,7 +110,6 @@ fun CollectionTimelineScreen(
                         )
                     }
                 },
-                scrollBehavior = scrollBehavior,
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -130,6 +131,8 @@ fun CollectionTimelineScreen(
                         .fillMaxWidth()
                         .widthIn(max = 720.dp)
                         .align(Alignment.TopCenter),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     if (sourceLoadFailures.isNotEmpty()) {
                         item(key = "source-load-failures") {
@@ -160,19 +163,34 @@ fun CollectionTimelineScreen(
                             onClick = { onThreadClick(summary, subscription?.boardName) },
                         )
                     }
-                    item {
-                        when (val appendState = items.loadState.append) {
-                            is LoadState.Error -> {
+                    when (val appendState = items.loadState.append) {
+                        is LoadState.Error -> {
+                            item(key = "append-error") {
                                 LaunchedEffect(appendState.error) {
                                     Log.e("CollectionTimeline", "Append load failed", appendState.error)
                                 }
-                                Button(onClick = items::retry) {
-                                    Text("重新載入更多內容")
+                                AppendLoadFooter(onRetry = items::retry)
+                            }
+                        }
+
+                        is LoadState.Loading -> {
+                            item(key = "append-loading") {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                                    shape = MaterialTheme.shapes.large,
+                                ) {
+                                    Box(
+                                        modifier = Modifier.padding(16.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        CircularProgressIndicator()
+                                    }
                                 }
                             }
-
-                            else -> {}
                         }
+
+                        else -> Unit
                     }
                 }
             }
@@ -230,18 +248,52 @@ private fun SourceFailureNotice(
     onRetry: () -> Unit,
 ) {
     val boards = failures.map { it.boardName }.distinct().joinToString("、")
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        shape = MaterialTheme.shapes.large,
     ) {
-        Text(
-            text = "部分來源暫時無法更新：$boards",
-            color = MaterialTheme.colorScheme.error,
-        )
-        Button(onClick = onRetry) {
-            Text("重新整理")
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "部分來源暫時無法更新：$boards",
+                modifier = Modifier.weight(1f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            TextButton(onClick = onRetry) {
+                Text("重試")
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppendLoadFooter(onRetry: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = MaterialTheme.shapes.large,
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "無法載入更多內容",
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = onRetry) {
+                Text("重試")
+            }
         }
     }
 }

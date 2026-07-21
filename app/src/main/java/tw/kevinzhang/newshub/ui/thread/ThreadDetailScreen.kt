@@ -6,6 +6,7 @@ import android.webkit.WebViewClient
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,6 +54,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -66,11 +69,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -151,7 +157,9 @@ fun ThreadDetailScreen(
         if (replyDisplayMode == ReplyDisplayMode.NESTED) {
             posts.asThreadedPosts(maxDepth = 3)
         } else {
-            posts.map { ThreadedPost(it, 0) }
+            posts.map { post ->
+                ThreadedPost(post = post, actualDepth = 0, visualDepth = 0, parentId = null)
+            }
         }
     }
     val jumpToPost: (String) -> Unit = { postId ->
@@ -383,6 +391,8 @@ fun ThreadDetailScreen(
                             .fillMaxSize()
                             .widthIn(max = 840.dp)
                             .align(Alignment.TopCenter),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         if (loadError != null && thread != null) {
                             item(key = "refresh-error") {
@@ -393,10 +403,8 @@ fun ThreadDetailScreen(
                             val post = threadedPost.post
                             ExtPostCard(
                                 post = post,
-                                modifier = Modifier.padding(
-                                    start = (threadedPost.depth * 12).dp,
-                                    end = if (threadedPost.depth > 0) 4.dp else 0.dp,
-                                ),
+                                actualDepth = threadedPost.actualDepth,
+                                visualDepth = threadedPost.visualDepth,
                                 isOriginalPost = post.id == thread?.posts?.firstOrNull()?.id,
                                 isRead = post.id in readPostIds,
                                 isHighlighted = post.id == highlightedPostId,
@@ -533,7 +541,7 @@ private fun ThreadPagingFooter(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(128.dp),
+            .padding(vertical = 20.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -627,6 +635,8 @@ private fun QuotePreviewContent(post: Post, alwaysUseRawImage: Boolean) {
 private fun ExtPostCard(
     post: Post,
     modifier: Modifier = Modifier,
+    actualDepth: Int,
+    visualDepth: Int,
     isOriginalPost: Boolean,
     isRead: Boolean,
     isHighlighted: Boolean,
@@ -651,45 +661,49 @@ private fun ExtPostCard(
         }
     }
 
-    PostCard(
-        post = post,
-        modifier = modifier,
-        isOriginalPost = isOriginalPost,
-        isRead = isRead,
-        highlightAlpha = highlightAlpha.value,
-        useWebView = useWebView,
-        onEnableWebView = onEnableWebView,
-        alwaysUseRawImage = alwaysUseRawImage,
-        onShowReplies = onShowReplies,
-        onReplyToClick = onReplyToClick,
-        onMediaClick = { index -> galleryStartIndex = index },
-        textZoom = textZoom,
-        onZoomChange = onZoomChange,
-    )
-
     val visibleComments = commentUiState?.visibleComments.orEmpty()
-    if (visibleComments.isNotEmpty()) {
-        Spacer(modifier = Modifier.height(8.dp))
-        visibleComments.forEach { comment ->
-            CommentItem(comment = comment, alwaysUseRawImage = alwaysUseRawImage)
-        }
-    }
-    when {
-        commentUiState?.isLoading == true ->
-            CircularProgressIndicator(
-                modifier = Modifier
-                    .size(16.dp)
-                    .padding(top = 4.dp),
-                strokeWidth = 2.dp,
+    PostBlock(
+        modifier = modifier,
+        visualDepth = visualDepth,
+        showGuides = !isOriginalPost,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            PostCard(
+                post = post,
+                isOriginalPost = isOriginalPost,
+                isRead = isRead,
+                actualDepth = actualDepth,
+                highlightAlpha = highlightAlpha.value,
+                useWebView = useWebView,
+                onEnableWebView = onEnableWebView,
+                alwaysUseRawImage = alwaysUseRawImage,
+                onShowReplies = onShowReplies,
+                onReplyToClick = onReplyToClick,
+                onMediaClick = { index -> galleryStartIndex = index },
+                textZoom = textZoom,
+                onZoomChange = onZoomChange,
             )
 
-        commentUiState?.hasMore == true ->
-            TextButton(
-                onClick = onLoadMoreCommentsClick,
-                contentPadding = PaddingValues(0.dp),
-            ) { LabelSmallText(text = "載入更多留言") }
+            visibleComments.forEach { comment ->
+                CommentItem(comment = comment, alwaysUseRawImage = alwaysUseRawImage)
+            }
+            when {
+                commentUiState?.isLoading == true ->
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(top = 4.dp),
+                        strokeWidth = 2.dp,
+                    )
+
+                commentUiState?.hasMore == true ->
+                    TextButton(
+                        onClick = onLoadMoreCommentsClick,
+                        contentPadding = PaddingValues(0.dp),
+                    ) { LabelSmallText(text = "載入更多留言") }
+            }
+        }
     }
-    Spacer(modifier = Modifier.height(8.dp))
 
     galleryStartIndex?.let { startIndex ->
         PostGallery(
@@ -701,12 +715,59 @@ private fun ExtPostCard(
     }
 }
 
+/**
+ * Leaves a compact, always-visible branch gutter outside of the post surface. The content stays
+ * readable at deep nesting levels, while the retained actual depth is shown by [PostCard].
+ */
+@Composable
+private fun PostBlock(
+    visualDepth: Int,
+    showGuides: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val gutter = 20.dp
+    val outline = MaterialTheme.colorScheme.outlineVariant
+    val currentBranch = MaterialTheme.colorScheme.primary.copy(alpha = 0.68f)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .drawBehind {
+                if (!showGuides || visualDepth == 0) return@drawBehind
+
+                val gutterPx = gutter.toPx()
+                val elbowY = 22.dp.toPx().coerceAtMost(size.height)
+                repeat(visualDepth) { level ->
+                    val guideX = gutterPx * (level + 0.5f)
+                    drawLine(
+                        color = if (level == visualDepth - 1) currentBranch else outline,
+                        start = Offset(guideX, 0f),
+                        end = Offset(guideX, size.height),
+                        strokeWidth = if (level == visualDepth - 1) 2.dp.toPx() else 1.dp.toPx(),
+                    )
+                }
+                val currentGuideX = gutterPx * (visualDepth - 0.5f)
+                drawLine(
+                    color = currentBranch,
+                    start = Offset(currentGuideX, elbowY),
+                    end = Offset(gutterPx * visualDepth, elbowY),
+                    strokeWidth = 2.dp.toPx(),
+                )
+            },
+    ) {
+        Box(modifier = Modifier.padding(start = gutter * visualDepth)) {
+            content()
+        }
+    }
+}
+
 @Composable
 internal fun PostCard(
     post: Post,
     modifier: Modifier = Modifier,
     isOriginalPost: Boolean = false,
     isRead: Boolean = true,
+    actualDepth: Int = 0,
     highlightAlpha: Float,
     useWebView: Boolean,
     onEnableWebView: () -> Unit,
@@ -717,46 +778,106 @@ internal fun PostCard(
     textZoom: Int,
     onZoomChange: (Int) -> Unit,
 ) {
-    AppCard(modifier = modifier) {
+    val postState = buildString {
+        append(
+            when {
+                isOriginalPost -> "原始貼文"
+                actualDepth > 0 -> "第${actualDepth}層回覆"
+                else -> "回覆貼文"
+            },
+        )
+        if (!isRead) append("，未讀")
+    }
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics { stateDescription = postState },
+        shape = MaterialTheme.shapes.large,
+        color = if (isOriginalPost) {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        },
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
         Box {
-        Column(modifier = Modifier.padding(8.dp)) {
+        if (isOriginalPost || !isRead) {
+            Box(modifier = Modifier.matchParentSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(4.dp)
+                        .background(MaterialTheme.colorScheme.primary),
+                )
+            }
+        }
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
             ) {
+                post.sourceIconUrl?.let {
+                    AsyncImage(
+                        model = it,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .padding(top = 2.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    LabelMediumText(
+                        text = post.author ?: "Unknown",
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        post.createdAt?.let {
+                            BodySmallText(
+                                text = android.text.format.DateUtils.getRelativeTimeSpanString(it)
+                                    .toString(),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                        BodySmallText(
+                            text = "#${post.id.takeLast(10)}",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     if (isOriginalPost) {
-                        LabelSmallText(
-                            text = "OP",
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        PostStatusBadge("OP")
                     }
                     if (!isRead) {
-                        LabelSmallText(
-                            text = "未讀",
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        PostStatusBadge("未讀", showDot = true)
                     }
-                    post.createdAt?.let {
-                        BodySmallText(
-                            text = android.text.format.DateUtils.getRelativeTimeSpanString(it)
-                                .toString(),
-                        )
+                    if (!isOriginalPost && actualDepth > 3) {
+                        PostStatusBadge("${actualDepth}+")
+                    } else if (!isOriginalPost && actualDepth > 0) {
+                        PostStatusBadge("第${actualDepth}層")
                     }
-                    post.sourceIconUrl?.let {
-                        AsyncImage(
-                            model = it,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                    BodySmallText(post.author ?: "Unknown")
-                    BodySmallText(post.id.takeLast(10))
                 }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -825,6 +946,30 @@ internal fun PostCard(
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = highlightAlpha))
             )
         }
+        }
+    }
+}
+
+@Composable
+private fun PostStatusBadge(text: String, showDot: Boolean = false) {
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.primary,
+        shape = CircleShape,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (showDot) {
+                Box(
+                    modifier = Modifier
+                        .size(5.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape),
+                )
+            }
+            LabelSmallText(text = text, color = MaterialTheme.colorScheme.primary)
         }
     }
 }

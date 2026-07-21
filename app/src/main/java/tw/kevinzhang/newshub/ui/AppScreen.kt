@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material3.BottomAppBarDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -36,7 +35,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -170,13 +168,6 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     val coroutineScope = rememberCoroutineScope()
     val openDrawer = { coroutineScope.launch { drawerState.open() } }
 
-    val scrollBehavior = BottomAppBarDefaults.exitAlwaysScrollBehavior()
-
-    // Reset bar position when leaving the collection route so it stays fully visible elsewhere
-    LaunchedEffect(isCollectionRoute) {
-        if (!isCollectionRoute) scrollBehavior.state.heightOffset = 0f
-    }
-
     NewshubTheme {
         pendingWebLogin?.let { request ->
             AuthWebViewDialog(
@@ -221,7 +212,6 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     if (showBottomBar) {
                         AppBottomBar(
                             navItems = navItems,
-                            scrollBehavior = scrollBehavior,
                             selectedItem = selectedTab,
                             onNavItemClick = { item ->
                                 if (item == MainNavItems.Collections && isCollectionRoute) {
@@ -245,11 +235,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     startDestination = MainNavItems.Collections.route,
                     modifier = Modifier
                         .padding(padding)
-                        .consumeWindowInsets(WindowInsets.navigationBars)
-                        .then(
-                            if (isCollectionRoute) Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
-                            else Modifier
-                        ),
+                        .consumeWindowInsets(WindowInsets.navigationBars),
                     enterTransition = { EnterTransition.None },
                     exitTransition = { ExitTransition.None },
                     popEnterTransition = { EnterTransition.None },

@@ -5,7 +5,11 @@ import tw.kevinzhang.newshub.replyTo
 
 internal data class ThreadedPost(
     val post: Post,
-    val depth: Int,
+    /** The complete tree depth, retained for labels and accessibility. */
+    val actualDepth: Int,
+    /** The depth used by the layout. Keeping it capped prevents a narrow unreadable column. */
+    val visualDepth: Int,
+    val parentId: String?,
 )
 
 /**
@@ -17,6 +21,7 @@ internal data class ThreadedPost(
  */
 internal fun List<Post>.asThreadedPosts(maxDepth: Int = 3): List<ThreadedPost> {
     if (isEmpty()) return emptyList()
+    val visualDepthLimit = maxDepth.coerceIn(0, 3)
 
     val postsById = associateBy(Post::id)
     val parentByPostId = associate { post ->
@@ -36,7 +41,12 @@ internal fun List<Post>.asThreadedPosts(maxDepth: Int = 3): List<ThreadedPost> {
 
     fun append(post: Post, depth: Int) {
         if (!visited.add(post.id)) return
-        result += ThreadedPost(post, depth.coerceAtMost(maxDepth))
+        result += ThreadedPost(
+            post = post,
+            actualDepth = depth,
+            visualDepth = depth.coerceAtMost(visualDepthLimit),
+            parentId = parentByPostId[post.id],
+        )
         childrenByParent[post.id].orEmpty().forEach { child -> append(child, depth + 1) }
     }
 

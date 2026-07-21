@@ -1,14 +1,24 @@
 package tw.kevinzhang.newshub.ui.component
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -400,45 +410,87 @@ fun Paragraph.Quote.Small() {
 
 @Composable
 fun Paragraph.ReplyTo.View(onReplyToClick: ((String) -> Unit)? = null) {
-    if (onReplyToClick == null) {
-        if (preview == null) {
-            BodyMediumText(text = ">> $targetId")
-        } else {
-            BodyMediumText(text = ">> ${targetId}(${preview})")
-        }
-    } else {
-        TextButton(
-            onClick = { onReplyToClick(targetId) },
-            contentPadding = PaddingValues(0.dp),
-            shape = RectangleShape,
-        ) {
-            if (preview == null) {
-                Text(">> $targetId")
-            } else {
-                Text(">> ${targetId}(${preview})")
-            }
-        }
-    }
+    ReplyReference(
+        targetId = targetId,
+        preview = preview,
+        compact = false,
+        onClick = onReplyToClick?.let { callback -> { callback(targetId) } },
+    )
 }
 
 @Composable
 fun Paragraph.ReplyTo.Small(onReplyToClick: ((String) -> Unit)? = null) {
-    if (onReplyToClick == null) {
-        if (preview == null) {
-            BodySmallText(text = ">> $targetId")
-        } else {
-            BodySmallText(text = ">> ${targetId}(${preview})")
-        }
+    ReplyReference(
+        targetId = targetId,
+        preview = preview,
+        compact = true,
+        onClick = onReplyToClick?.let { callback -> { callback(targetId) } },
+    )
+}
+
+@Composable
+private fun ReplyReference(
+    targetId: String,
+    preview: String?,
+    compact: Boolean,
+    onClick: (() -> Unit)?,
+) {
+    val clickModifier = if (onClick == null) {
+        Modifier
     } else {
-        TextButton(
-            onClick = { onReplyToClick(targetId) },
-            contentPadding = PaddingValues(0.dp),
-            shape = RectangleShape,
+        Modifier.appClickable(
+            onClickLabel = "跳到被引用貼文",
+            onClick = onClick,
+        )
+    }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .then(clickModifier),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = 48.dp)
+                .padding(
+                    horizontal = if (compact) 10.dp else 12.dp,
+                    vertical = if (compact) 7.dp else 9.dp,
+                ),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (preview == null) {
-                Text(">> $targetId")
-            } else {
-                Text(">> ${targetId}(${preview})")
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(if (preview.isNullOrBlank()) 24.dp else 34.dp)
+                    .background(MaterialTheme.colorScheme.primary, CircleShape),
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = "回覆 #${targetId.takeLast(10)}",
+                    style = if (compact) {
+                        MaterialTheme.typography.labelMedium
+                    } else {
+                        MaterialTheme.typography.labelLarge
+                    },
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                preview?.takeIf(String::isNotBlank)?.let { previewText ->
+                    Text(
+                        text = previewText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
