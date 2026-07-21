@@ -108,6 +108,15 @@ sealed interface AuthSpec {
     ) : AuthSpec
 }
 
+/**
+ * Optional source capability for sites which bind authenticated cookies to the browser
+ * User-Agent. The host applies this value before the login WebView's first navigation; the
+ * source must use the exact same value for authenticated HTTP requests.
+ */
+interface WebLoginUserAgentProvider {
+    val webLoginUserAgent: String
+}
+
 enum class AuthState {
     Unknown,
     SignedOut,

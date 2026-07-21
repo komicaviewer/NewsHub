@@ -6,6 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tw.kevinzhang.extension_api.AuthSpec
+import tw.kevinzhang.extension_api.WebLoginUserAgentProvider
 
 class WebLoginUiStateTest {
 
@@ -54,5 +55,25 @@ class WebLoginUiStateTest {
         assertEquals(WebLoginPhase.Idle, cleared.phase)
         assertFalse(cleared.isVerifying)
         assertNull(cleared.errorMessage)
+    }
+
+    @Test
+    fun `valid optional web login user agent is preserved exactly`() {
+        val source = object : WebLoginUserAgentProvider {
+            override val webLoginUserAgent = "Mozilla/5.0 NewsHub exact UA"
+        }
+
+        assertEquals("Mozilla/5.0 NewsHub exact UA", source.webLoginUserAgentOrNull())
+        assertNull(Any().webLoginUserAgentOrNull())
+    }
+
+    @Test
+    fun `web login user agent rejects header injection and unreasonable length`() {
+        fun provider(value: String) = object : WebLoginUserAgentProvider {
+            override val webLoginUserAgent = value
+        }
+
+        assertNull(provider("valid-looking\r\nInjected: value").webLoginUserAgentOrNull())
+        assertNull(provider("x".repeat(513)).webLoginUserAgentOrNull())
     }
 }

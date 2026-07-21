@@ -24,4 +24,13 @@ class AuthenticationApiTest {
     fun `auth required exception defaults to a foreground user action`() {
         assertTrue(AuthenticationRequiredException().isUserAction)
     }
+
+    @Test
+    fun `web login user agent is an optional source capability`() {
+        val provider = object : WebLoginUserAgentProvider {
+            override val webLoginUserAgent = "NewsHub test browser"
+        }
+
+        assertEquals("NewsHub test browser", provider.webLoginUserAgent)
+    }
 }

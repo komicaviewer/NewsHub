@@ -197,11 +197,12 @@ private fun RestrictedLoginWebView(
             restore = { bundle -> mutableStateOf(Bundle(bundle)) },
         )
     }
-    var savedWebViewState by rememberSaveable(request.sourceId, saver = bundleStateSaver) {
+    var savedWebViewState by rememberSaveable(request.sourceId, request.userAgent, saver = bundleStateSaver) {
         mutableStateOf<Bundle?>(null)
     }
-    val webView = remember(request.sourceId) {
+    val webView = remember(request.sourceId, request.userAgent) {
         WebView(context).apply {
+            request.userAgent?.let { settings.userAgentString = it }
             settings.javaScriptEnabled = request.spec.javaScriptEnabled
             settings.allowFileAccess = false
             settings.allowContentAccess = false

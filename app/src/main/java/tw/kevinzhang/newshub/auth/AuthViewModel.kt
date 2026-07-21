@@ -13,13 +13,21 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tw.kevinzhang.extension_api.AuthSpec
 import tw.kevinzhang.extension_api.AuthenticatedSource
+import tw.kevinzhang.extension_api.WebLoginUserAgentProvider
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import javax.inject.Inject
 
 data class WebLoginRequest(
     val sourceId: String,
     val spec: AuthSpec.WebCookie,
+    val userAgent: String? = null,
 )
+
+/** Reject malformed extension-provided header values while preserving an accepted value exactly. */
+internal fun Any.webLoginUserAgentOrNull(): String? =
+    (this as? WebLoginUserAgentProvider)?.webLoginUserAgent?.takeIf { value ->
+        value.isNotBlank() && value.length <= 512 && '\r' !in value && '\n' !in value
+    }
 
 enum class WebLoginPhase {
     Idle,
@@ -80,7 +88,9 @@ class AuthViewModel @Inject constructor(
         val spec = source.authSpec as? AuthSpec.WebCookie ?: return
         cancelPendingValidation(markActiveSourceSignedOut = true)
         sessionManager.beginLogin(sourceId)
-        _webLoginUiState.value = WebLoginStateReducer.begin(WebLoginRequest(sourceId, spec))
+        _webLoginUiState.value = WebLoginStateReducer.begin(
+            WebLoginRequest(sourceId, spec, source.webLoginUserAgentOrNull()),
+        )
     }
 
     /**
