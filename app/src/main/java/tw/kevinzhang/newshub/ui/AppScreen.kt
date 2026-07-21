@@ -2,16 +2,27 @@ package tw.kevinzhang.newshub.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.DrawerValue
@@ -86,6 +97,7 @@ private const val THREAD_DETAIL_ROUTE =
         "&threadTitle={threadTitle}&boardName={boardName}"
 
 private const val AUTH_WEB_LOGIN_ROUTE = "auth_web_login"
+private const val APP_BAR_ANIMATION_MILLIS = 220
 
 private fun ThreadSummary.threadDetailRoute(boardName: String? = null): String {
     val encodedThreadId = id.encode()
@@ -159,6 +171,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     val defaultCollectionId by appViewModel.defaultCollectionId.collectAsStateWithLifecycle()
 
     var collectionScrollToTopTrigger by remember { mutableIntStateOf(0) }
+    var collectionBarsVisible by remember { mutableStateOf(true) }
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
@@ -203,23 +216,52 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                 contentWindowInsets = WindowInsets(0),
                 bottomBar = {
                     if (showBottomBar) {
-                        AppBottomBar(
-                            navItems = navItems,
-                            selectedItem = selectedTab,
-                            onNavItemClick = { item ->
-                                if (item == MainNavItems.Collections && isCollectionRoute) {
-                                    collectionScrollToTopTrigger++
-                                } else {
-                                    navController.navigate(item.route) {
-                                        popUpTo(navController.graph.findStartDestination().id) {
-                                            saveState = true
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.BottomCenter,
+                        ) {
+                            Spacer(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .windowInsetsBottomHeight(WindowInsets.navigationBars),
+                            )
+                            AnimatedVisibility(
+                                visible = !isCollectionRoute || collectionBarsVisible,
+                                enter = slideInVertically(
+                                    animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
+                                    initialOffsetY = { it },
+                                ) + expandVertically(
+                                    animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
+                                    expandFrom = Alignment.Bottom,
+                                ) + fadeIn(animationSpec = tween(APP_BAR_ANIMATION_MILLIS)),
+                                exit = slideOutVertically(
+                                    animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
+                                    targetOffsetY = { it },
+                                ) + shrinkVertically(
+                                    animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
+                                    shrinkTowards = Alignment.Bottom,
+                                ) + fadeOut(animationSpec = tween(APP_BAR_ANIMATION_MILLIS)),
+                            ) {
+                                AppBottomBar(
+                                    navItems = navItems,
+                                    selectedItem = selectedTab,
+                                    onNavItemClick = { item ->
+                                        if (item == MainNavItems.Collections && isCollectionRoute) {
+                                            collectionBarsVisible = true
+                                            collectionScrollToTopTrigger++
+                                        } else {
+                                            navController.navigate(item.route) {
+                                                popUpTo(navController.graph.findStartDestination().id) {
+                                                    saveState = true
+                                                }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
                                         }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                }
-                            },
-                        )
+                                    },
+                                )
+                            }
+                        }
                     }
                 },
             ) { padding ->
@@ -307,6 +349,8 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                                             CollectionTimelineScreen(
                                                 onOpenDrawer = { openDrawer() },
                                                 scrollToTopTrigger = collectionScrollToTopTrigger,
+                                                barsVisible = collectionBarsVisible,
+                                                onBarsVisibilityChange = { collectionBarsVisible = it },
                                                 onNavigateToBoards = {
                                                     navController.navigate(MainNavItems.Boards.route)
                                                 },
@@ -362,6 +406,8 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                                     CollectionTimelineScreen(
                                         onOpenDrawer = { openDrawer() },
                                         scrollToTopTrigger = collectionScrollToTopTrigger,
+                                        barsVisible = collectionBarsVisible,
+                                        onBarsVisibilityChange = { collectionBarsVisible = it },
                                         onNavigateToBoards = {
                                             navController.navigate(MainNavItems.Boards.route)
                                         },

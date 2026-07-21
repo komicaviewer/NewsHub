@@ -65,6 +65,34 @@ class PreferenceStore @Inject constructor(
         }
     }
 
+    /**
+     * The selected source is scoped to a collection instead of being a global timeline setting.
+     * A missing value represents the "all sources" filter.
+     */
+    fun observeCollectionSelectedSourceId(collectionId: String) = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences -> preferences[collectionSelectedSourceKey(collectionId)] }
+
+    suspend fun setCollectionSelectedSourceId(collectionId: String, sourceId: String?) {
+        dataStore.edit { prefs ->
+            val key = collectionSelectedSourceKey(collectionId)
+            if (sourceId == null) {
+                prefs.remove(key)
+            } else {
+                prefs[key] = sourceId
+            }
+        }
+    }
+
+    private fun collectionSelectedSourceKey(collectionId: String) =
+        stringPreferencesKey("collection_selected_source_$collectionId")
+
     private fun mapPreference(preferences: Preferences): Preference {
         return Preference(
             defaultCollectionId = preferences[Keys.KEY_DEFAULT_COLLECTION_ID],

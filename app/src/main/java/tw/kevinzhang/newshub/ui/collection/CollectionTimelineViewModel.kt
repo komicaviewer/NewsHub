@@ -14,9 +14,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import tw.kevinzhang.data.CollectionRepository
@@ -81,6 +83,51 @@ class CollectionTimelineViewModel @Inject constructor(
         collectionRepo.observeSubscriptions(collectionId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /** Sources represented by the current collection's board subscriptions, in display order. */
+    val availableSourceIds: StateFlow<List<String>> = subscriptions
+        .map { subscriptions ->
+            subscriptions.orEmpty().map(BoardSubscriptionEntity::sourceId).distinct()
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val savedSelectedSourceId = preferenceStore
+        .observeCollectionSelectedSourceId(collectionId)
+
+    /**
+     * `null` means the timeline includes all subscribed sources. A persisted selection that no
+     * longer belongs to this collection is cleared once its subscriptions are available.
+     */
+    val selectedSourceId: StateFlow<String?> = combine(
+        savedSelectedSourceId,
+        subscriptions,
+    ) { savedSourceId, currentSubscriptions ->
+        SourceSelection(
+            savedSourceId = savedSourceId,
+            availableSourceIds = currentSubscriptions
+                ?.map(BoardSubscriptionEntity::sourceId)
+                ?.toSet(),
+        )
+    }
+        .onEach { selection ->
+            if (
+                selection.savedSourceId != null &&
+                selection.availableSourceIds != null &&
+                resolveSelectedSourceId(
+                    savedSourceId = selection.savedSourceId,
+                    availableSourceIds = selection.availableSourceIds,
+                ) == null
+            ) {
+                preferenceStore.setCollectionSelectedSourceId(collectionId, null)
+            }
+        }
+        .map { selection ->
+            resolveSelectedSourceId(
+                savedSourceId = selection.savedSourceId,
+                availableSourceIds = selection.availableSourceIds,
+            )
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     val authenticationRequiredNotice = sessionManager.authenticationRequiredNotice
 
     fun consumeAuthenticationRequiredNotice(sourceId: String) {
@@ -103,8 +150,26 @@ class CollectionTimelineViewModel @Inject constructor(
         _sourceLoadFailures.value = emptyList()
     }
 
+    fun selectSource(sourceId: String?) {
+        _sourceLoadFailures.value = emptyList()
+        viewModelScope.launch {
+            preferenceStore.setCollectionSelectedSourceId(collectionId, sourceId)
+        }
+    }
+
     val timelinePager: Flow<PagingData<ThreadSummary>> =
-        collectionRepo.observeSubscriptions(collectionId)
+        combine(
+            collectionRepo.observeSubscriptions(collectionId),
+            savedSelectedSourceId,
+        ) { currentSubscriptions, savedSourceId ->
+            val effectiveSourceId = resolveSelectedSourceId(
+                savedSourceId = savedSourceId,
+                availableSourceIds = currentSubscriptions
+                    .map(BoardSubscriptionEntity::sourceId)
+                    .toSet(),
+            )
+            filterSubscriptionsBySource(currentSubscriptions, effectiveSourceId)
+        }
             .distinctUntilChanged()
             .flatMapLatest { subs ->
                 Pager(PagingConfig(pageSize = 20, enablePlaceholders = false)) {
@@ -128,4 +193,28 @@ class CollectionTimelineViewModel @Inject constructor(
             )
         }
     }
+}
+
+private data class SourceSelection(
+    val savedSourceId: String?,
+    val availableSourceIds: Set<String>?,
+)
+
+/** Returns the effective filter. A null available set means subscriptions are still loading. */
+internal fun resolveSelectedSourceId(
+    savedSourceId: String?,
+    availableSourceIds: Set<String>?,
+): String? = when {
+    savedSourceId == null -> null
+    availableSourceIds == null -> savedSourceId
+    savedSourceId in availableSourceIds -> savedSourceId
+    else -> null
+}
+
+internal fun filterSubscriptionsBySource(
+    subscriptions: List<BoardSubscriptionEntity>,
+    selectedSourceId: String?,
+): List<BoardSubscriptionEntity> = when (selectedSourceId) {
+    null -> subscriptions
+    else -> subscriptions.filter { it.sourceId == selectedSourceId }
 }
