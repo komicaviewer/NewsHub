@@ -186,14 +186,10 @@ internal fun OffscreenPostCard(post: Post, alwaysUseRawImage: Boolean, imageLoad
         PostCard(
             post = post,
             highlightAlpha = 0f,
-            useWebView = false,
-            onEnableWebView = {},
             alwaysUseRawImage = alwaysUseRawImage,
             onShowReplies = {},
             onReplyToClick = {},
             onMediaClick = {},
-            textZoom = 100,
-            onZoomChange = {},
         )
     }
 }

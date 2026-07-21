@@ -92,13 +92,6 @@ class ThreadDetailViewModel @Inject constructor(
     private val _alwaysUseRawImage = MutableStateFlow(false)
     val alwaysUseRawImage = _alwaysUseRawImage.asStateFlow()
 
-    private val _useWebViewPosts = MutableStateFlow<Set<String>>(emptySet())
-    val useWebViewPosts = _useWebViewPosts.asStateFlow()
-
-    val webViewTextZoom: StateFlow<Int> = preferenceStore.observable
-        .map { it.webViewTextZoom }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 100)
-
     val replyDisplayMode: StateFlow<ReplyDisplayMode> = preferenceStore.observable
         .map { it.readingPreferences.replyDisplayMode }
         .stateIn(
@@ -500,14 +493,6 @@ class ThreadDetailViewModel @Inject constructor(
 
     fun dismissPreview() {
         previewPost.value = null
-    }
-
-    fun enableWebViewForPost(postId: String) {
-        _useWebViewPosts.update { it + postId }
-    }
-
-    fun setWebViewTextZoom(zoom: Int) {
-        viewModelScope.launch { preferenceStore.setWebViewTextZoom(zoom) }
     }
 
     fun requestToggleSave(filesDir: File) {

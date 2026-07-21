@@ -1,8 +1,5 @@
 package tw.kevinzhang.newshub.ui.thread
 
-import android.animation.ObjectAnimator
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -33,7 +30,6 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInBrowser
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -45,7 +41,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -72,14 +67,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -102,21 +95,7 @@ import tw.kevinzhang.newshub.ui.component.appClickable
 import tw.kevinzhang.newshub.ui.component.gallery.PostGallery
 import tw.kevinzhang.newshub.ui.component.swipeToGoBack
 
-private val WEBVIEW_TEXT_ZOOM_STEPS = listOf(75, 100, 125, 150, 175, 200)
 private const val HIGHLIGHT_DURATION_MS = 1500
-
-/**
- * Wraps a raw HTML content fragment into a complete HTML document suitable for WebView.
- * - viewport meta ensures the page fits device width (not 980 px desktop default)
- * - CSS constrains images to viewport width, which the fragment itself cannot express
- */
-private fun String.asWebViewDocument(): String = """
-    <!DOCTYPE html>
-    <html><head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>img { max-width: 100%; height: auto; }</style>
-    </head><body>$this</body></html>
-""".trimIndent()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -131,8 +110,6 @@ fun ThreadDetailScreen(
     val previewPost by viewModel.previewPost.collectAsStateWithLifecycle()
     val commentStates by viewModel.commentStates.collectAsStateWithLifecycle()
     val alwaysUseRawImage by viewModel.alwaysUseRawImage.collectAsStateWithLifecycle()
-    val useWebViewPosts by viewModel.useWebViewPosts.collectAsStateWithLifecycle()
-    val webViewTextZoom by viewModel.webViewTextZoom.collectAsStateWithLifecycle()
     val sourceBoardLabel by viewModel.sourceBoardLabel.collectAsStateWithLifecycle()
     val replyDisplayMode by viewModel.replyDisplayMode.collectAsStateWithLifecycle()
     val readTrackingMode by viewModel.readTrackingMode.collectAsStateWithLifecycle()
@@ -383,8 +360,6 @@ fun ThreadDetailScreen(
                 Box(modifier = Modifier.fillMaxSize()) {
                     val onReplyToClick =
                         remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
-                    val onZoomChange =
-                        remember(viewModel) { { zoom: Int -> viewModel.setWebViewTextZoom(zoom) } }
                     LazyColumn(
                         state = listState,
                         modifier = Modifier
@@ -411,15 +386,11 @@ fun ThreadDetailScreen(
                                 onHighlightDone = {
                                     if (post.id == highlightedPostId) highlightedPostId = null
                                 },
-                                useWebView = post.id in useWebViewPosts,
-                                onEnableWebView = { viewModel.enableWebViewForPost(post.id) },
                                 alwaysUseRawImage = alwaysUseRawImage,
                                 commentUiState = commentStates[post.id],
                                 onShowReplies = { repliesDialogForPostId = post.id },
                                 onReplyToClick = onReplyToClick,
                                 onLoadMoreCommentsClick = { viewModel.loadMoreComments(post.id) },
-                                textZoom = webViewTextZoom,
-                                onZoomChange = onZoomChange,
                             )
                         }
                         if (thread != null) {
@@ -641,15 +612,11 @@ private fun ExtPostCard(
     isRead: Boolean,
     isHighlighted: Boolean,
     onHighlightDone: () -> Unit,
-    useWebView: Boolean,
-    onEnableWebView: () -> Unit,
     alwaysUseRawImage: Boolean,
     commentUiState: CommentUiState?,
     onShowReplies: () -> Unit,
     onReplyToClick: (String) -> Unit,
     onLoadMoreCommentsClick: () -> Unit,
-    textZoom: Int,
-    onZoomChange: (Int) -> Unit,
 ) {
     var galleryStartIndex by remember { mutableStateOf<Int?>(null) }
     val highlightAlpha = remember { Animatable(0f) }
@@ -674,14 +641,10 @@ private fun ExtPostCard(
                 isRead = isRead,
                 actualDepth = actualDepth,
                 highlightAlpha = highlightAlpha.value,
-                useWebView = useWebView,
-                onEnableWebView = onEnableWebView,
                 alwaysUseRawImage = alwaysUseRawImage,
                 onShowReplies = onShowReplies,
                 onReplyToClick = onReplyToClick,
                 onMediaClick = { index -> galleryStartIndex = index },
-                textZoom = textZoom,
-                onZoomChange = onZoomChange,
             )
 
             visibleComments.forEach { comment ->
@@ -769,14 +732,10 @@ internal fun PostCard(
     isRead: Boolean = true,
     actualDepth: Int = 0,
     highlightAlpha: Float,
-    useWebView: Boolean,
-    onEnableWebView: () -> Unit,
     alwaysUseRawImage: Boolean,
     onShowReplies: () -> Unit,
     onReplyToClick: (String) -> Unit,
     onMediaClick: (index: Int) -> Unit,
-    textZoom: Int,
-    onZoomChange: (Int) -> Unit,
 ) {
     val postState = buildString {
         append(
@@ -911,33 +870,12 @@ internal fun PostCard(
                 }
             }
 
-            val rawHtml = post.rawHtml
-            when {
-                useWebView && rawHtml != null -> {
-                    PostWebView(
-                        rawHtml = rawHtml,
-                        textZoom = textZoom,
-                        onZoomChange = onZoomChange,
-                    )
-                }
-                !useWebView && post.content.isEmpty() && rawHtml != null -> {
-                    FilledTonalButton(
-                        onClick = onEnableWebView,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RectangleShape,
-                    ) {
-                        Text("使用WebView引擎渲染")
-                    }
-                }
-                else -> {
-                    ParagraphsContent(
-                        paragraphs = post.content,
-                        alwaysUseRawImage = alwaysUseRawImage,
-                        onReplyToClick = onReplyToClick,
-                        onMediaClick = onMediaClick,
-                    )
-                }
-            }
+            ParagraphsContent(
+                paragraphs = post.content,
+                alwaysUseRawImage = alwaysUseRawImage,
+                onReplyToClick = onReplyToClick,
+                onMediaClick = onMediaClick,
+            )
         }
         if (highlightAlpha > 0f) {
             Box(
@@ -970,167 +908,6 @@ private fun PostStatusBadge(text: String, showDot: Boolean = false) {
                 )
             }
             LabelSmallText(text = text, color = MaterialTheme.colorScheme.primary)
-        }
-    }
-}
-
-@Composable
-private fun PostWebView(rawHtml: String, textZoom: Int, onZoomChange: (Int) -> Unit) {
-    val webViewRef = remember { arrayOfNulls<WebView>(1) }
-    var canScrollUp by remember { mutableStateOf(false) }
-    var canScrollDown by remember { mutableStateOf(false) }
-
-    fun updateScrollState(wv: WebView) {
-        canScrollUp = wv.canScrollVertically(-1)
-        canScrollDown = wv.canScrollVertically(1)
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(600.dp),
-    ) {
-        AndroidView(
-            factory = { context ->
-                object : WebView(context) {
-                    override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
-                        super.onScrollChanged(l, t, oldl, oldt)
-                        updateScrollState(this)
-                    }
-                }.apply {
-                    settings.javaScriptEnabled = false
-                    settings.loadWithOverviewMode = true
-                    settings.useWideViewPort = true
-                    webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: WebView, url: String) {
-                            // onPageFinished fires when the DOM is fetched, but WebView's
-                            // renderer process fills in contentHeight asynchronously.
-                            // canScrollVertically() returns false until contentHeight is ready,
-                            // so we poll at 100/300/700 ms to catch the first settled value.
-                            // Trade-off: timing is heuristic — slow devices may still miss the
-                            // 700 ms window; very fast devices run two redundant checks.
-                            view.postDelayed({ updateScrollState(view) }, 100)
-                            view.postDelayed({ updateScrollState(view) }, 300)
-                            view.postDelayed({ updateScrollState(view) }, 700)
-                        }
-                    }
-                    webViewRef[0] = this
-                }
-            },
-            update = { wv ->
-                wv.settings.textZoom = textZoom
-                if (wv.tag != rawHtml) {
-                    wv.tag = rawHtml
-                    wv.loadDataWithBaseURL(
-                        "https://forum.gamer.com.tw",
-                        rawHtml.asWebViewDocument(),
-                        "text/html",
-                        "UTF-8",
-                        null,
-                    )
-                } else {
-                    // textZoom changed — re-check after layout settles
-                    wv.post { updateScrollState(wv) }
-                }
-            },
-            onRelease = { wv ->
-                webViewRef[0] = null
-                wv.destroy()
-            },
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        WebViewControls(
-            textZoom = textZoom,
-            onZoomChange = onZoomChange,
-            canScrollUp = canScrollUp,
-            canScrollDown = canScrollDown,
-            onScrollUp = {
-                webViewRef[0]?.let { wv ->
-                    val target = (wv.scrollY - 300).coerceAtLeast(0)
-                    ObjectAnimator.ofInt(wv, "scrollY", wv.scrollY, target)
-                        .apply { duration = 250; start() }
-                }
-            },
-            onScrollDown = {
-                webViewRef[0]?.let { wv ->
-                    ObjectAnimator.ofInt(wv, "scrollY", wv.scrollY, wv.scrollY + 300)
-                        .apply { duration = 250; start() }
-                }
-            },
-            onRefresh = {
-                onZoomChange(100)
-                webViewRef[0]?.let { wv ->
-                    wv.loadDataWithBaseURL(
-                        "https://forum.gamer.com.tw",
-                        rawHtml.asWebViewDocument(),
-                        "text/html",
-                        "UTF-8",
-                        null,
-                    )
-                    // keep tag in sync so the update block doesn't double-load
-                    wv.tag = rawHtml
-                }
-            },
-            modifier = Modifier.align(Alignment.BottomEnd),
-        )
-    }
-}
-
-@Composable
-private fun WebViewControls(
-    textZoom: Int,
-    onZoomChange: (Int) -> Unit,
-    canScrollUp: Boolean,
-    canScrollDown: Boolean,
-    onScrollUp: () -> Unit,
-    onScrollDown: () -> Unit,
-    onRefresh: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val currentIndex = WEBVIEW_TEXT_ZOOM_STEPS.indexOf(textZoom).takeIf { it >= 0 }
-        ?: WEBVIEW_TEXT_ZOOM_STEPS.indexOf(100)
-    val buttonSize = 48.dp
-
-    Column(
-        modifier = modifier.padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Spacer(modifier = Modifier.size(buttonSize))
-            if (canScrollUp) {
-                FilledTonalIconButton(onClick = onScrollUp) { Text("↑") }
-            } else {
-                Spacer(modifier = Modifier.size(buttonSize))
-            }
-            Spacer(modifier = Modifier.size(buttonSize))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            FilledTonalIconButton(
-                onClick = { onZoomChange(WEBVIEW_TEXT_ZOOM_STEPS[currentIndex + 1]) },
-                enabled = currentIndex < WEBVIEW_TEXT_ZOOM_STEPS.lastIndex,
-            ) { Text("A+") }
-            FilledTonalIconButton(onClick = onRefresh) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Refresh",
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            FilledTonalIconButton(
-                onClick = { onZoomChange(WEBVIEW_TEXT_ZOOM_STEPS[currentIndex - 1]) },
-                enabled = currentIndex > 0,
-            ) { Text("A-") }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Spacer(modifier = Modifier.size(buttonSize))
-            if (canScrollDown) {
-                FilledTonalIconButton(onClick = onScrollDown) { Text("↓") }
-            } else {
-                Spacer(modifier = Modifier.size(buttonSize))
-            }
-            Spacer(modifier = Modifier.size(buttonSize))
         }
     }
 }
