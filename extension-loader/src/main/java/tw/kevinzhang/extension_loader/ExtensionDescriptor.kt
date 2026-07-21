@@ -14,6 +14,8 @@ data class ExtensionDescriptor(
     val schemaVersion: Int,
     val name: String,
     val sources: List<SourceDescriptor>,
+    /** Minimum extension-api contract version required by every source in this bundle. */
+    val requiredApiVersion: Int = 1,
 )
 
 data class SourceDescriptor(
@@ -27,9 +29,12 @@ data class SourceDescriptor(
 internal object ExtensionDescriptorJson {
     fun parse(json: String): ExtensionDescriptor {
         val root = JSONObject(json)
+        val schemaVersion = root.getInt("schemaVersion")
         val sources = root.getJSONArray("sources")
         return ExtensionDescriptor(
-            schemaVersion = root.getInt("schemaVersion"),
+            schemaVersion = schemaVersion,
+            // Schema v1 predates API negotiation and is therefore implicitly API v1.
+            requiredApiVersion = if (schemaVersion == 1) 1 else root.getInt("requiredApiVersion"),
             name = root.requiredString("name"),
             sources = List(sources.length()) { index ->
                 val source = sources.getJSONObject(index)
@@ -52,11 +57,18 @@ internal object ExtensionDescriptorJson {
 
 /** Pure validation kept separate from Android package loading so malformed registries are testable. */
 internal object ExtensionDescriptorValidator {
-    const val SCHEMA_VERSION = 1
+    const val CURRENT_SCHEMA_VERSION = 2
+    const val CURRENT_API_VERSION = 2
 
     fun validate(descriptor: ExtensionDescriptor) {
-        require(descriptor.schemaVersion == SCHEMA_VERSION) {
+        require(descriptor.schemaVersion in 1..CURRENT_SCHEMA_VERSION) {
             "Unsupported extension descriptor schema version: ${descriptor.schemaVersion}"
+        }
+        require(descriptor.requiredApiVersion in 1..CURRENT_API_VERSION) {
+            "Unsupported extension API version: ${descriptor.requiredApiVersion}"
+        }
+        require(descriptor.schemaVersion != 1 || descriptor.requiredApiVersion == 1) {
+            "Extension descriptor schema version 1 is limited to API version 1"
         }
         require(descriptor.name.isNotBlank()) { "Extension name must not be blank" }
         require(descriptor.sources.isNotEmpty()) { "Extension descriptor must declare at least one source" }

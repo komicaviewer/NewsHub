@@ -1181,6 +1181,7 @@ private fun ParagraphsContent(
     paragraphs.forEach { paragraph ->
         when (paragraph) {
             is Paragraph.Text -> if (useSmallText) paragraph.Small() else paragraph.View()
+            is Paragraph.RichText -> if (useSmallText) paragraph.Small() else paragraph.View()
             is Paragraph.Quote -> paragraph.Small()
             is Paragraph.ReplyTo -> if (useSmallText) paragraph.Small() else paragraph.View(onReplyToClick)
             is Paragraph.Link -> if (useSmallText) paragraph.Small() else paragraph.View()

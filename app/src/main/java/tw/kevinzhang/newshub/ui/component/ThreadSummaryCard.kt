@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.ThreadSummary
+import tw.kevinzhang.extension_api.model.plainText
 import tw.kevinzhang.newshub.data.TimelineDisplayMode
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -316,6 +317,7 @@ internal fun ThreadSummaryCardContent.compactPreviewText(): String? =
     previewContent.mapNotNull { paragraph ->
         val text = when (paragraph) {
             is Paragraph.Text -> paragraph.content
+            is Paragraph.RichText -> paragraph.plainText()
             is Paragraph.Quote -> "> ${paragraph.content}"
             is Paragraph.Link -> paragraph.content
             is Paragraph.ReplyTo -> ">> ${paragraph.targetId}${paragraph.preview?.let { " ($it)" } ?: ""}"

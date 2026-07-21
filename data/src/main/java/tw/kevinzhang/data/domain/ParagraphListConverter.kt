@@ -11,6 +11,8 @@ import com.google.gson.JsonSerializationContext
 import com.google.gson.JsonSerializer
 import com.google.gson.reflect.TypeToken
 import tw.kevinzhang.extension_api.model.Paragraph
+import tw.kevinzhang.extension_api.model.RichTextLayout
+import tw.kevinzhang.extension_api.model.RichTextRun
 import java.lang.reflect.Type
 
 private class ParagraphSerializer : JsonSerializer<Paragraph>, JsonDeserializer<Paragraph> {
@@ -20,6 +22,11 @@ private class ParagraphSerializer : JsonSerializer<Paragraph>, JsonDeserializer<
             is Paragraph.Text -> { obj.addProperty("type", "Text"); obj.addProperty("content", src.content) }
             is Paragraph.Quote -> { obj.addProperty("type", "Quote"); obj.addProperty("content", src.content) }
             is Paragraph.Link -> { obj.addProperty("type", "Link"); obj.addProperty("content", src.content) }
+            is Paragraph.RichText -> {
+                obj.addProperty("type", "RichText")
+                obj.add("runs", context.serialize(src.runs))
+                obj.addProperty("layout", src.layout.name)
+            }
             is Paragraph.ReplyTo -> { obj.addProperty("type", "ReplyTo"); obj.addProperty("targetId", src.targetId); obj.addProperty("preview", src.preview) }
             is Paragraph.ImageInfo -> { obj.addProperty("type", "ImageInfo"); obj.addProperty("thumb", src.thumb); obj.addProperty("raw", src.raw) }
             is Paragraph.VideoInfo -> { obj.addProperty("type", "VideoInfo"); obj.addProperty("url", src.url); obj.addProperty("site", src.site.name) }
@@ -33,6 +40,16 @@ private class ParagraphSerializer : JsonSerializer<Paragraph>, JsonDeserializer<
             "Text" -> Paragraph.Text(obj.get("content").asString)
             "Quote" -> Paragraph.Quote(obj.get("content").asString)
             "Link" -> Paragraph.Link(obj.get("content").asString)
+            "RichText" -> Paragraph.RichText(
+                runs = context.deserialize(
+                    obj.get("runs"),
+                    object : TypeToken<List<RichTextRun>>() {}.type,
+                ),
+                layout = obj.get("layout")?.takeIf { !it.isJsonNull }
+                    ?.asString
+                    ?.let(RichTextLayout::valueOf)
+                    ?: RichTextLayout.PROSE,
+            )
             "ReplyTo" -> Paragraph.ReplyTo(obj.get("targetId").asString, obj.get("preview")?.takeIf { !it.isJsonNull }?.asString)
             "ImageInfo" -> Paragraph.ImageInfo(obj.get("thumb")?.takeIf { !it.isJsonNull }?.asString, obj.get("raw").asString)
             "VideoInfo" -> Paragraph.VideoInfo(obj.get("url").asString, Paragraph.VideoInfo.Site.valueOf(obj.get("site").asString))

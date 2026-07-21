@@ -35,11 +35,78 @@ class ExtensionDescriptorTest {
 
         assertEquals("NewsHub: Komica", descriptor.name)
         assertEquals("example.TwocatSource", descriptor.sources.single().className)
+        assertEquals(1, descriptor.requiredApiVersion)
+    }
+
+    @Test
+    fun `parses a version 2 bundle registry with API requirement`() {
+        val descriptor = ExtensionDescriptorJson.parse(
+            """
+            {
+              "schemaVersion": 2,
+              "requiredApiVersion": 2,
+              "name": "NewsHub: PTT",
+              "sources": [{
+                "className": "example.PttSource",
+                "id": "tw.example.ptt",
+                "name": "PTT",
+                "lang": "zh-TW",
+                "baseUrl": "https://www.ptt.cc"
+              }]
+            }
+            """.trimIndent(),
+        )
+
+        assertEquals(2, descriptor.schemaVersion)
+        assertEquals(2, descriptor.requiredApiVersion)
     }
 
     @Test
     fun `rejects empty source list`() {
         assertInvalid("""{"schemaVersion":1,"name":"Bundle","sources":[]}""")
+    }
+
+    @Test
+    fun `rejects an extension that requires a newer host API before class loading`() {
+        assertInvalid(
+            """{"schemaVersion":2,"requiredApiVersion":3,"name":"Bundle","sources":[
+                {"className":"example.Future","id":"tw.example.future","name":"Future","lang":"zh-TW","baseUrl":"https://future.example"}
+            ]}""".trimIndent(),
+        )
+    }
+
+    @Test
+    fun `rejects a future descriptor schema`() {
+        assertInvalid(
+            """{"schemaVersion":3,"requiredApiVersion":2,"name":"Bundle","sources":[
+                {"className":"example.Future","id":"tw.example.future","name":"Future","lang":"zh-TW","baseUrl":"https://future.example"}
+            ]}""".trimIndent(),
+        )
+    }
+
+    @Test
+    fun `schema version 1 cannot claim a newer API contract`() {
+        try {
+            ExtensionDescriptorValidator.validate(
+                ExtensionDescriptor(
+                    schemaVersion = 1,
+                    requiredApiVersion = 2,
+                    name = "Legacy bundle",
+                    sources = listOf(
+                        SourceDescriptor(
+                            className = "example.Legacy",
+                            id = "tw.example.legacy",
+                            name = "Legacy",
+                            lang = "zh-TW",
+                            baseUrl = "https://legacy.example",
+                        ),
+                    ),
+                ),
+            )
+            fail("Expected schema version 1 API mismatch")
+        } catch (_: IllegalArgumentException) {
+            // Schema v1 hosts only know API v1 and must never accept newer contracts.
+        }
     }
 
     @Test

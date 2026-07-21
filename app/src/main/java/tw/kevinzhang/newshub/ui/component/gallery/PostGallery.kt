@@ -131,6 +131,7 @@ fun PostGallery(
                 paragraphs.forEach { paragraph ->
                     when (paragraph) {
                         is Paragraph.Text -> paragraph.View()
+                        is Paragraph.RichText -> paragraph.View()
                         is Paragraph.Quote -> paragraph.Small()
                         is Paragraph.ReplyTo -> paragraph.Small(onReplyToClick)
                         is Paragraph.Link -> paragraph.View()

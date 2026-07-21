@@ -4,6 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import tw.kevinzhang.extension_api.model.Paragraph
+import tw.kevinzhang.extension_api.model.RichTextColor
+import tw.kevinzhang.extension_api.model.RichTextRun
 import tw.kevinzhang.extension_api.model.ThreadSummary
 
 class ThreadSummaryCardTest {
@@ -55,6 +57,12 @@ class ThreadSummaryCardTest {
         val content = summary(
             previewContent = listOf(
                 Paragraph.Text("第一段"),
+                Paragraph.RichText(
+                    runs = listOf(
+                        RichTextRun("保留", color = RichTextColor.GREEN),
+                        RichTextRun("文字"),
+                    ),
+                ),
                 Paragraph.Quote("引用內容"),
                 Paragraph.Link("https://example.com"),
                 Paragraph.VideoInfo("https://example.com/video.mp4"),
@@ -62,7 +70,7 @@ class ThreadSummaryCardTest {
         ).cardContent(alwaysUseRawImage = false)
 
         assertEquals(
-            "第一段\n> 引用內容\nhttps://example.com",
+            "第一段\n保留文字\n> 引用內容\nhttps://example.com",
             content.compactPreviewText(),
         )
     }

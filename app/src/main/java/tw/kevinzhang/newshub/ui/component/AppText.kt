@@ -1,6 +1,7 @@
 package tw.kevinzhang.newshub.ui.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,13 +27,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import tw.kevinzhang.extension_api.model.Paragraph
+import tw.kevinzhang.extension_api.model.RichTextColor
+import tw.kevinzhang.extension_api.model.RichTextEmphasis
+import tw.kevinzhang.extension_api.model.RichTextLayout
 import tw.kevinzhang.newshub.ui.component.gallery.YouTubePlayer
 import tw.kevinzhang.newshub.ui.component.gallery.extractYouTubeVideoId
 
@@ -398,6 +408,113 @@ fun Paragraph.Text.View() {
 @Composable
 fun Paragraph.Text.Small() {
     BodySmallText(text = content)
+}
+
+@Composable
+fun Paragraph.RichText.View() {
+    RichTextParagraph(
+        runs = runs,
+        layout = layout,
+        style = MaterialTheme.typography.bodyMedium,
+    )
+}
+
+@Composable
+fun Paragraph.RichText.Small() {
+    RichTextParagraph(
+        runs = runs,
+        layout = layout,
+        style = MaterialTheme.typography.bodySmall,
+    )
+}
+
+/**
+ * Renders extension supplied semantic rich text without changing the surrounding post layout.
+ * [RichTextLayout.PREFORMATTED_WRAP] preserves the source's whitespace/newlines in a monospaced
+ * face, while Compose's soft wrapping keeps it readable on a phone screen.
+ */
+@Composable
+private fun RichTextParagraph(
+    runs: List<tw.kevinzhang.extension_api.model.RichTextRun>,
+    layout: RichTextLayout,
+    style: TextStyle,
+) {
+    val uriHandler = LocalUriHandler.current
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val text = buildAnnotatedString {
+        runs.forEach { run ->
+            val start = length
+            append(run.text)
+            val end = length
+            if (start != end) {
+                addStyle(
+                    style = SpanStyle(
+                        color = run.color.resolveForTheme(isDark, run.emphasis),
+                        fontWeight = if (run.emphasis == RichTextEmphasis.BRIGHT) {
+                            FontWeight.SemiBold
+                        } else {
+                            FontWeight.Normal
+                        },
+                    ),
+                    start = start,
+                    end = end,
+                )
+                run.linkUrl?.takeIf(String::isNotBlank)?.let { url ->
+                    addStringAnnotation(tag = RICH_TEXT_URL_TAG, annotation = url, start = start, end = end)
+                }
+            }
+        }
+    }
+    ClickableText(
+        text = text,
+        style = if (layout == RichTextLayout.PREFORMATTED_WRAP) {
+            style.copy(fontFamily = FontFamily.Monospace)
+        } else {
+            style
+        },
+        softWrap = true,
+        onClick = { offset ->
+            text.getStringAnnotations(RICH_TEXT_URL_TAG, offset, offset)
+                .firstOrNull()
+                ?.let { annotation -> uriHandler.openUri(annotation.item) }
+        },
+    )
+}
+
+private const val RICH_TEXT_URL_TAG = "rich_text_url"
+
+private fun RichTextColor.resolveForTheme(
+    isDark: Boolean,
+    emphasis: RichTextEmphasis,
+): Color {
+    val normal = if (isDark) {
+        when (this) {
+            RichTextColor.DEFAULT, RichTextColor.WHITE -> Color(0xFFF1EFF4)
+            RichTextColor.BLACK -> Color(0xFFC9C5D0)
+            RichTextColor.RED -> Color(0xFFFFB4AB)
+            RichTextColor.GREEN -> Color(0xFFA8DDA0)
+            RichTextColor.YELLOW -> Color(0xFFFFDA6A)
+            RichTextColor.BLUE -> Color(0xFFB6CBFF)
+            RichTextColor.MAGENTA -> Color(0xFFFFB1E5)
+            RichTextColor.CYAN -> Color(0xFF8BE7ED)
+        }
+    } else {
+        when (this) {
+            RichTextColor.DEFAULT, RichTextColor.BLACK -> Color(0xFF1D1B20)
+            RichTextColor.WHITE -> Color(0xFF57525E)
+            RichTextColor.RED -> Color(0xFFB3261E)
+            RichTextColor.GREEN -> Color(0xFF24752A)
+            RichTextColor.YELLOW -> Color(0xFF7A5900)
+            RichTextColor.BLUE -> Color(0xFF2356A8)
+            RichTextColor.MAGENTA -> Color(0xFF8D245C)
+            RichTextColor.CYAN -> Color(0xFF006970)
+        }
+    }
+    return if (emphasis == RichTextEmphasis.BRIGHT) {
+        normal.copy(alpha = 1f)
+    } else {
+        normal.copy(alpha = if (isDark) 0.88f else 0.92f)
+    }
 }
 
 @Composable
