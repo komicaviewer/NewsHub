@@ -53,11 +53,10 @@ import androidx.navigation.navigation
 import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.newshub.auth.AuthViewModel
-import tw.kevinzhang.newshub.auth.WebLoginRequest
 import tw.kevinzhang.newshub.encode
 import tw.kevinzhang.newshub.ui.boards.BoardGroupDetailScreen
 import tw.kevinzhang.newshub.ui.boards.BoardsScreen
-import tw.kevinzhang.newshub.ui.auth.AuthWebViewDialog
+import tw.kevinzhang.newshub.ui.auth.AuthWebViewScreen
 import tw.kevinzhang.newshub.ui.collection.BoardPickerScreen
 import tw.kevinzhang.newshub.ui.collection.CollectionTimelineScreen
 import tw.kevinzhang.newshub.ui.collection.CollectionTimelineViewModel
@@ -85,6 +84,8 @@ import tw.kevinzhang.newshub.ui.thread.ThreadDetailScreen
 private const val THREAD_DETAIL_ROUTE =
     "thread_detail?threadId={threadId}&sourceId={sourceId}&boardUrl={boardUrl}" +
         "&threadTitle={threadTitle}&boardName={boardName}"
+
+private const val AUTH_WEB_LOGIN_ROUTE = "auth_web_login"
 
 private fun ThreadSummary.threadDetailRoute(boardName: String? = null): String {
     val encodedThreadId = id.encode()
@@ -139,12 +140,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     val authViewModel: AuthViewModel = hiltViewModel()
     val navItems = remember { mainNavItems() }
 
-    var pendingWebLogin by remember { mutableStateOf<WebLoginRequest?>(null) }
-    LaunchedEffect(Unit) {
-        authViewModel.webLoginRequests.collect { request ->
-            pendingWebLogin = request
-        }
-    }
+    val webLoginUiState by authViewModel.webLoginUiState.collectAsStateWithLifecycle()
 
     val currentBackStack by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStack?.destination?.route
@@ -168,20 +164,17 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     val coroutineScope = rememberCoroutineScope()
     val openDrawer = { coroutineScope.launch { drawerState.open() } }
 
-    NewshubTheme {
-        pendingWebLogin?.let { request ->
-            AuthWebViewDialog(
-                request = request,
-                onFinished = {
-                    pendingWebLogin = null
-                    authViewModel.completeWebLogin(request)
-                },
-                onCancelled = {
-                    pendingWebLogin = null
-                    authViewModel.cancelLogin(request.sourceId)
-                },
-            )
+    LaunchedEffect(webLoginUiState.request, currentRoute) {
+        if (webLoginUiState.request != null && currentRoute != AUTH_WEB_LOGIN_ROUTE) {
+            navController.navigate(AUTH_WEB_LOGIN_ROUTE) {
+                launchSingleTop = true
+            }
+        } else if (webLoginUiState.request == null && currentRoute == AUTH_WEB_LOGIN_ROUTE) {
+            navController.popBackStack()
         }
+    }
+
+    NewshubTheme {
         ModalNavigationDrawer(
             drawerState = drawerState,
             gesturesEnabled = isCollectionRoute || isHomeRoute,
@@ -235,12 +228,29 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     startDestination = MainNavItems.Collections.route,
                     modifier = Modifier
                         .padding(padding)
-                        .consumeWindowInsets(WindowInsets.navigationBars),
+                        .then(
+                            if (currentRoute == AUTH_WEB_LOGIN_ROUTE) Modifier
+                            else Modifier.consumeWindowInsets(WindowInsets.navigationBars),
+                        ),
                     enterTransition = { EnterTransition.None },
                     exitTransition = { ExitTransition.None },
                     popEnterTransition = { EnterTransition.None },
                     popExitTransition = { ExitTransition.None },
                 ) {
+                    composable(AUTH_WEB_LOGIN_ROUTE) {
+                        val request = webLoginUiState.request
+                        if (request != null) {
+                            AuthWebViewScreen(
+                                request = request,
+                                isVerifying = webLoginUiState.isVerifying,
+                                errorMessage = webLoginUiState.errorMessage,
+                                onFinishLogin = authViewModel::completeWebLogin,
+                                onCancelLogin = { authViewModel.cancelLogin(request.sourceId) },
+                            )
+                        } else {
+                            Box(modifier = Modifier.fillMaxSize())
+                        }
+                    }
                     navigation(
                         route = MainNavItems.Collections.route,
                         startDestination = "home",
