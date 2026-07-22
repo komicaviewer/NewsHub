@@ -96,13 +96,19 @@ class CollectionRepositoryImpl @Inject constructor(
     override fun observeReadPostIds(sourceId: String, threadId: String): Flow<Set<String>> =
         db.postReadDao().observeReadPostIds(sourceId, threadId).map { it.toSet() }
 
-    override suspend fun recordRead(summary: ThreadSummary) {
+    override suspend fun recordRead(
+        summary: ThreadSummary,
+        sourceName: String?,
+        boardName: String?,
+    ) {
         val converter = ParagraphListConverter()
         db.readingHistoryDao().upsert(
             ReadingHistoryEntity(
                 sourceId = summary.sourceId,
+                sourceName = sourceName,
                 threadId = summary.id,
                 boardUrl = summary.boardUrl,
+                boardName = boardName,
                 title = summary.title,
                 author = summary.author,
                 createdAt = summary.createdAt,

@@ -395,7 +395,11 @@ class ThreadDetailViewModel @Inject constructor(
         if (historyRecorded) return
         val summary = historySummary ?: return
         historyRecorded = true
-        historyRepository.recordRead(summary)
+        historyRepository.recordRead(
+            summary = summary,
+            sourceName = cachedSource?.name,
+            boardName = boardName,
+        )
     }
 
     private suspend fun initializeCommentStatesForNewPosts(
@@ -518,8 +522,10 @@ class ThreadDetailViewModel @Inject constructor(
         val converter = ParagraphListConverter()
         val entity = SavedPostEntity(
             sourceId = sourceId,
+            sourceName = cachedSource?.name,
             threadId = threadId,
             boardUrl = boardUrl,
+            boardName = boardName,
             title = thread.title ?: threadTitle,
             author = firstPost?.author,
             createdAt = firstPost?.createdAt,

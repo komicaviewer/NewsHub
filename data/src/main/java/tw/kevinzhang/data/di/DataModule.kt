@@ -41,6 +41,7 @@ abstract class DataModule {
         fun provideCollectionDatabase(@ApplicationContext context: Context): CollectionDatabase =
             Room.databaseBuilder(context, CollectionDatabase::class.java, "collection.db")
                 .addMigrations(CollectionDatabase.MIGRATION_4_5)
+                .addMigrations(CollectionDatabase.MIGRATION_5_6)
                 .fallbackToDestructiveMigration()
                 .build()
 

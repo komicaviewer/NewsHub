@@ -14,7 +14,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SavedPostEntity::class,
         PostReadEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 @TypeConverters(ParagraphListConverter::class)
@@ -38,6 +38,15 @@ abstract class CollectionDatabase : RoomDatabase() {
                     )
                     """.trimIndent(),
                 )
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `reading_history` ADD COLUMN `sourceName` TEXT")
+                database.execSQL("ALTER TABLE `reading_history` ADD COLUMN `boardName` TEXT")
+                database.execSQL("ALTER TABLE `saved_posts` ADD COLUMN `sourceName` TEXT")
+                database.execSQL("ALTER TABLE `saved_posts` ADD COLUMN `boardName` TEXT")
             }
         }
     }

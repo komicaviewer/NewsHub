@@ -3,10 +3,12 @@ package tw.kevinzhang.newshub.ui.history
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -34,6 +36,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.newshub.ui.component.BodySmallText
 import tw.kevinzhang.newshub.ui.component.ThreadSummaryCard
+import tw.kevinzhang.newshub.ui.component.timelineCardMetadata
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,6 +46,8 @@ fun ReadingHistoryScreen(
     viewModel: ReadingHistoryViewModel = hiltViewModel(),
 ) {
     val history by viewModel.history.collectAsStateWithLifecycle()
+    val rawImageSourceIds by viewModel.rawImageSourceIds.collectAsStateWithLifecycle()
+    val timelineDisplayMode by viewModel.timelineDisplayMode.collectAsStateWithLifecycle()
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     if (showDeleteConfirm) {
@@ -104,13 +109,29 @@ fun ReadingHistoryScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .widthIn(max = 720.dp)
+                        .align(Alignment.TopCenter),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                     items(history, key = { "${it.sourceId}:${it.threadId}" }) { entity ->
                         val summary = entity.toThreadSummary()
+                        val metadata = timelineCardMetadata(
+                            sourceId = entity.sourceId,
+                            sourceName = entity.sourceName,
+                            boardName = entity.boardName,
+                            rawImageSourceIds = rawImageSourceIds,
+                        )
                         ThreadSummaryCard(
                             summary = summary,
-                            alwaysUseRawImage = false,
+                            alwaysUseRawImage = metadata.alwaysUseRawImage,
                             sourceIconUrl = entity.sourceIconUrl,
+                            sourceName = metadata.sourceName,
+                            boardName = metadata.boardName,
+                            displayMode = timelineDisplayMode,
                             onClick = { onThreadClick(summary) },
                         )
                     }

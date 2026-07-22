@@ -9,8 +9,10 @@ import tw.kevinzhang.extension_api.model.ThreadSummary
 )
 data class ReadingHistoryEntity(
     val sourceId: String,
+    val sourceName: String? = null,
     val threadId: String,
     val boardUrl: String,
+    val boardName: String? = null,
     val title: String?,
     val author: String?,
     val createdAt: Long?,
