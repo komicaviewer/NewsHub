@@ -10,9 +10,11 @@
 -keep class com.google.gson.reflect.TypeToken { *; }
 -keep class * extends com.google.gson.reflect.TypeToken
 
-# ExtensionInfo / ExtensionIndex — deserialized from remote index.json
--keepclassmembers class tw.kevinzhang.marketplace.data.ExtensionInfo { *; }
--keepclassmembers class tw.kevinzhang.marketplace.data.ExtensionIndex { *; }
+# Marketplace models deserialized by Gson through reflection. Keep their class
+# identities, fields, and constructors stable for the current repo formats.
+-keep class tw.kevinzhang.marketplace.data.RepoMetadata { *; }
+-keep class tw.kevinzhang.marketplace.data.RemoteExtensionDto { *; }
+-keep class tw.kevinzhang.marketplace.data.RemoteSourceDto { *; }
 
 # SerializableCookie — serialized to/from SharedPreferences with TypeToken<List<...>>
 -keepclassmembers class tw.kevinzhang.newshub.auth.SourceCookieJar$StoredCookie { *; }
