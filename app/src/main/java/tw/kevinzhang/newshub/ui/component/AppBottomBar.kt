@@ -38,7 +38,6 @@ fun AppBottomBar(
     BottomAppBar(
         scrollBehavior = scrollBehavior,
         contentPadding = PaddingValues(0.dp),
-        containerColor = Color.Transparent,
     ) {
         navItems.forEach { item ->
             val selected = item == selectedItem
