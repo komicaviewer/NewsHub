@@ -25,6 +25,15 @@
 -keep interface tw.kevinzhang.extension_api.** { *; }
 -keep class tw.kevinzhang.extension_api.**$DefaultImpls { *; }
 
+# Extensions are non-minified APKs loaded through PathClassLoader's parent-first
+# delegation. Their references to the host-provided Kotlin, coroutines, OkHttp,
+# and Okio runtime must therefore retain both JVM class and member names.
+# Optimisation remains enabled; only ABI-changing shrink/obfuscation is blocked.
+-keep,allowoptimization class kotlin.** { *; }
+-keep,allowoptimization class kotlinx.coroutines.** { *; }
+-keep,allowoptimization class okhttp3.** { *; }
+-keep,allowoptimization class okio.** { *; }
+
 # CommentRes — deserialized from Gamer API JSON response
 -keepclassmembers class tw.kevinzhang.gamer_api.parser.CommentListParser$CommentRes { *; }
 
