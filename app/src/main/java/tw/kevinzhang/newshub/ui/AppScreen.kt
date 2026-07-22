@@ -82,6 +82,7 @@ import tw.kevinzhang.newshub.ui.history.ReadingHistoryScreen
 import tw.kevinzhang.newshub.ui.marketplace.ManageReposScreen
 import tw.kevinzhang.newshub.ui.marketplace.MarketplaceScreen
 import tw.kevinzhang.newshub.ui.navigation.MainNavItems
+import tw.kevinzhang.newshub.ui.navigation.NavItems
 import tw.kevinzhang.newshub.ui.navigation.mainNavItems
 import tw.kevinzhang.newshub.ui.savedposts.SavedPostDetailScreen
 import tw.kevinzhang.newshub.ui.savedposts.SavedPostsScreen
@@ -96,6 +97,31 @@ private const val THREAD_DETAIL_ROUTE =
 
 private const val AUTH_WEB_LOGIN_ROUTE = "auth_web_login"
 private const val APP_BAR_ANIMATION_MILLIS = 220
+
+internal sealed class AppBottomBarAction {
+    data object ScrollCollectionToTop : AppBottomBarAction()
+
+    data class Navigate(val route: String) : AppBottomBarAction()
+}
+
+internal fun resolveAppBottomBarAction(
+    item: NavItems,
+    currentRoute: String?,
+    defaultCollectionId: String?,
+): AppBottomBarAction {
+    if (item.route != MainNavItems.Collections.route) {
+        return AppBottomBarAction.Navigate(item.route)
+    }
+
+    if (currentRoute == "collection/{collectionId}") {
+        return AppBottomBarAction.ScrollCollectionToTop
+    }
+
+    val collectionId = defaultCollectionId?.takeIf(String::isNotBlank)
+    return AppBottomBarAction.Navigate(
+        route = collectionId?.let { "collection/$it" } ?: "home",
+    )
+}
 
 private fun ThreadSummary.threadDetailRoute(boardName: String? = null): String {
     val encodedThreadId = id.encode()
@@ -179,6 +205,30 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
     val openDrawer = { coroutineScope.launch { drawerState.open() } }
+    val onBottomBarItemClick: (NavItems) -> Unit = { item ->
+        when (
+            val action = resolveAppBottomBarAction(
+                item = item,
+                currentRoute = currentRoute,
+                defaultCollectionId = defaultCollectionId,
+            )
+        ) {
+            AppBottomBarAction.ScrollCollectionToTop -> {
+                collectionBarsVisible = true
+                collectionScrollToTopTrigger++
+            }
+
+            is AppBottomBarAction.Navigate -> {
+                navController.navigate(action.route) {
+                    popUpTo(navController.graph.findStartDestination().id) {
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
+        }
+    }
 
     LaunchedEffect(webLoginUiState.request, currentRoute) {
         if (webLoginUiState.request != null && currentRoute != AUTH_WEB_LOGIN_ROUTE) {
@@ -226,15 +276,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             AppBottomBar(
                                 navItems = navItems,
                                 selectedItem = selectedTab,
-                                onNavItemClick = { item ->
-                                    navController.navigate(item.route) {
-                                        popUpTo(navController.graph.findStartDestination().id) {
-                                            saveState = true
-                                        }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
+                                onNavItemClick = onBottomBarItemClick,
                             )
                         }
                     },
@@ -273,17 +315,17 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                         startDestination = "home",
                     ) {
                         composable("home") {
-                            val homeDefaultCollectionId by appViewModel.defaultCollectionId.collectAsStateWithLifecycle()
-                            var navigatedToDefault by remember { mutableStateOf(false) }
-
-                            LaunchedEffect(homeDefaultCollectionId) {
-                                if (!navigatedToDefault && homeDefaultCollectionId != null) {
-                                    navigatedToDefault = true
-                                    navController.navigate("collection/$homeDefaultCollectionId")
-                                }
+                            LaunchedEffect(defaultCollectionId) {
+                                defaultCollectionId
+                                    ?.takeIf(String::isNotBlank)
+                                    ?.let { collectionId ->
+                                        navController.navigate("collection/$collectionId") {
+                                            launchSingleTop = true
+                                        }
+                                    }
                             }
 
-                            if (defaultCollectionId == null) {
+                            if (defaultCollectionId.isNullOrBlank()) {
                                 Scaffold(
                                     topBar = {
                                         TopAppBar(
@@ -592,20 +634,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             AppBottomBar(
                                 navItems = navItems,
                                 selectedItem = selectedTab,
-                                onNavItemClick = { item ->
-                                    if (item == MainNavItems.Collections) {
-                                        collectionBarsVisible = true
-                                        collectionScrollToTopTrigger++
-                                    } else {
-                                        navController.navigate(item.route) {
-                                            popUpTo(navController.graph.findStartDestination().id) {
-                                                saveState = true
-                                            }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    }
-                                },
+                                onNavItemClick = onBottomBarItemClick,
                             )
                         }
                     }
