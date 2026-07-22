@@ -4,10 +4,8 @@ import android.app.Activity
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
@@ -16,15 +14,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -41,7 +35,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -49,12 +42,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,9 +60,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -91,6 +90,7 @@ fun CollectionTimelineScreen(
     scrollToTopTrigger: Int = 0,
     barsVisible: Boolean = true,
     onBarsVisibilityChange: (Boolean) -> Unit = {},
+    bottomOverlayHeight: Dp = 0.dp,
     viewModel: CollectionTimelineViewModel = hiltViewModel(),
 ) {
     val items = viewModel.timelinePager.collectAsLazyPagingItems()
@@ -106,8 +106,17 @@ fun CollectionTimelineScreen(
     val selectedSourceId by viewModel.selectedSourceId.collectAsStateWithLifecycle()
     val authenticationRequiredNotice by viewModel.authenticationRequiredNotice.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val pullToRefreshState = rememberPullToRefreshState()
 
     val listState = rememberLazyListState()
+    var topOverlayHeightPx by remember { mutableIntStateOf(0) }
+    val topOverlayHeight = with(LocalDensity.current) { topOverlayHeightPx.toDp() }
+    val timelineContentPadding = PaddingValues(
+        start = 16.dp,
+        top = topOverlayHeight + 8.dp,
+        end = 16.dp,
+        bottom = bottomOverlayHeight + 8.dp,
+    )
     val activity = LocalContext.current as Activity
     val barsScrollConnection = rememberBarsVisibilityScrollConnection(
         onBarsVisibilityChange = onBarsVisibilityChange,
@@ -151,86 +160,37 @@ fun CollectionTimelineScreen(
 
     BackHandler { activity.moveTaskToBack(true) }
 
-    Scaffold(
-        modifier = Modifier.nestedScroll(barsScrollConnection),
-        topBar = {
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.TopCenter,
-            ) {
-                Spacer(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .windowInsetsTopHeight(WindowInsets.statusBars),
-                )
-                AnimatedVisibility(
-                    visible = barsVisible,
-                    enter = slideInVertically(
-                        animationSpec = tween(BAR_VISIBILITY_ANIMATION_MILLIS),
-                        initialOffsetY = { -it },
-                    ) + expandVertically(
-                        animationSpec = tween(BAR_VISIBILITY_ANIMATION_MILLIS),
-                        expandFrom = Alignment.Top,
-                    ) + fadeIn(animationSpec = tween(BAR_VISIBILITY_ANIMATION_MILLIS)),
-                    exit = slideOutVertically(
-                        animationSpec = tween(BAR_VISIBILITY_ANIMATION_MILLIS),
-                        targetOffsetY = { -it },
-                    ) + shrinkVertically(
-                        animationSpec = tween(BAR_VISIBILITY_ANIMATION_MILLIS),
-                        shrinkTowards = Alignment.Top,
-                    ) + fadeOut(animationSpec = tween(BAR_VISIBILITY_ANIMATION_MILLIS)),
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        TopAppBar(
-                            title = { Text(collectionName) },
-                            navigationIcon = {
-                                IconButton(onClick = onOpenDrawer) {
-                                    Icon(Icons.Default.Menu, contentDescription = "Open drawer")
-                                }
-                            },
-                            actions = {
-                                IconButton(onClick = viewModel::toggleTimelineDisplayMode) {
-                                    val compact = timelineDisplayMode == TimelineDisplayMode.COMPACT
-                                    Icon(
-                                        imageVector = if (compact) Icons.Outlined.PhotoLibrary else Icons.Outlined.ViewAgenda,
-                                        contentDescription = if (compact) "切換為媒體優先瀏覽" else "切換為高密度掃讀",
-                                    )
-                                }
-                            },
-                        )
-                        if (availableSourceIds.size > 1) {
-                            SourceFilterRow(
-                                sourceIds = availableSourceIds,
-                                selectedSourceId = selectedSourceId,
-                                sourceNames = sourceNames,
-                                sourceIconUrls = sourceIconUrls,
-                                onSourceSelect = viewModel::selectSource,
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { innerPadding ->
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(barsScrollConnection),
+    ) {
         PullToRefreshBox(
             isRefreshing = items.loadState.refresh is LoadState.Loading,
             onRefresh = {
                 viewModel.clearSourceLoadFailures()
                 items.refresh()
             },
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
+            modifier = Modifier.fillMaxSize(),
+            state = pullToRefreshState,
+            indicator = {
+                PullToRefreshDefaults.Indicator(
+                    state = pullToRefreshState,
+                    isRefreshing = items.loadState.refresh is LoadState.Loading,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = topOverlayHeight),
+                )
+            },
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxSize()
                         .widthIn(max = 720.dp)
                         .align(Alignment.TopCenter),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    contentPadding = timelineContentPadding,
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     if (sourceLoadFailures.isNotEmpty()) {
@@ -357,6 +317,74 @@ fun CollectionTimelineScreen(
                 }
             }
 
+        }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = bottomOverlayHeight + 8.dp),
+        )
+
+        AnimatedVisibility(
+            visible = barsVisible,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .onSizeChanged { size ->
+                    // Keep the last complete overlay size while it is hidden, so toggling the
+                    // bars only changes drawing and never repositions the list viewport.
+                    if (size.height > 0) {
+                        topOverlayHeightPx = size.height
+                    }
+                },
+            enter = slideInVertically(
+                animationSpec = tween(BAR_VISIBILITY_ANIMATION_MILLIS),
+                initialOffsetY = { -it },
+            ) + fadeIn(animationSpec = tween(BAR_VISIBILITY_ANIMATION_MILLIS)),
+            exit = slideOutVertically(
+                animationSpec = tween(BAR_VISIBILITY_ANIMATION_MILLIS),
+                targetOffsetY = { -it },
+            ) + fadeOut(animationSpec = tween(BAR_VISIBILITY_ANIMATION_MILLIS)),
+        ) {
+            Surface(color = MaterialTheme.colorScheme.surface) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    TopAppBar(
+                        title = { Text(collectionName) },
+                        navigationIcon = {
+                            IconButton(onClick = onOpenDrawer) {
+                                Icon(Icons.Default.Menu, contentDescription = "Open drawer")
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = viewModel::toggleTimelineDisplayMode) {
+                                val compact = timelineDisplayMode == TimelineDisplayMode.COMPACT
+                                Icon(
+                                    imageVector = if (compact) {
+                                        Icons.Outlined.PhotoLibrary
+                                    } else {
+                                        Icons.Outlined.ViewAgenda
+                                    },
+                                    contentDescription = if (compact) {
+                                        "切換為媒體優先瀏覽"
+                                    } else {
+                                        "切換為高密度掃讀"
+                                    },
+                                )
+                            }
+                        },
+                    )
+                    if (availableSourceIds.size > 1) {
+                        SourceFilterRow(
+                            sourceIds = availableSourceIds,
+                            selectedSourceId = selectedSourceId,
+                            sourceNames = sourceNames,
+                            sourceIconUrls = sourceIconUrls,
+                            onSourceSelect = viewModel::selectSource,
+                        )
+                    }
+                }
+            }
         }
     }
 

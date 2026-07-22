@@ -5,24 +5,20 @@ import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.DrawerValue
@@ -46,7 +42,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -172,6 +170,11 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
 
     var collectionScrollToTopTrigger by remember { mutableIntStateOf(0) }
     var collectionBarsVisible by remember { mutableStateOf(true) }
+    var collectionBottomOverlayHeightPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val collectionBottomOverlayHeight = with(density) {
+        collectionBottomOverlayHeightPx.toDp()
+    }
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
@@ -212,73 +215,45 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                 )
             },
         ) {
-            Scaffold(
-                contentWindowInsets = WindowInsets(0),
-                bottomBar = {
-                    if (showBottomBar) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.BottomCenter,
-                        ) {
-                            Spacer(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .windowInsetsBottomHeight(WindowInsets.navigationBars),
-                            )
-                            AnimatedVisibility(
-                                visible = !isCollectionRoute || collectionBarsVisible,
-                                enter = slideInVertically(
-                                    animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
-                                    initialOffsetY = { it },
-                                ) + expandVertically(
-                                    animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
-                                    expandFrom = Alignment.Bottom,
-                                ) + fadeIn(animationSpec = tween(APP_BAR_ANIMATION_MILLIS)),
-                                exit = slideOutVertically(
-                                    animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
-                                    targetOffsetY = { it },
-                                ) + shrinkVertically(
-                                    animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
-                                    shrinkTowards = Alignment.Bottom,
-                                ) + fadeOut(animationSpec = tween(APP_BAR_ANIMATION_MILLIS)),
-                            ) {
-                                AppBottomBar(
-                                    navItems = navItems,
-                                    selectedItem = selectedTab,
-                                    onNavItemClick = { item ->
-                                        if (item == MainNavItems.Collections && isCollectionRoute) {
-                                            collectionBarsVisible = true
-                                            collectionScrollToTopTrigger++
-                                        } else {
-                                            navController.navigate(item.route) {
-                                                popUpTo(navController.graph.findStartDestination().id) {
-                                                    saveState = true
-                                                }
-                                                launchSingleTop = true
-                                                restoreState = true
-                                            }
+            Box(modifier = Modifier.fillMaxSize()) {
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    contentWindowInsets = WindowInsets(0),
+                    bottomBar = {
+                        // Collections draw this bar as a sibling overlay so the timeline's
+                        // viewport never receives a changing Scaffold bottom padding.
+                        if (showBottomBar && !isCollectionRoute) {
+                            AppBottomBar(
+                                navItems = navItems,
+                                selectedItem = selectedTab,
+                                onNavItemClick = { item ->
+                                    navController.navigate(item.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
                                         }
-                                    },
-                                )
-                            }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
+                            )
                         }
-                    }
-                },
-            ) { padding ->
-                NavHost(
-                    navController = navController,
-                    startDestination = MainNavItems.Collections.route,
-                    modifier = Modifier
-                        .padding(padding)
-                        .then(
-                            if (currentRoute == AUTH_WEB_LOGIN_ROUTE) Modifier
-                            else Modifier.consumeWindowInsets(WindowInsets.navigationBars),
-                        ),
-                    enterTransition = { EnterTransition.None },
-                    exitTransition = { ExitTransition.None },
-                    popEnterTransition = { EnterTransition.None },
-                    popExitTransition = { ExitTransition.None },
-                ) {
+                    },
+                ) { padding ->
+                    NavHost(
+                        navController = navController,
+                        startDestination = MainNavItems.Collections.route,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .then(
+                                if (currentRoute == AUTH_WEB_LOGIN_ROUTE) Modifier
+                                else Modifier.consumeWindowInsets(WindowInsets.navigationBars),
+                            ),
+                        enterTransition = { EnterTransition.None },
+                        exitTransition = { ExitTransition.None },
+                        popEnterTransition = { EnterTransition.None },
+                        popExitTransition = { ExitTransition.None },
+                    ) {
                     composable(AUTH_WEB_LOGIN_ROUTE) {
                         val request = webLoginUiState.request
                         if (request != null) {
@@ -351,6 +326,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                                                 scrollToTopTrigger = collectionScrollToTopTrigger,
                                                 barsVisible = collectionBarsVisible,
                                                 onBarsVisibilityChange = { collectionBarsVisible = it },
+                                                bottomOverlayHeight = collectionBottomOverlayHeight,
                                                 onNavigateToBoards = {
                                                     navController.navigate(MainNavItems.Boards.route)
                                                 },
@@ -408,6 +384,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                                         scrollToTopTrigger = collectionScrollToTopTrigger,
                                         barsVisible = collectionBarsVisible,
                                         onBarsVisibilityChange = { collectionBarsVisible = it },
+                                        bottomOverlayHeight = collectionBottomOverlayHeight,
                                         onNavigateToBoards = {
                                             navController.navigate(MainNavItems.Boards.route)
                                         },
@@ -583,6 +560,54 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             },
                             onNavigateUp = { navController.navigateUp() },
                         )
+                    }
+                    }
+                }
+
+                if (showBottomBar && isCollectionRoute) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .onSizeChanged { size ->
+                                // AnimatedVisibility removes its child after exit. Keep the last
+                                // complete measurement so timeline content padding stays stable.
+                                if (size.height > 0) {
+                                    collectionBottomOverlayHeightPx = size.height
+                                }
+                            },
+                        contentAlignment = Alignment.BottomCenter,
+                    ) {
+                        AnimatedVisibility(
+                            visible = collectionBarsVisible,
+                            enter = slideInVertically(
+                                animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
+                                initialOffsetY = { it },
+                            ) + fadeIn(animationSpec = tween(APP_BAR_ANIMATION_MILLIS)),
+                            exit = slideOutVertically(
+                                animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
+                                targetOffsetY = { it },
+                            ) + fadeOut(animationSpec = tween(APP_BAR_ANIMATION_MILLIS)),
+                        ) {
+                            AppBottomBar(
+                                navItems = navItems,
+                                selectedItem = selectedTab,
+                                onNavItemClick = { item ->
+                                    if (item == MainNavItems.Collections) {
+                                        collectionBarsVisible = true
+                                        collectionScrollToTopTrigger++
+                                    } else {
+                                        navController.navigate(item.route) {
+                                            popUpTo(navController.graph.findStartDestination().id) {
+                                                saveState = true
+                                            }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
             }
