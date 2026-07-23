@@ -28,6 +28,15 @@ class CollectionTimelineSourceFilterTest {
         assertNull(resolveSelectedSourceId("removed-source", setOf("gamer", "komica")))
     }
 
+    @Test
+    fun `source filter reset requires a changed selection`() {
+        assertEquals(false, shouldResetTimelinePosition("gamer", "gamer"))
+        assertEquals(false, shouldResetTimelinePosition(null, null))
+        assertEquals(true, shouldResetTimelinePosition("gamer", "komica"))
+        assertEquals(true, shouldResetTimelinePosition(null, "gamer"))
+        assertEquals(true, shouldResetTimelinePosition("gamer", null))
+    }
+
     private fun subscriptions() = listOf(
         subscription(id = "1", sourceId = "gamer"),
         subscription(id = "2", sourceId = "komica"),

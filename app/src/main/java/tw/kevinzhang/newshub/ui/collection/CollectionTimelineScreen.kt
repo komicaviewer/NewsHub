@@ -50,6 +50,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -72,6 +73,7 @@ import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.newshub.data.TimelineDisplayMode
 import tw.kevinzhang.newshub.ui.component.BodyLargeText
@@ -109,6 +111,7 @@ fun CollectionTimelineScreen(
     val pullToRefreshState = rememberPullToRefreshState()
 
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
     var topOverlayHeightPx by remember { mutableIntStateOf(0) }
     val topOverlayHeight = with(LocalDensity.current) { topOverlayHeightPx.toDp() }
     val timelineContentPadding = PaddingValues(
@@ -121,6 +124,23 @@ fun CollectionTimelineScreen(
     val barsScrollConnection = rememberBarsVisibilityScrollConnection(
         onBarsVisibilityChange = onBarsVisibilityChange,
     )
+    val onSourceSelect = remember(
+        coroutineScope,
+        listState,
+        onBarsVisibilityChange,
+        selectedSourceId,
+        viewModel,
+    ) {
+        { sourceId: String? ->
+            if (shouldResetTimelinePosition(selectedSourceId, sourceId)) {
+                onBarsVisibilityChange(true)
+                coroutineScope.launch {
+                    listState.scrollToItem(0)
+                }
+                viewModel.selectSource(sourceId)
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         onBarsVisibilityChange(true)
@@ -131,11 +151,6 @@ fun CollectionTimelineScreen(
             onBarsVisibilityChange(true)
             listState.animateScrollToItem(0)
         }
-    }
-
-    LaunchedEffect(selectedSourceId) {
-        onBarsVisibilityChange(true)
-        listState.scrollToItem(0)
     }
 
     LaunchedEffect(listState) {
@@ -311,7 +326,7 @@ fun CollectionTimelineScreen(
                         text = "${sourceNames[selectedSourceId] ?: selectedSourceId} 目前沒有貼文",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Button(onClick = { viewModel.selectSource(null) }) {
+                    Button(onClick = { onSourceSelect(null) }) {
                         Text("顯示全部")
                     }
                 }
@@ -380,7 +395,7 @@ fun CollectionTimelineScreen(
                             selectedSourceId = selectedSourceId,
                             sourceNames = sourceNames,
                             sourceIconUrls = sourceIconUrls,
-                            onSourceSelect = viewModel::selectSource,
+                            onSourceSelect = onSourceSelect,
                         )
                     }
                 }
@@ -389,6 +404,12 @@ fun CollectionTimelineScreen(
     }
 
 }
+
+/** A saved-source emission never resets position; only a changed user selection does. */
+internal fun shouldResetTimelinePosition(
+    currentSelectedSourceId: String?,
+    requestedSourceId: String?,
+): Boolean = currentSelectedSourceId != requestedSourceId
 
 @Composable
 private fun SourceFilterRow(
