@@ -25,6 +25,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
+import tw.kevinzhang.newshub.ui.component.selectImageUrl
 import java.io.File
 import kotlin.coroutines.resume
 
@@ -83,7 +84,7 @@ private suspend fun preLoadImages(
     post.sourceIconUrl?.let { urls.add(it) }
     post.content.forEach { p ->
         when (p) {
-            is Paragraph.ImageInfo -> urls.add(if (alwaysUseRawImage) p.raw else p.thumb ?: p.raw)
+            is Paragraph.ImageInfo -> urls.add(selectImageUrl(p.raw, p.thumb, alwaysUseRawImage))
             is Paragraph.VideoInfo -> urls.add(p.url)
             else -> {}
         }

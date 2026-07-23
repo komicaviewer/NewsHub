@@ -23,11 +23,18 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -39,6 +46,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.RichTextColor
 import tw.kevinzhang.extension_api.model.RichTextEmphasis
@@ -642,13 +651,67 @@ fun Paragraph.ImageInfo.View(
     alwaysUseRawImage: Boolean,
     onClick: (() -> Unit)? = null
 ) {
-    val url =
-        if (alwaysUseRawImage) raw else thumb
-    var m = Modifier.fillMaxWidth()
-    if (onClick != null) {
-        m = m.appClickable { onClick() }
+    val url = selectImageUrl(raw, thumb, alwaysUseRawImage)
+    val context = LocalContext.current
+    var retryCount by remember(url) { mutableIntStateOf(0) }
+    var loadFailed by remember(url) { mutableStateOf(false) }
+    val model = remember(url, retryCount) {
+        if (retryCount == 0) {
+            url
+        } else {
+            // Failed requests are not normally cached, but disable both caches here so a retry
+            // cannot reuse an outdated entry and always starts a new image request.
+            ImageRequest.Builder(context)
+                .data(url)
+                .memoryCachePolicy(CachePolicy.DISABLED)
+                .diskCachePolicy(CachePolicy.DISABLED)
+                .networkCachePolicy(CachePolicy.ENABLED)
+                .build()
+        }
     }
-    url?.let { AsyncImage(model = it, modifier = m, contentDescription = null) }
+    var imageModifier = Modifier.fillMaxWidth()
+    if (onClick != null) {
+        imageModifier = imageModifier.appClickable { onClick() }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 120.dp),
+    ) {
+        key(retryCount) {
+            AsyncImage(
+                model = model,
+                modifier = imageModifier,
+                contentDescription = null,
+                onSuccess = { loadFailed = false },
+                onError = { loadFailed = true },
+            )
+        }
+
+        if (loadFailed) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "圖片載入失敗",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(
+                    onClick = {
+                        loadFailed = false
+                        retryCount += 1
+                    },
+                ) {
+                    Text("重試")
+                }
+            }
+        }
+    }
 }
 
 
