@@ -97,6 +97,11 @@ import tw.kevinzhang.newshub.ui.component.swipeToGoBack
 
 private const val HIGHLIGHT_DURATION_MS = 1500
 
+private data class GalleryRequest(
+    val postId: String,
+    val startIndex: Int,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ThreadDetailScreen(
@@ -126,6 +131,7 @@ fun ThreadDetailScreen(
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     var repliesDialogForPostId by remember { mutableStateOf<String?>(null) }
+    var galleryRequest by remember { mutableStateOf<GalleryRequest?>(null) }
     var highlightedPostId by remember { mutableStateOf<String?>(null) }
     var preferencesMenuExpanded by remember { mutableStateOf(false) }
 
@@ -158,6 +164,8 @@ fun ThreadDetailScreen(
             }
         }
     }
+    val onReplyToClick =
+        remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
 
     LaunchedEffect(readTrackingMode, thread?.posts) {
         if (readTrackingMode == ReadTrackingMode.THREAD_OPENED && thread != null) {
@@ -199,6 +207,14 @@ fun ThreadDetailScreen(
         )
         viewModel.consumeAuthenticationRequiredNotice(sourceId)
         if (result == SnackbarResult.ActionPerformed) onNavigateToBoards()
+    }
+
+    LaunchedEffect(thread?.posts, galleryRequest?.postId) {
+        val request = galleryRequest ?: return@LaunchedEffect
+        val currentThread = thread ?: return@LaunchedEffect
+        if (currentThread.posts.none { it.id == request.postId }) {
+            galleryRequest = null
+        }
     }
 
     // Trigger screenshot capture when save is requested
@@ -358,8 +374,6 @@ fun ThreadDetailScreen(
             ) {
 
                 Box(modifier = Modifier.fillMaxSize()) {
-                    val onReplyToClick =
-                        remember(viewModel) { { id: String -> viewModel.onReplyToClick(id) } }
                     LazyColumn(
                         state = listState,
                         modifier = Modifier
@@ -390,6 +404,9 @@ fun ThreadDetailScreen(
                                 commentUiState = commentStates[post.id],
                                 onShowReplies = { repliesDialogForPostId = post.id },
                                 onReplyToClick = onReplyToClick,
+                                onMediaClick = { startIndex ->
+                                    galleryRequest = GalleryRequest(post.id, startIndex)
+                                },
                                 onLoadMoreCommentsClick = { viewModel.loadMoreComments(post.id) },
                             )
                         }
@@ -415,6 +432,28 @@ fun ThreadDetailScreen(
                         )
                     }
                 }
+            }
+        }
+
+        galleryRequest?.let { request ->
+            val post = thread?.posts?.firstOrNull { it.id == request.postId }
+            if (post != null) {
+                PostGallery(
+                    post = post,
+                    startIndex = request.startIndex,
+                    isSaved = isSaved,
+                    isSaving = isSavingScreenshots,
+                    onToggleSave = { viewModel.requestToggleSave(context.filesDir) },
+                    onDismissRequest = { galleryRequest = null },
+                    onReplyToClick = { targetId ->
+                        galleryRequest = null
+                        onReplyToClick(targetId)
+                    },
+                    onShowReplies = {
+                        galleryRequest = null
+                        repliesDialogForPostId = post.id
+                    },
+                )
             }
         }
 
@@ -616,9 +655,9 @@ private fun ExtPostCard(
     commentUiState: CommentUiState?,
     onShowReplies: () -> Unit,
     onReplyToClick: (String) -> Unit,
+    onMediaClick: (Int) -> Unit,
     onLoadMoreCommentsClick: () -> Unit,
 ) {
-    var galleryStartIndex by remember { mutableStateOf<Int?>(null) }
     val highlightAlpha = remember { Animatable(0f) }
     LaunchedEffect(isHighlighted) {
         if (isHighlighted) {
@@ -644,7 +683,7 @@ private fun ExtPostCard(
                 alwaysUseRawImage = alwaysUseRawImage,
                 onShowReplies = onShowReplies,
                 onReplyToClick = onReplyToClick,
-                onMediaClick = { index -> galleryStartIndex = index },
+                onMediaClick = onMediaClick,
             )
 
             visibleComments.forEach { comment ->
@@ -668,14 +707,6 @@ private fun ExtPostCard(
         }
     }
 
-    galleryStartIndex?.let { startIndex ->
-        PostGallery(
-            paragraphs = post.content,
-            startIndex = startIndex,
-            onDismissRequest = { galleryStartIndex = null },
-            onReplyToClick = onReplyToClick,
-        )
-    }
 }
 
 /**

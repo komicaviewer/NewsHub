@@ -28,6 +28,7 @@ fun ZoomableBox(
     loaded: Boolean = false,
     allowMinScale: Float? = null,
     allowMaxScale: Float = 5f,
+    onZoomedChange: ((Boolean) -> Unit)? = null,
     contentCompose: @Composable () -> Unit
 ) {
     var screen by remember { mutableStateOf(IntSize.Zero) }
@@ -50,7 +51,14 @@ fun ZoomableBox(
             )
             initScale = scaleWithFull
             scale = scaleWithFull
+            offsetX = 0f
+            offsetY = 0f
         }
+    }
+
+    LaunchedEffect(loaded, scale, initScale, allowMinScale) {
+        val minScale = allowMinScale ?: initScale
+        onZoomedChange?.invoke(loaded && scale > minScale + 0.01f)
     }
 
     Column(modifier = Modifier
