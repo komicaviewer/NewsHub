@@ -6,6 +6,13 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+def appVersionName = providers.gradleProperty("APP_VERSION_NAME")
+        .getOrElse("0.0.1")
+
+def appVersionCode = providers.gradleProperty("APP_VERSION_CODE")
+        .getOrElse("1")
+        .toInteger()
+
 android {
     compileSdk 35
 
@@ -13,8 +20,8 @@ android {
         applicationId "tw.kevinzhang.newshub"
         minSdk 21
         targetSdk 34
-        versionCode 6
-        versionName "0.0.6"
+        versionCode appVersionCode
+        versionName appVersionName
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

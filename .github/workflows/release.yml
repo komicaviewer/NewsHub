@@ -16,6 +16,41 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set version from tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="$GITHUB_REF_NAME"
+
+          if [[ "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+          else
+            echo "::error::Tag must use vMAJOR.MINOR.PATCH, for example v0.0.7"
+            exit 1
+          fi
+
+          if (( MINOR >= 1000 || PATCH >= 1000 )); then
+            echo "::error::Minor and patch versions must be below 1000"
+            exit 1
+          fi
+
+          APP_VERSION_NAME="${TAG#v}"
+          APP_VERSION_CODE=$((MAJOR * 1000000 + MINOR * 1000 + PATCH))
+
+          if (( APP_VERSION_CODE < 1 || APP_VERSION_CODE > 2100000000 )); then
+            echo "::error::Calculated versionCode is invalid: $APP_VERSION_CODE"
+            exit 1
+          fi
+
+          echo "APP_VERSION_NAME=$APP_VERSION_NAME" >> "$GITHUB_ENV"
+          echo "APP_VERSION_CODE=$APP_VERSION_CODE" >> "$GITHUB_ENV"
+
+          echo "versionName=$APP_VERSION_NAME"
+          echo "versionCode=$APP_VERSION_CODE"
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -41,7 +76,10 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+        run: |
+          ./gradlew assembleRelease \
+            -PAPP_VERSION_NAME="$APP_VERSION_NAME" \
+            -PAPP_VERSION_CODE="$APP_VERSION_CODE"
 
       - name: Rename APK with version tag
         run: |
