@@ -48,14 +48,10 @@ class PostGalleryTest {
     }
 
     @Test
-    fun galleryPanelState_mediaTapMovesBetweenImmersiveAndSummary() {
+    fun galleryPanelState_mediaTapMovesBetweenImmersiveAndExpanded() {
         assertEquals(
-            GalleryPanelState.Summary,
+            GalleryPanelState.Expanded,
             GalleryPanelState.Immersive.onMediaTap(),
-        )
-        assertEquals(
-            GalleryPanelState.Immersive,
-            GalleryPanelState.Summary.onMediaTap(),
         )
         assertEquals(
             GalleryPanelState.Immersive,
@@ -66,40 +62,41 @@ class PostGalleryTest {
     @Test
     fun galleryPanelState_handleDragRequiresThreshold() {
         assertEquals(
-            GalleryPanelState.Summary,
-            GalleryPanelState.Summary.onHandleDrag(dragAmount = -47f),
-        )
-        assertEquals(
             GalleryPanelState.Expanded,
-            GalleryPanelState.Summary.onHandleDrag(dragAmount = -48f),
+            GalleryPanelState.Expanded.onHandleDrag(dragAmount = 47f),
         )
         assertEquals(
-            GalleryPanelState.Summary,
+            GalleryPanelState.Immersive,
             GalleryPanelState.Expanded.onHandleDrag(dragAmount = 48f),
         )
         assertEquals(
             GalleryPanelState.Immersive,
-            GalleryPanelState.Summary.onHandleDrag(dragAmount = 48f),
-        )
-        assertEquals(
-            GalleryPanelState.Expanded,
-            GalleryPanelState.Expanded.onHandleDrag(dragAmount = -80f),
+            GalleryPanelState.Immersive.onHandleDrag(dragAmount = 80f),
         )
     }
 
     @Test
-    fun gallerySummaryText_usesOnlyHumanReadableParagraphContent() {
-        val summary = gallerySummaryText(
-            listOf(
-                Paragraph.ImageInfo(raw = "https://example.com/1.jpg"),
-                Paragraph.Text("  第一段  "),
-                Paragraph.RichText(runs = listOf(tw.kevinzhang.extension_api.model.RichTextRun("第二段"))),
-                Paragraph.ReplyTo(targetId = "123", preview = "回覆摘要"),
-                Paragraph.ReplyTo(targetId = "456"),
-                Paragraph.VideoInfo(url = "https://example.com/video.mp4"),
+    fun galleryPanelState_contentPullDownRequiresTopAndThreshold() {
+        assertEquals(
+            GalleryPanelState.Expanded,
+            GalleryPanelState.Expanded.onContentPullDown(
+                dragAmount = 47f,
+                isAtTop = true,
             ),
         )
-
-        assertEquals("第一段\n第二段\n回覆摘要\n回覆 #456", summary)
+        assertEquals(
+            GalleryPanelState.Expanded,
+            GalleryPanelState.Expanded.onContentPullDown(
+                dragAmount = 80f,
+                isAtTop = false,
+            ),
+        )
+        assertEquals(
+            GalleryPanelState.Immersive,
+            GalleryPanelState.Expanded.onContentPullDown(
+                dragAmount = 48f,
+                isAtTop = true,
+            ),
+        )
     }
 }
