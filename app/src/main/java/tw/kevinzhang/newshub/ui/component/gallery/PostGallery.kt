@@ -77,6 +77,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -95,6 +96,7 @@ import tw.kevinzhang.newshub.ui.component.View
 private val MediaCanvas = Color(0xFF08070A)
 private const val GalleryLayoutAnimationMillis = 260
 private const val PanelVelocityThresholdDp = 125
+internal const val GalleryPanelScrollContentTag = "gallery_panel_content_scroll"
 
 /** The panel takes layout space; it is deliberately not a modal bottom sheet. */
 internal enum class GalleryPanelState {
@@ -576,6 +578,8 @@ private fun GalleryExpandedContent(
         Column(
             modifier = Modifier
                 .weight(1f)
+                .fillMaxWidth()
+                .testTag(GalleryPanelScrollContentTag)
                 .verticalScroll(scrollState)
                 .padding(vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
