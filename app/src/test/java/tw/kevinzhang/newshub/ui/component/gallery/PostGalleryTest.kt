@@ -60,42 +60,69 @@ class PostGalleryTest {
     }
 
     @Test
-    fun galleryPanelState_handleDragRequiresThreshold() {
+    fun galleryPanelVisibleFraction_tracksDragOffset() {
         assertEquals(
-            GalleryPanelState.Expanded,
-            GalleryPanelState.Expanded.onHandleDrag(dragAmount = 47f),
+            1f,
+            galleryPanelVisibleFraction(
+                offset = 0f,
+                dragRange = 400f,
+                fallbackState = GalleryPanelState.Immersive,
+            ),
         )
         assertEquals(
-            GalleryPanelState.Immersive,
-            GalleryPanelState.Expanded.onHandleDrag(dragAmount = 48f),
+            0.5f,
+            galleryPanelVisibleFraction(
+                offset = 200f,
+                dragRange = 400f,
+                fallbackState = GalleryPanelState.Immersive,
+            ),
         )
         assertEquals(
-            GalleryPanelState.Immersive,
-            GalleryPanelState.Immersive.onHandleDrag(dragAmount = 80f),
+            0f,
+            galleryPanelVisibleFraction(
+                offset = 400f,
+                dragRange = 400f,
+                fallbackState = GalleryPanelState.Expanded,
+            ),
         )
     }
 
     @Test
-    fun galleryPanelState_contentPullDownRequiresTopAndThreshold() {
+    fun galleryPanelVisibleFraction_clampsOffsetToAnchors() {
         assertEquals(
-            GalleryPanelState.Expanded,
-            GalleryPanelState.Expanded.onContentPullDown(
-                dragAmount = 47f,
-                isAtTop = true,
+            1f,
+            galleryPanelVisibleFraction(
+                offset = -100f,
+                dragRange = 400f,
+                fallbackState = GalleryPanelState.Immersive,
             ),
         )
         assertEquals(
-            GalleryPanelState.Expanded,
-            GalleryPanelState.Expanded.onContentPullDown(
-                dragAmount = 80f,
-                isAtTop = false,
+            0f,
+            galleryPanelVisibleFraction(
+                offset = 500f,
+                dragRange = 400f,
+                fallbackState = GalleryPanelState.Expanded,
+            ),
+        )
+    }
+
+    @Test
+    fun galleryPanelVisibleFraction_usesFallbackUntilAnchorsAreReady() {
+        assertEquals(
+            1f,
+            galleryPanelVisibleFraction(
+                offset = Float.NaN,
+                dragRange = 0f,
+                fallbackState = GalleryPanelState.Expanded,
             ),
         )
         assertEquals(
-            GalleryPanelState.Immersive,
-            GalleryPanelState.Expanded.onContentPullDown(
-                dragAmount = 48f,
-                isAtTop = true,
+            0f,
+            galleryPanelVisibleFraction(
+                offset = Float.NaN,
+                dragRange = Float.NaN,
+                fallbackState = GalleryPanelState.Immersive,
             ),
         )
     }

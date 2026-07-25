@@ -2,7 +2,7 @@ package tw.kevinzhang.newshub.ui.component.gallery
 
 import android.text.format.DateUtils
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -12,7 +12,11 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.AnchoredDraggableState
+import androidx.compose.foundation.gestures.DraggableAnchors
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.anchoredDraggable
+import androidx.compose.foundation.gestures.animateTo
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,31 +64,25 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
@@ -95,8 +93,8 @@ import tw.kevinzhang.newshub.ui.component.Small
 import tw.kevinzhang.newshub.ui.component.View
 
 private val MediaCanvas = Color(0xFF08070A)
-private const val PanelDragThresholdPx = 48f
 private const val GalleryLayoutAnimationMillis = 260
+private const val PanelVelocityThresholdDp = 125
 
 /** The panel takes layout space; it is deliberately not a modal bottom sheet. */
 internal enum class GalleryPanelState {
@@ -109,26 +107,15 @@ internal fun GalleryPanelState.onMediaTap(): GalleryPanelState = when (this) {
     GalleryPanelState.Expanded -> GalleryPanelState.Immersive
 }
 
-/** [dragAmount] is accumulated in pixels. Positive values mean a downward drag. */
-internal fun GalleryPanelState.onHandleDrag(
-    dragAmount: Float,
-    threshold: Float = PanelDragThresholdPx,
-): GalleryPanelState = when {
-    dragAmount >= threshold && this == GalleryPanelState.Expanded -> GalleryPanelState.Immersive
-    else -> this
-}
-
-/** Hides the panel only when a downward pull starts after its content reaches the top. */
-internal fun GalleryPanelState.onContentPullDown(
-    dragAmount: Float,
-    isAtTop: Boolean,
-    threshold: Float = PanelDragThresholdPx,
-): GalleryPanelState = when {
-    this == GalleryPanelState.Expanded && isAtTop && dragAmount >= threshold -> {
-        GalleryPanelState.Immersive
+internal fun galleryPanelVisibleFraction(
+    offset: Float,
+    dragRange: Float,
+    fallbackState: GalleryPanelState,
+): Float {
+    if (!offset.isFinite() || !dragRange.isFinite() || dragRange <= 0f) {
+        return if (fallbackState == GalleryPanelState.Expanded) 1f else 0f
     }
-
-    else -> this
+    return (1f - offset / dragRange).coerceIn(0f, 1f)
 }
 
 internal fun galleryMediaItems(paragraphs: List<Paragraph>): List<Paragraph> =
@@ -163,7 +150,16 @@ fun PostGallery(
     val pagerState = rememberPagerState(initialPage = initialPage) { mediaItems.size }
     val thumbnailState = rememberLazyListState(initialFirstVisibleItemIndex = initialPage)
     val coroutineScope = rememberCoroutineScope()
-    var panelState by rememberSaveable { mutableStateOf(GalleryPanelState.Expanded) }
+    val density = LocalDensity.current
+    val panelDragState = remember(density) {
+        AnchoredDraggableState(
+            initialValue = GalleryPanelState.Expanded,
+            positionalThreshold = { distance -> distance * 0.5f },
+            velocityThreshold = { with(density) { PanelVelocityThresholdDp.dp.toPx() } },
+            snapAnimationSpec = tween(GalleryLayoutAnimationMillis),
+            decayAnimationSpec = exponentialDecay(),
+        )
+    }
     var isZoomed by remember { mutableStateOf(false) }
 
     LaunchedEffect(pagerState.currentPage) {
@@ -173,8 +169,14 @@ fun PostGallery(
 
     Dialog(
         onDismissRequest = {
-            if (panelState == GalleryPanelState.Expanded) {
-                panelState = GalleryPanelState.Immersive
+            val isFullyImmersive =
+                panelDragState.settledValue == GalleryPanelState.Immersive &&
+                    panelDragState.targetValue == GalleryPanelState.Immersive &&
+                    !panelDragState.isAnimationRunning
+            if (!isFullyImmersive) {
+                coroutineScope.launch {
+                    panelDragState.animateTo(GalleryPanelState.Immersive)
+                }
             } else {
                 onDismissRequest()
             }
@@ -190,27 +192,42 @@ fun PostGallery(
                 .background(MediaCanvas),
         ) {
             val useTwoPanes = maxWidth >= 600.dp || maxWidth > maxHeight
-            val panelVisible = panelState != GalleryPanelState.Immersive
+            val portraitExpandedPanelHeight = maxHeight * 0.40f
+            val wideExpandedPanelWidth = minOf(420.dp, maxOf(300.dp, maxWidth * 0.40f))
+            val panelDragRange = with(density) {
+                if (useTwoPanes) {
+                    wideExpandedPanelWidth.toPx()
+                } else {
+                    portraitExpandedPanelHeight.toPx()
+                }
+            }
+            SideEffect {
+                panelDragState.updateAnchors(
+                    DraggableAnchors {
+                        GalleryPanelState.Expanded at 0f
+                        GalleryPanelState.Immersive at panelDragRange
+                    },
+                )
+            }
+            val panelVisibleFraction = galleryPanelVisibleFraction(
+                offset = panelDragState.offset,
+                dragRange = panelDragRange,
+                fallbackState = panelDragState.currentValue,
+            )
+            val panelVisualState = if (panelVisibleFraction > 0.5f) {
+                GalleryPanelState.Expanded
+            } else {
+                GalleryPanelState.Immersive
+            }
+            val panelVisible = panelVisibleFraction > 0f
             val currentItemIsVideo = mediaItems[pagerState.currentPage] is Paragraph.VideoInfo
             val topControlsVisible = panelVisible || currentItemIsVideo
-            val portraitPanelTargetHeight = when (panelState) {
-                GalleryPanelState.Immersive -> 0.dp
-                GalleryPanelState.Expanded -> maxHeight * 0.40f
+            val portraitPanelHeight = portraitExpandedPanelHeight * panelVisibleFraction
+            val widePanelWidth = wideExpandedPanelWidth * panelVisibleFraction
+            val togglePanel: () -> Unit = {
+                val target = panelVisualState.onMediaTap()
+                coroutineScope.launch { panelDragState.animateTo(target) }
             }
-            val widePanelTargetWidth = when (panelState) {
-                GalleryPanelState.Immersive -> 0.dp
-                GalleryPanelState.Expanded -> minOf(420.dp, maxOf(300.dp, maxWidth * 0.40f))
-            }
-            val portraitPanelHeight by animateDpAsState(
-                targetValue = portraitPanelTargetHeight,
-                animationSpec = tween(GalleryLayoutAnimationMillis),
-                label = "galleryPanelHeight",
-            )
-            val widePanelWidth by animateDpAsState(
-                targetValue = widePanelTargetWidth,
-                animationSpec = tween(GalleryLayoutAnimationMillis),
-                label = "galleryPanelWidth",
-            )
 
             val topControls: @Composable () -> Unit = {
                 AnimatedVisibility(
@@ -221,10 +238,10 @@ fun PostGallery(
                     GalleryTopControls(
                         currentPage = pagerState.currentPage,
                         pageCount = mediaItems.size,
-                        panelState = panelState,
+                        panelState = panelVisualState,
                         isSaved = isSaved,
                         isSaving = isSaving,
-                        onTogglePanel = { panelState = panelState.onMediaTap() },
+                        onTogglePanel = togglePanel,
                         onToggleSave = onToggleSave,
                         onDismissRequest = onDismissRequest,
                     )
@@ -236,21 +253,16 @@ fun PostGallery(
                     pagerState = pagerState,
                     isZoomed = isZoomed,
                     onZoomedChange = { isZoomed = it },
-                    onMediaTap = { panelState = panelState.onMediaTap() },
+                    onMediaTap = togglePanel,
                     modifier = modifier,
                 )
             }
             val thumbnailRail: @Composable () -> Unit = {
                 if (mediaItems.size > 1) {
-                    val railHeight by animateDpAsState(
-                        targetValue = if (panelVisible) 78.dp else 0.dp,
-                        animationSpec = tween(GalleryLayoutAnimationMillis),
-                        label = "galleryRailHeight",
-                    )
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(railHeight)
+                            .height(78.dp * panelVisibleFraction)
                             .clipToBounds(),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -275,10 +287,11 @@ fun PostGallery(
                         thumbnailRail()
                     }
                     GallerySupportingPanel(
-                        state = panelState,
+                        dragState = panelDragState,
+                        dragEnabled = false,
+                        panelVisibleFraction = panelVisibleFraction,
                         post = post,
                         nonMediaParagraphs = nonMediaParagraphs,
-                        onPanelStateChange = { panelState = it },
                         onDismissRequest = onDismissRequest,
                         onReplyToClick = onReplyToClick,
                         onShowReplies = onShowReplies,
@@ -298,10 +311,11 @@ fun PostGallery(
                     mediaPager(Modifier.weight(1f))
                     thumbnailRail()
                     GallerySupportingPanel(
-                        state = panelState,
+                        dragState = panelDragState,
+                        dragEnabled = true,
+                        panelVisibleFraction = panelVisibleFraction,
                         post = post,
                         nonMediaParagraphs = nonMediaParagraphs,
-                        onPanelStateChange = { panelState = it },
                         onDismissRequest = onDismissRequest,
                         onReplyToClick = onReplyToClick,
                         onShowReplies = onShowReplies,
@@ -472,12 +486,14 @@ private fun GalleryIconButton(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun GallerySupportingPanel(
-    state: GalleryPanelState,
+    dragState: AnchoredDraggableState<GalleryPanelState>,
+    dragEnabled: Boolean,
+    panelVisibleFraction: Float,
     post: Post,
     nonMediaParagraphs: List<Paragraph>,
-    onPanelStateChange: (GalleryPanelState) -> Unit,
     onDismissRequest: () -> Unit,
     onReplyToClick: ((String) -> Unit)?,
     onShowReplies: (() -> Unit)?,
@@ -496,66 +512,45 @@ private fun GallerySupportingPanel(
                 .navigationBarsPadding(),
         ) {
             GalleryPanelHandle(
-                state = state,
-                onPanelStateChange = onPanelStateChange,
+                dragState = dragState,
+                dragEnabled = dragEnabled,
+                panelVisibleFraction = panelVisibleFraction,
             )
-            when (state) {
-                GalleryPanelState.Expanded -> GalleryExpandedContent(
-                    post = post,
-                    nonMediaParagraphs = nonMediaParagraphs,
-                    onPanelStateChange = onPanelStateChange,
-                    onDismissRequest = onDismissRequest,
-                    onReplyToClick = onReplyToClick,
-                    onShowReplies = onShowReplies,
-                    modifier = Modifier.weight(1f),
-                )
-
-                GalleryPanelState.Immersive -> Unit
-            }
+            GalleryExpandedContent(
+                post = post,
+                nonMediaParagraphs = nonMediaParagraphs,
+                onDismissRequest = onDismissRequest,
+                onReplyToClick = onReplyToClick,
+                onShowReplies = onShowReplies,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 private fun GalleryPanelHandle(
-    state: GalleryPanelState,
-    onPanelStateChange: (GalleryPanelState) -> Unit,
+    dragState: AnchoredDraggableState<GalleryPanelState>,
+    dragEnabled: Boolean,
+    panelVisibleFraction: Float,
 ) {
-    val clickState = when (state) {
-        GalleryPanelState.Expanded -> GalleryPanelState.Immersive
-        GalleryPanelState.Immersive -> GalleryPanelState.Expanded
-    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
-            .clickable { onPanelStateChange(clickState) }
+            .anchoredDraggable(
+                state = dragState,
+                orientation = Orientation.Vertical,
+                enabled = dragEnabled,
+            )
             .semantics {
                 contentDescription = "上下拖曳貼文資訊"
-                stateDescription = when (state) {
-                    GalleryPanelState.Immersive -> "已隱藏"
-                    GalleryPanelState.Expanded -> "已展開"
+                stateDescription = when {
+                    panelVisibleFraction <= 0f -> "已隱藏"
+                    panelVisibleFraction >= 1f -> "已展開"
+                    else -> "拖曳中"
                 }
-            }
-            .pointerInput(state) {
-                val dragThreshold = 48.dp.toPx()
-                var dragAmount = 0f
-                detectVerticalDragGestures(
-                    onDragStart = { dragAmount = 0f },
-                    onVerticalDrag = { _, amount ->
-                        dragAmount += amount
-                    },
-                    onDragEnd = {
-                        onPanelStateChange(
-                            state.onHandleDrag(
-                                dragAmount = dragAmount,
-                                threshold = dragThreshold,
-                            ),
-                        )
-                    },
-                    onDragCancel = { dragAmount = 0f },
-                )
             },
         contentAlignment = Alignment.Center,
     ) {
@@ -567,44 +562,12 @@ private fun GalleryPanelHandle(
 private fun GalleryExpandedContent(
     post: Post,
     nonMediaParagraphs: List<Paragraph>,
-    onPanelStateChange: (GalleryPanelState) -> Unit,
     onDismissRequest: () -> Unit,
     onReplyToClick: ((String) -> Unit)?,
     onShowReplies: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberScrollState()
-    val currentOnPanelStateChange by rememberUpdatedState(onPanelStateChange)
-    val panelPullDownConnection = remember(scrollState) {
-        object : NestedScrollConnection {
-            var accumulatedPullDown = 0f
-
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source != NestedScrollSource.UserInput) return Offset.Zero
-
-                if (scrollState.value == 0 && available.y > 0f) {
-                    accumulatedPullDown += available.y
-                    if (
-                        GalleryPanelState.Expanded.onContentPullDown(
-                            dragAmount = accumulatedPullDown,
-                            isAtTop = true,
-                        ) == GalleryPanelState.Immersive
-                    ) {
-                        accumulatedPullDown = 0f
-                        currentOnPanelStateChange(GalleryPanelState.Immersive)
-                    }
-                } else {
-                    accumulatedPullDown = 0f
-                }
-                return Offset.Zero
-            }
-
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                accumulatedPullDown = 0f
-                return Velocity.Zero
-            }
-        }
-    }
 
     Column(
         modifier = modifier.padding(horizontal = 20.dp),
@@ -613,7 +576,6 @@ private fun GalleryExpandedContent(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .nestedScroll(panelPullDownConnection)
                 .verticalScroll(scrollState)
                 .padding(vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
