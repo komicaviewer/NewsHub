@@ -1,20 +1,55 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- The 58dp mark stays inside Android's 66dp adaptive-icon safe zone. -->
-    <path
-        android:fillColor="#101A33"
-        android:pathData="M25,83V25H42L66,56V25H83V83H66L42,52V83Z" />
-    <path
-        android:fillColor="#8090FF"
-        android:pathData="M30,78V30H38V78Z" />
-    <path
-        android:fillColor="#B3BDFF"
-        android:pathData="M71,30V78H78V30Z" />
-    <path
-        android:fillColor="#CF5BF7"
-        android:pathData="M38,30H45L71,63V77H64L38,44Z" />
+    <!-- Geometric folded-ribbon N, scaled down for launcher optical balance. -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.765"
+        android:scaleY="0.765">
+        <path android:pathData="M26.7,24.8H39V83.2H26.7Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="39"
+                android:endY="54"
+                android:startColor="#8090FF"
+                android:startX="26.7"
+                android:startY="54"
+                android:type="linear" />
+        </aapt:attr>
+        </path>
+        <path android:pathData="M70.2,24.8H81.2V83.2H70.2Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="81.2"
+                android:endY="54"
+                android:startColor="#B3BDFF"
+                android:startX="70.2"
+                android:startY="54"
+                android:type="linear" />
+        </aapt:attr>
+        </path>
+        <path android:pathData="M39,24.8L70.2,60.2V79L72.5,83.2H70.2L39,44Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endColor="#CF5BF7"
+                android:endX="70.2"
+                android:endY="79"
+                android:startColor="#C455EF"
+                android:startX="39"
+                android:startY="24.8"
+                android:type="linear" />
+        </aapt:attr>
+        </path>
+        <path
+            android:fillColor="#A943D0"
+            android:pathData="M39,24.8L40.1,26.1V45.4L39,44Z" />
+        <path
+            android:fillColor="#B347DA"
+            android:pathData="M69.1,58.9L70.2,60.2V79L69.1,77.6Z" />
+    </group>
 </vector>
