@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
@@ -94,10 +95,12 @@ class CollectionTimelineViewModel @Inject constructor(
         .observeCollectionSelectedSourceId(collectionId)
 
     /**
-     * `null` means the timeline includes all subscribed sources. A persisted selection that no
-     * longer belongs to this collection is cleared once its subscriptions are available.
+     * The single canonical source filter. Both the filter chips and the Pager consume this flow,
+     * so a persisted preference cannot briefly disagree with the timeline it controls. `null`
+     * means all subscribed sources; stale persisted selections are cleared after subscriptions
+     * become available.
      */
-    val selectedSourceId: StateFlow<String?> = combine(
+    private val effectiveSelectedSourceId: StateFlow<String?> = combine(
         savedSelectedSourceId,
         subscriptions,
     ) { savedSourceId, currentSubscriptions ->
@@ -127,6 +130,8 @@ class CollectionTimelineViewModel @Inject constructor(
             )
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val selectedSourceId: StateFlow<String?> = effectiveSelectedSourceId
 
     val authenticationRequiredNotice = sessionManager.authenticationRequiredNotice
 
@@ -159,16 +164,10 @@ class CollectionTimelineViewModel @Inject constructor(
 
     val timelinePager: Flow<PagingData<ThreadSummary>> =
         combine(
-            collectionRepo.observeSubscriptions(collectionId),
-            savedSelectedSourceId,
-        ) { currentSubscriptions, savedSourceId ->
-            val effectiveSourceId = resolveSelectedSourceId(
-                savedSourceId = savedSourceId,
-                availableSourceIds = currentSubscriptions
-                    .map(BoardSubscriptionEntity::sourceId)
-                    .toSet(),
-            )
-            filterSubscriptionsBySource(currentSubscriptions, effectiveSourceId)
+            subscriptions.filterNotNull(),
+            effectiveSelectedSourceId,
+        ) { currentSubscriptions, selectedSourceId ->
+            filterSubscriptionsBySource(currentSubscriptions, selectedSourceId)
         }
             .distinctUntilChanged()
             .flatMapLatest { subs ->

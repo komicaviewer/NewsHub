@@ -29,6 +29,18 @@ class CollectionTimelineSourceFilterTest {
     }
 
     @Test
+    fun `effective selection is the filter applied to the timeline`() {
+        val subscriptions = subscriptions()
+        val selectedSourceId = resolveSelectedSourceId("gamer", setOf("gamer", "komica"))
+
+        assertEquals(
+            listOf("gamer", "gamer"),
+            filterSubscriptionsBySource(subscriptions, selectedSourceId)
+                .map(BoardSubscriptionEntity::sourceId),
+        )
+    }
+
+    @Test
     fun `source filter reset requires a changed selection`() {
         assertEquals(false, shouldResetTimelinePosition("gamer", "gamer"))
         assertEquals(false, shouldResetTimelinePosition(null, null))
