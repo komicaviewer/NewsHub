@@ -92,6 +92,7 @@ import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.newshub.ui.component.Small
 import tw.kevinzhang.newshub.ui.component.View
+import tw.kevinzhang.newshub.ui.component.resourceModelOrNull
 
 private val MediaCanvas = Color(0xFF08070A)
 private const val GalleryLayoutAnimationMillis = 260
@@ -365,7 +366,7 @@ private fun GalleryMediaPager(
                         onZoomedChange = onZoomedChange,
                     ) {
                         AsyncImage(
-                            model = item.raw,
+                            model = resourceModelOrNull(item.raw),
                             contentDescription = "媒體 ${page + 1}，共 ${mediaItems.size} 個",
                             onSuccess = { loaded = true },
                         )
@@ -377,11 +378,7 @@ private fun GalleryMediaPager(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
-                if (item.site == Paragraph.VideoInfo.Site.YOUTUBE) {
-                    extractYouTubeVideoId(item.url)?.let { YouTubePlayer(videoId = it) }
-                } else {
-                    VideoPlayer(url = item.url)
-                }
+                Text("遠端影片已封鎖")
             }
 
             else -> Unit
@@ -673,7 +670,7 @@ private fun GalleryThumbnailRail(
             ) {
                 when (item) {
                     is Paragraph.ImageInfo -> AsyncImage(
-                        model = item.thumb ?: item.raw,
+                        model = resourceModelOrNull(item.thumb ?: item.raw),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
@@ -705,7 +702,7 @@ private fun PostHeader(post: Post, modifier: Modifier = Modifier) {
     ) {
         post.sourceIconUrl?.let { iconUrl ->
             AsyncImage(
-                model = iconUrl,
+                model = resourceModelOrNull(iconUrl),
                 contentDescription = null,
                 modifier = Modifier.size(36.dp).clip(CircleShape),
                 contentScale = ContentScale.Crop,

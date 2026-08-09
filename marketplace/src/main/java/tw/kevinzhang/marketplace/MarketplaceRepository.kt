@@ -6,10 +6,10 @@ import tw.kevinzhang.marketplace.data.RepoMetadata
 import java.io.File
 
 interface MarketplaceRepository {
-    /** Fetches repo.json metadata from a GitHub extension repo URL. */
+    /** Fails closed until the embedded-root trusted repository client is enabled. */
     suspend fun fetchRepoMetadata(repoUrl: String): RepoMetadata
 
-    /** Fetches index.min.json and returns all extensions from a GitHub extension repo URL. */
+    /** Fails closed until the embedded-root trusted repository client is enabled. */
     suspend fun fetchExtensions(repoUrl: String): List<ExtensionInfo>
 
     fun getInstallState(info: ExtensionInfo): InstallState

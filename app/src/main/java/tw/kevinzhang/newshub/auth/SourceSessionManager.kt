@@ -19,11 +19,17 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import tw.kevinzhang.extension_api.AuthState
 import tw.kevinzhang.extension_api.AuthSpec
-import tw.kevinzhang.extension_api.AuthenticationSession
-import tw.kevinzhang.extension_api.SourceRuntime
-import tw.kevinzhang.extension_api.SourceRuntimeProvider
+import tw.kevinzhang.extension_api.HostBrokerProvider
+import tw.kevinzhang.extension_api.HostResourceProvider
+import tw.kevinzhang.extension_api.IHostBroker
+import tw.kevinzhang.extension_api.SourceIdentity
+import tw.kevinzhang.extension_api.SourceNetworkPolicy
+import tw.kevinzhang.extension_api.ResourceHandle
+import tw.kevinzhang.extension_api.ResourcePayload
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -40,8 +46,12 @@ private const val KEY_ALIAS = "newshub.source.cookies.v1"
 class SourceSessionManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val baseClient: OkHttpClient,
-) : SourceRuntimeProvider {
+) : HostBrokerProvider, HostResourceProvider {
     private val sessions = mutableMapOf<String, SourceSession>()
+    private val sourceIdentities = mutableMapOf<String, String>()
+    private val resourceGenerations = mutableMapOf<String, Long>()
+    private val resourceBrokers = mutableMapOf<String, SourceNetworkBroker>()
+    private val resources = mutableMapOf<String, ResourceBinding>()
     private val mutableStates = MutableStateFlow<Map<String, AuthState>>(emptyMap())
     val states: StateFlow<Map<String, AuthState>> = mutableStates.asStateFlow()
     private val mutableAuthenticationRequiredNotice = MutableStateFlow<String?>(null)
@@ -51,8 +61,52 @@ class SourceSessionManager @Inject constructor(
      */
     val authenticationRequiredNotice: StateFlow<String?> = mutableAuthenticationRequiredNotice.asStateFlow()
 
-    override fun runtimeFor(sourceId: String): SourceRuntime = synchronized(sessions) {
-        sessions.getOrPut(sourceId) { SourceSession(sourceId) }.runtime
+    override fun brokerFor(identity: SourceIdentity, policy: SourceNetworkPolicy): IHostBroker {
+        val storageKey = identity.storageKey()
+        synchronized(sessions) {
+            sourceIdentities[identity.sourceId] = storageKey
+        }
+        val broker = SourceNetworkBroker(baseClient, session(identity.sourceId).jar, identity, policy)
+        synchronized(resources) {
+            val generation = (resourceGenerations[storageKey] ?: 0L) + 1L
+            resourceGenerations[storageKey] = generation
+            resourceBrokers[storageKey] = broker
+            resources.entries.removeAll { it.value.storageKey == storageKey }
+        }
+        return broker
+    }
+
+    override fun issueResource(
+        identity: SourceIdentity,
+        policy: SourceNetworkPolicy,
+        untrustedUrl: String,
+    ): ResourceHandle {
+        // Reuse the exact network authorization boundary before issuing an opaque UI capability.
+        validateSourceNetworkRequest(
+            tw.kevinzhang.extension_api.SourceNetworkRequest("resource", "GET", untrustedUrl),
+            policy,
+        )
+        val storageKey = identity.storageKey()
+        return synchronized(resources) {
+            val generation = requireNotNull(resourceGenerations[storageKey]) { "Source session is not active" }
+            require(resourceBrokers.containsKey(storageKey)) { "Source broker is not active" }
+            val tokenBytes = ByteArray(32).also(SecureRandom()::nextBytes)
+            val token = Base64.encodeToString(tokenBytes, Base64.NO_WRAP or Base64.URL_SAFE).trimEnd('=')
+            val handle = ResourceHandle(storageKey.take(16), generation, token)
+            resources[token] = ResourceBinding(storageKey, generation, untrustedUrl)
+            handle
+        }
+    }
+
+    override suspend fun openResource(handle: ResourceHandle): ResourcePayload {
+        val (binding, broker) = synchronized(resources) {
+            val binding = requireNotNull(resources[handle.token]) { "Unknown resource handle" }
+            require(binding.storageKey.take(16) == handle.sourceSession) { "Resource source mismatch" }
+            require(binding.generation == handle.generation) { "Stale resource handle" }
+            require(resourceGenerations[binding.storageKey] == handle.generation) { "Revoked resource handle" }
+            binding to requireNotNull(resourceBrokers[binding.storageKey]) { "Source broker is unavailable" }
+        }
+        return broker.fetchResource(binding.url)
     }
 
     fun stateFor(sourceId: String): AuthState = states.value[sourceId] ?: AuthState.Unknown
@@ -128,23 +182,16 @@ class SourceSessionManager @Inject constructor(
     }
 
     private fun session(sourceId: String): SourceSession = synchronized(sessions) {
-        sessions.getOrPut(sourceId) { SourceSession(sourceId) }
+        val storageKey = sourceIdentities[sourceId] ?: sourceId
+        sessions.getOrPut(storageKey) { SourceSession(sourceId, storageKey) }
     }
 
-    private inner class SourceSession(private val sourceId: String) {
-        val jar = SourceCookieJar(context, sourceId)
+    private inner class SourceSession(private val sourceId: String, storageKey: String) {
+        val jar = SourceCookieJar(context, storageKey)
         private val mutableState = MutableStateFlow(if (jar.isEmpty()) AuthState.SignedOut else AuthState.Unknown)
 
         init {
             mutableStates.value = mutableStates.value + (sourceId to mutableState.value)
-        }
-
-        val runtime = object : SourceRuntime {
-            override val httpClient: OkHttpClient = baseClient.newBuilder().cookieJar(jar).build()
-            override val authentication: AuthenticationSession = object : AuthenticationSession {
-                override val state: StateFlow<AuthState> = mutableState.asStateFlow()
-                override fun markExpired() = setState(AuthState.Expired)
-            }
         }
 
         fun setState(state: AuthState) {
@@ -152,6 +199,20 @@ class SourceSessionManager @Inject constructor(
             mutableStates.value = mutableStates.value + (sourceId to state)
         }
     }
+
+    private data class ResourceBinding(
+        val storageKey: String,
+        val generation: Long,
+        val url: String,
+    )
+}
+
+private fun SourceIdentity.storageKey(): String {
+    val canonical = listOf(packageName, signerSha256.lowercase(Locale.ROOT), sourceId)
+        .joinToString(separator = "\u0000", prefix = "newshub-source\u0000")
+    return MessageDigest.getInstance("SHA-256")
+        .digest(canonical.toByteArray(StandardCharsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
 }
 
 private fun String.toHttpsUrlOrNull(): HttpUrl? = runCatching {

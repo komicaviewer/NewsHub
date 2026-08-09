@@ -1,6 +1,5 @@
 package tw.kevinzhang.newshub.ui.boards
 
-import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
@@ -47,10 +46,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -61,6 +58,7 @@ import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.newshub.ui.component.TitleMediumText
 import tw.kevinzhang.newshub.ui.component.appClickable
+import tw.kevinzhang.newshub.ui.component.resourceModelOrNull
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -261,7 +259,7 @@ private fun SourceHeader(
             ) {
                 if (source.iconUrl != null) {
                     AsyncImage(
-                        model = source.iconUrl,
+                        model = resourceModelOrNull(source.iconUrl),
                         contentDescription = null,
                         modifier = Modifier.size(20.dp),
                     )
@@ -369,19 +367,14 @@ private fun BoardItem(
     var showSheet by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf(emptySet<String>()) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val context = LocalContext.current
-
-    val openWebsite = {
-        val intent = Intent(Intent.ACTION_VIEW, board.url.toUri())
-        context.startActivity(intent)
-    }
     Surface(
         modifier = modifier.then(if (compact) Modifier.height(132.dp) else Modifier),
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         tonalElevation = 1.dp,
-        onClick = openWebsite,
+        // A raw URL from an extension is data, not executable navigation authority.
+        onClick = {},
     ) {
         if (compact) {
             Column(modifier = Modifier.fillMaxSize().padding(start = 16.dp, top = 16.dp, end = 8.dp, bottom = 6.dp)) {
@@ -398,7 +391,8 @@ private fun BoardItem(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     TextButton(
-                        onClick = openWebsite,
+                        onClick = {},
+                        enabled = false,
                         contentPadding = PaddingValues(horizontal = 8.dp),
                     ) {
                         Icon(
@@ -436,7 +430,7 @@ private fun BoardItem(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    TextButton(onClick = openWebsite) {
+                    TextButton(onClick = {}, enabled = false) {
                         Icon(
                             Icons.Outlined.Language,
                             contentDescription = null,

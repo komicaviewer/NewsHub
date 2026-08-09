@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import tw.kevinzhang.newshub.ui.component.resourceModelOrNull
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -52,7 +53,7 @@ fun LazyGallery(
                 var loaded by remember { mutableStateOf(false) }
                 ZoomableBox(loaded = loaded) {
                     AsyncImage(
-                        model = images[page],
+                        model = resourceModelOrNull(images[page]),
                         contentDescription = null,
                         onSuccess = { loaded = true },
                     )

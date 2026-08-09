@@ -1,13 +1,11 @@
 package tw.kevinzhang.extension_loader
 
-import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import tw.kevinzhang.extension_api.Source
-import tw.kevinzhang.extension_api.SourceRuntimeProvider
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.BoardPage
 import tw.kevinzhang.extension_api.model.BoardPageRequest
@@ -31,11 +29,7 @@ class ExtensionLoaderTest {
         override suspend fun getThread(summary: ThreadSummary) = Thread("", null, null, emptyList())
     }
 
-    private fun loader(sources: List<Source>) = ExtensionLoaderImpl(
-        okHttpClient = OkHttpClient(),
-        runtimeProvider = SourceRuntimeProvider { error("Legacy test source must not request a runtime") },
-        sources = sources,
-    )
+    private fun loader(sources: List<Source>) = ExtensionLoaderImpl(sources)
 
     @Test fun `getSource returns null for unknown id`() {
         val loader = loader(listOf(makeSource("tw.a")))
@@ -46,6 +40,11 @@ class ExtensionLoaderTest {
         val source = makeSource("tw.a")
         val loader = loader(listOf(source))
         assertEquals(source, loader.getSource("tw.a"))
+    }
+
+    @Test fun `duplicate ids are quarantined instead of selecting by order`() {
+        val loader = loader(listOf(makeSource("tw.same"), makeSource("tw.same")))
+        assertNull(loader.getSource("tw.same"))
     }
 
 }

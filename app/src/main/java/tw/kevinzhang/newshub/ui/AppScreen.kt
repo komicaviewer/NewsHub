@@ -1,7 +1,5 @@
 package tw.kevinzhang.newshub.ui
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -156,16 +154,10 @@ private fun NavGraphBuilder.threadDetailDestination(
             },
         ),
     ) {
-        val context = LocalContext.current
         ThreadDetailScreen(
             onNavigateUp = onNavigateUp,
             onNavigateToBoards = onNavigateToBoards,
-            onOpenWebClick = { url ->
-                context.startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
-            },
+            onOpenWebClick = {},
         )
     }
 }
@@ -573,15 +565,9 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                                 navArgument("threadId") { type = NavType.StringType },
                             ),
                         ) {
-                            val context = LocalContext.current
                             SavedPostDetailScreen(
                                 onNavigateUp = { navController.navigateUp() },
-                                onOpenWebClick = { url ->
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    )
-                                },
+                                onOpenWebClick = {},
                             )
                         }
                     }

@@ -3,7 +3,6 @@ package tw.kevinzhang.newshub.ui.thread
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -21,9 +20,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tw.kevinzhang.data.ReadingHistoryRepository
 import tw.kevinzhang.data.SavedPostRepository
+import tw.kevinzhang.data.SavedPostAssetStore
 import tw.kevinzhang.data.domain.ParagraphListConverter
 import tw.kevinzhang.data.domain.SavedPostEntity
 import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.HostResourceProvider
 import tw.kevinzhang.extension_api.AuthenticationRequiredException
 import tw.kevinzhang.extension_api.model.Comment
 import tw.kevinzhang.extension_api.model.CommentPage
@@ -38,7 +39,6 @@ import tw.kevinzhang.newshub.data.PreferenceStore
 import tw.kevinzhang.newshub.data.ReadTrackingMode
 import tw.kevinzhang.newshub.data.ReplyDisplayMode
 import tw.kevinzhang.newshub.auth.SourceSessionManager
-import java.io.File
 import javax.inject.Inject
 
 private const val COMMENTS_PAGE_SIZE = 5
@@ -55,6 +55,8 @@ class ThreadDetailViewModel @Inject constructor(
     private val preferenceStore: PreferenceStore,
     private val historyRepository: ReadingHistoryRepository,
     private val savedPostRepository: SavedPostRepository,
+    private val savedPostAssetStore: SavedPostAssetStore,
+    internal val resourceProvider: HostResourceProvider,
     private val sessionManager: SourceSessionManager,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -83,9 +85,8 @@ class ThreadDetailViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
-    val threadUrl: StateFlow<String?> = _thread
-        .map { it?.url }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    /** Raw extension URLs are not executable host links; only broker-issued handles may be opened. */
+    val threadUrl: StateFlow<String?> = MutableStateFlow(null)
 
     val previewPost = MutableStateFlow<Post?>(null)
 
@@ -253,7 +254,8 @@ class ThreadDetailViewModel @Inject constructor(
         return Thread(
             // A few legacy sources leave the thread ID empty; the navigation ID is authoritative.
             id = metadata?.id?.ifBlank { threadId } ?: threadId,
-            url = metadata?.url ?: source.getWebUrl(threadSummary()),
+            // Extension-provided URLs remain inert until represented by a broker-issued handle.
+            url = null,
             title = metadata?.title ?: threadTitle,
             posts = page.posts.map { it.copy(sourceIconUrl = source.iconUrl) },
         )
@@ -499,18 +501,17 @@ class ThreadDetailViewModel @Inject constructor(
         previewPost.value = null
     }
 
-    fun requestToggleSave(filesDir: File) {
+    fun requestToggleSave() {
         if (isSaved.value) {
             viewModelScope.launch {
                 savedPostRepository.unsavePost(sourceId, threadId)
-                deleteScreenshots(filesDir)
             }
         } else {
             _isSavingScreenshots.value = true
         }
     }
 
-    fun onScreenshotsCaptured(screenshotPaths: List<String>) {
+    fun onScreenshotsCaptured(screenshotAssetRefs: List<String>) {
         val thread = _thread.value ?: run {
             _isSavingScreenshots.value = false
             return
@@ -537,17 +538,17 @@ class ThreadDetailViewModel @Inject constructor(
             sourceIconUrl = cachedSource?.iconUrl,
             threadUrl = thread.url,
             savedAt = System.currentTimeMillis(),
-            screenshotPaths = Gson().toJson(screenshotPaths),
+            screenshotAssetRefs = savedPostAssetStore.encodeReferences(screenshotAssetRefs),
         )
         viewModelScope.launch {
-            savedPostRepository.savePost(entity)
-            _isSavingScreenshots.value = false
-        }
-    }
-
-    private suspend fun deleteScreenshots(filesDir: File) {
-        withContext(Dispatchers.IO) {
-            File(filesDir, "saved_posts/${sourceId}_${threadId}").deleteRecursively()
+            try {
+                savedPostRepository.savePost(entity)
+            } catch (error: Throwable) {
+                savedPostAssetStore.deleteReferences(screenshotAssetRefs)
+                throw error
+            } finally {
+                _isSavingScreenshots.value = false
+            }
         }
     }
 }

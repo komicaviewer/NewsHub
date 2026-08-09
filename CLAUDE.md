@@ -9,8 +9,8 @@ A multi-module Android app (Kotlin + Jetpack Compose + Hilt) that aggregates for
 ```
 NewsHub/
 ├── app/                   # Main Android app (UI, navigation, ViewModels, DI wiring)
-├── extension-api/         # Source interface + data models (pure Kotlin, no Android)
-├── extension-loader/      # ExtensionManager + ExtensionLoaderImpl (loads APK extensions)
+├── extension-api/         # Source API + bounded AIDL/PFD isolated-service protocol
+├── extension-loader/      # Discovers, verifies, and binds isolated Source services
 ├── marketplace/           # Extension repo parsing, APK download, install state
 ├── collection/            # Room DB: user collections, board subscriptions, reading history, saved posts
 ├── gamer-api/             # HTTP client for Bahamut Gamer (being phased out as built-in)
@@ -27,7 +27,7 @@ NewsHub/
 - `getBoardCategories()`, `getBoardPage(request)`, `getThreadSummaries(board, page)`, `getThread(summary)`
 - Board catalogs are source-owned and paged. An empty query returns the source's popular
   boards; non-empty queries search remotely or within that source's catalog.
-- `onAttach(SourceContext)` — injected by host app for auth callbacks
+- `onAttach(SourceRuntime)` — source-scoped network/auth capabilities supplied inside the isolated process
 - `requiresLogin`, `loginUrl`, `loginPageLoadJs` — WebView auth support
 
 ### ExtensionLoader (`extension-loader`)
@@ -40,7 +40,7 @@ NewsHub/
 1. APK extension sources from `ExtensionManager.installedExtensions`
 
 ### ExtensionManager (`extension-loader`)
-Singleton. Scans `PackageManager` for packages with `newshub.extension` meta-data, loads `Source` via `PathClassLoader`. Exposes `installedExtensions: StateFlow<List<InstalledExtension>>`. Handles `installExtension(File)` and `uninstallExtension(pkgName)` via system intents.
+Singleton. Queries the explicit `tw.kevinzhang.newshub.extension.SERVICE` contract, verifies the official package, signer history, Service flags, permission, and Source metadata, then binds by explicit `ComponentName`. Extension code never loads into the Host process.
 
 ### ExtensionReceiver (`app`)
 `@AndroidEntryPoint` BroadcastReceiver at `tw.kevinzhang.newshub.extension.ExtensionReceiver`. Listens for `PACKAGE_ADDED/REPLACED/REMOVED`, filters to NewsHub extensions, calls `ExtensionManager.notifyPackageChanged/Removed`.
@@ -59,33 +59,21 @@ Persists user-configured repo URLs in DataStore (`repo_settings`). Interface: `g
 
 ---
 
-## Extension APK Registry Contract
+## Extension APK Service Contract
 
 | Key | Value |
 |-----|-------|
-| `newshub.extension` | `"true"` (marker) |
-| `newshub.extension.registry` | Registry asset filename, normally `newshub-extension.json` |
+| `newshub.extension.protocol` | `1` |
+| `newshub.extension.source_id` | Stable Source ID |
+| `newshub.extension.source_name` | Display name |
+| `newshub.extension.source_lang` | Language tag |
+| `newshub.extension.source_base_url` | HTTPS base URL |
 
-The registry uses schema version 1 and lets one APK expose multiple Sources:
-
-```json
-{
-  "schemaVersion": 1,
-  "sources": [
-    {
-      "className": "tw.kevinzhang.extension.example.ExampleSource",
-      "id": "tw.kevinzhang.example",
-      "name": "Example",
-      "lang": "zh-TW",
-      "baseUrl": "https://example.com"
-    }
-  ]
-}
-```
-
-The loader validates the registry metadata against every instantiated Source.
+Every Source is one exported Service with `android:isolatedProcess="true"`, a
+unique private process, and the Host-defined signature bind permission. APKs
+declare no permissions. The old registry asset and application marker are forbidden.
 See [`docs/extension-bundles.md`](docs/extension-bundles.md) for the complete
-manifest, registry, and marketplace index contract.
+manifest, broker, and marketplace contract.
 
 ---
 

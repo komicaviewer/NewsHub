@@ -24,7 +24,8 @@ data class SavedPostEntity(
     val sourceIconUrl: String?,
     val threadUrl: String?,
     val savedAt: Long,
-    val screenshotPaths: String, // JSON-serialized List<String> of absolute file paths
+    /** JSON-serialized opaque references owned and validated by SavedPostAssetStore. */
+    val screenshotAssetRefs: String,
 ) {
     fun toThreadSummary(): ThreadSummary = ThreadSummary(
         sourceId = sourceId,

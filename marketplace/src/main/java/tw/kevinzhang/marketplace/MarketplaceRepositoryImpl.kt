@@ -27,12 +27,14 @@ class MarketplaceRepositoryImpl @Inject constructor(
 ) : MarketplaceRepository {
 
     override suspend fun fetchRepoMetadata(repoUrl: String): RepoMetadata = withContext(Dispatchers.IO) {
+        MarketplaceSecurityGate.requireTrustedMetadata()
         val rawBase = toRawBase(repoUrl)
         val json = fetchString("$rawBase/repo.json")
         gson.fromJson(json, RepoMetadata::class.java)
     }
 
     override suspend fun fetchExtensions(repoUrl: String): List<ExtensionInfo> = withContext(Dispatchers.IO) {
+        MarketplaceSecurityGate.requireTrustedMetadata()
         val rawBase = toRawBase(repoUrl)
         val json = fetchString("$rawBase/index.min.json")
         val type = object : TypeToken<List<RemoteExtensionDto>>() {}.type
@@ -52,6 +54,7 @@ class MarketplaceRepositoryImpl @Inject constructor(
     }
 
     override suspend fun downloadApk(apkUrl: String, expectedSha256: String?): File = withContext(Dispatchers.IO) {
+        MarketplaceSecurityGate.requireTrustedMetadata()
         val safeFilename = MessageDigest.getInstance("SHA-256")
             .digest(apkUrl.toByteArray())
             .joinToString("") { "%02x".format(it) } + ".apk"
@@ -99,6 +102,19 @@ class MarketplaceRepositoryImpl @Inject constructor(
         }
     }
 }
+
+/**
+ * Remote installation stays disabled until the repository is authenticated by an embedded,
+ * threshold TUF root and rollback/freeze checks. An APK hash from the same unsigned index is not
+ * a trust root and must never re-enable this path.
+ */
+internal object MarketplaceSecurityGate {
+    fun requireTrustedMetadata(): Nothing = throw TrustedRepositoryUnavailableException()
+}
+
+class TrustedRepositoryUnavailableException : SecurityException(
+    "Extension Marketplace is disabled until authenticated repository metadata is available",
+)
 
 private fun RemoteExtensionDto.toExtensionInfo(rawBase: String) = ExtensionInfo(
     id = pkg,

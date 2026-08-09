@@ -35,7 +35,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -46,8 +45,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import coil.request.CachePolicy
-import coil.request.ImageRequest
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.RichTextColor
 import tw.kevinzhang.extension_api.model.RichTextEmphasis
@@ -448,7 +445,6 @@ private fun RichTextParagraph(
     layout: RichTextLayout,
     style: TextStyle,
 ) {
-    val uriHandler = LocalUriHandler.current
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val text = buildAnnotatedString {
         runs.forEach { run ->
@@ -482,11 +478,8 @@ private fun RichTextParagraph(
             style
         },
         softWrap = true,
-        onClick = { offset ->
-            text.getStringAnnotations(RICH_TEXT_URL_TAG, offset, offset)
-                .firstOrNull()
-                ?.let { annotation -> uriHandler.openUri(annotation.item) }
-        },
+        // Extension-provided URLs are inert until the host issues a validated resource/link handle.
+        onClick = {},
     )
 }
 
@@ -624,11 +617,9 @@ private fun ReplyReference(
 
 @Composable
 fun Paragraph.Link.View() {
-    val uriHandler = LocalUriHandler.current
     TextButton(
-        onClick = {
-            uriHandler.openUri(content)
-        },
+        onClick = {},
+        enabled = false,
         contentPadding = PaddingValues(0.dp),
         shape = RectangleShape,
     ) { Text(content) }
@@ -636,11 +627,9 @@ fun Paragraph.Link.View() {
 
 @Composable
 fun Paragraph.Link.Small() {
-    val uriHandler = LocalUriHandler.current
     TextButton(
-        onClick = {
-            uriHandler.openUri(content)
-        },
+        onClick = {},
+        enabled = false,
         contentPadding = PaddingValues(0.dp),
         shape = RectangleShape,
     ) { BodySmallText(content) }
@@ -651,65 +640,30 @@ fun Paragraph.ImageInfo.View(
     alwaysUseRawImage: Boolean,
     onClick: (() -> Unit)? = null
 ) {
-    val url = selectImageUrl(raw, thumb, alwaysUseRawImage)
-    val context = LocalContext.current
-    var retryCount by remember(url) { mutableIntStateOf(0) }
-    var loadFailed by remember(url) { mutableStateOf(false) }
-    val model = remember(url, retryCount) {
-        if (retryCount == 0) {
-            url
-        } else {
-            // Failed requests are not normally cached, but disable both caches here so a retry
-            // cannot reuse an outdated entry and always starts a new image request.
-            ImageRequest.Builder(context)
-                .data(url)
-                .memoryCachePolicy(CachePolicy.DISABLED)
-                .diskCachePolicy(CachePolicy.DISABLED)
-                .networkCachePolicy(CachePolicy.ENABLED)
-                .build()
-        }
+    val model = resourceModelOrNull(selectImageUrl(raw, thumb, alwaysUseRawImage))
+    val imageModifier = if (onClick == null) {
+        Modifier.fillMaxWidth()
+    } else {
+        Modifier.fillMaxWidth().appClickable(onClick = onClick)
     }
-    var imageModifier = Modifier.fillMaxWidth()
-    if (onClick != null) {
-        imageModifier = imageModifier.appClickable { onClick() }
-    }
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 120.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        key(retryCount) {
+        if (model == null) {
+            Text(
+                text = "遠端圖片已封鎖",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
             AsyncImage(
                 model = model,
                 modifier = imageModifier,
                 contentDescription = null,
-                onSuccess = { loadFailed = false },
-                onError = { loadFailed = true },
             )
-        }
-
-        if (loadFailed) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = "圖片載入失敗",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TextButton(
-                    onClick = {
-                        loadFailed = false
-                        retryCount += 1
-                    },
-                ) {
-                    Text("重試")
-                }
-            }
         }
     }
 }
@@ -717,33 +671,14 @@ fun Paragraph.ImageInfo.View(
 
 @Composable
 fun Paragraph.VideoInfo.View(onClick: (() -> Unit)? = null) {
-    if (site == Paragraph.VideoInfo.Site.YOUTUBE) {
-        val videoId = extractYouTubeVideoId(url)
-        if (videoId != null) {
-            YouTubePlayer(videoId = videoId)
-            return
-        }
-    }
-
-    var m = Modifier.fillMaxWidth()
-    if (onClick != null) {
-        m = m.appClickable { onClick() }
-    }
-
     Box(
-        modifier = m,
+        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 120.dp),
         contentAlignment = Alignment.Center,
     ) {
-        AsyncImage(
-            model = url,
-            contentDescription = null,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Icon(
-            imageVector = Icons.Default.PlayCircle,
-            contentDescription = "播放影片",
-            tint = Color.White.copy(alpha = 0.85f),
-            modifier = Modifier.size(48.dp),
+        Text(
+            text = "遠端影片已封鎖",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

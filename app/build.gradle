@@ -18,7 +18,7 @@ android {
 
     defaultConfig {
         applicationId "tw.kevinzhang.newshub"
-        minSdk 21
+        minSdk 29
         targetSdk 34
         versionCode appVersionCode
         versionName appVersionName

@@ -36,7 +36,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import tw.kevinzhang.newshub.ui.component.BodySmallText
-import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,7 +45,7 @@ fun SavedPostDetailScreen(
     viewModel: SavedPostDetailViewModel = hiltViewModel(),
 ) {
     val entity by viewModel.entity.collectAsStateWithLifecycle()
-    val screenshotPaths by viewModel.screenshotPaths.collectAsStateWithLifecycle()
+    val screenshotFiles by viewModel.screenshotFiles.collectAsStateWithLifecycle()
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     if (showDeleteConfirm) {
@@ -84,8 +83,8 @@ fun SavedPostDetailScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = { entity?.threadUrl?.let { onOpenWebClick(it) } },
-                        enabled = entity?.threadUrl != null,
+                        onClick = {},
+                        enabled = false,
                     ) {
                         Icon(
                             imageVector = Icons.Default.OpenInBrowser,
@@ -112,13 +111,13 @@ fun SavedPostDetailScreen(
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    itemsIndexed(screenshotPaths) { index, path ->
+                    itemsIndexed(screenshotFiles) { index, file ->
                         AsyncImage(
-                            model = File(path),
+                            model = file,
                             contentDescription = "Post ${index + 1}",
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        if (index < screenshotPaths.lastIndex) {
+                        if (index < screenshotFiles.lastIndex) {
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                     }

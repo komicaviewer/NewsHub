@@ -1,6 +1,5 @@
 package tw.kevinzhang.extension_api
 
-import okhttp3.OkHttpClient
 import kotlinx.coroutines.flow.StateFlow
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.BoardCategory
@@ -82,13 +81,8 @@ interface Source {
     suspend fun getComments(post: Post, page: Int): CommentPage = CommentPage(emptyList(), false)
 
     /** Returns the publicly accessible web URL for this thread, or null if login is required. */
-    fun getWebUrl(summary: ThreadSummary): String? = null
+    suspend fun getWebUrl(summary: ThreadSummary): String? = null
 
-    /**
-     * Legacy runtime hook retained for binary/source compatibility. New sources should
-     * implement [SessionAwareSource] and use its source-scoped [SourceRuntime] instead.
-     */
-    fun onAttach(client: OkHttpClient) {}
 }
 
 /** Authentication a source opts into. The host owns the UI and credential storage. */
@@ -133,8 +127,31 @@ class AuthenticationRequiredException(
 
 /** Runtime supplied by the host to each source. */
 interface SourceRuntime {
-    val httpClient: OkHttpClient
+    /** The only ambient capability available inside an isolated extension process. */
+    val network: SourceNetwork
     val authentication: AuthenticationSession
+}
+
+data class SourceNetworkRequest(
+    val operation: String,
+    val method: String,
+    val url: String,
+    val headers: Map<String, String> = emptyMap(),
+    val body: ByteArray? = null,
+)
+
+data class SourceNetworkResponse(
+    val code: Int,
+    val headers: Map<String, String> = emptyMap(),
+    val body: ByteArray,
+)
+
+/**
+ * Requests are authorized by a Host-owned, immutable policy bound to the current Source
+ * service. Implementations must not assume that arbitrary URLs, methods, or headers are allowed.
+ */
+fun interface SourceNetwork {
+    suspend fun execute(request: SourceNetworkRequest): SourceNetworkResponse
 }
 
 /** Per-source authentication state. Calling [markExpired] never launches UI. */

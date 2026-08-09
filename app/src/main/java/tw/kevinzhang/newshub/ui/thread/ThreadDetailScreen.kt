@@ -92,6 +92,7 @@ import tw.kevinzhang.newshub.ui.component.LabelSmallText
 import tw.kevinzhang.newshub.ui.component.Small
 import tw.kevinzhang.newshub.ui.component.View
 import tw.kevinzhang.newshub.ui.component.appClickable
+import tw.kevinzhang.newshub.ui.component.resourceModelOrNull
 import tw.kevinzhang.newshub.ui.component.gallery.PostGallery
 import tw.kevinzhang.newshub.ui.component.swipeToGoBack
 
@@ -231,6 +232,7 @@ fun ThreadDetailScreen(
                 alwaysUseRawImage = alwaysUseRawImage,
                 sourceId = viewModel.sourceId,
                 threadId = viewModel.threadId,
+                resourceProvider = viewModel.resourceProvider,
             )
             viewModel.onScreenshotsCaptured(paths)
         }
@@ -279,7 +281,7 @@ fun ThreadDetailScreen(
                             }
                         } else {
                             IconButton(
-                                onClick = { viewModel.requestToggleSave(context.filesDir) },
+                                onClick = { viewModel.requestToggleSave() },
                                 enabled = !isLoading,
                             ) {
                                 Icon(
@@ -443,7 +445,7 @@ fun ThreadDetailScreen(
                     startIndex = request.startIndex,
                     isSaved = isSaved,
                     isSaving = isSavingScreenshots,
-                    onToggleSave = { viewModel.requestToggleSave(context.filesDir) },
+                    onToggleSave = { viewModel.requestToggleSave() },
                     onDismissRequest = { galleryRequest = null },
                     onReplyToClick = { targetId ->
                         galleryRequest = null
@@ -515,7 +517,7 @@ fun ThreadDetailScreen(
                                     ) {
                                         reply.sourceIconUrl?.let {
                                             AsyncImage(
-                                                model = it,
+                                                model = resourceModelOrNull(it),
                                                 contentDescription = null,
                                                 modifier = Modifier.size(14.dp),
                                             )
@@ -629,7 +631,7 @@ private fun QuotePreviewContent(post: Post, alwaysUseRawImage: Boolean) {
         )
         mediaModel?.let { model ->
             AsyncImage(
-                model = model,
+                model = resourceModelOrNull(model),
                 contentDescription = "引用貼文媒體預覽",
                 modifier = Modifier
                     .fillMaxWidth()
@@ -814,7 +816,7 @@ internal fun PostCard(
             ) {
                 post.sourceIconUrl?.let {
                     AsyncImage(
-                        model = it,
+                        model = resourceModelOrNull(it),
                         contentDescription = null,
                         modifier = Modifier
                             .size(20.dp)

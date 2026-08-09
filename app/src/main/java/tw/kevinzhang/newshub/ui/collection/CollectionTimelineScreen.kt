@@ -84,6 +84,7 @@ import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.newshub.data.TimelineDisplayMode
 import tw.kevinzhang.newshub.ui.component.BodyLargeText
 import tw.kevinzhang.newshub.ui.component.ThreadSummaryCard
+import tw.kevinzhang.newshub.ui.component.resourceModelOrNull
 
 private const val BAR_VISIBILITY_ANIMATION_MILLIS = 220
 private val BarVisibilityScrollThreshold = 12.dp
@@ -476,7 +477,7 @@ private fun SourceFilterRow(
                 leadingIcon = sourceIconUrls[sourceId]?.let { iconUrl ->
                     {
                         AsyncImage(
-                            model = iconUrl,
+                            model = resourceModelOrNull(iconUrl),
                             contentDescription = null,
                             modifier = Modifier
                                 .size(18.dp)

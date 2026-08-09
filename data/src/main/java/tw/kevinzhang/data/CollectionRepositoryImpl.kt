@@ -1,8 +1,6 @@
 package tw.kevinzhang.data
 
 import androidx.room.withTransaction
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import tw.kevinzhang.data.domain.BoardSubscriptionEntity
@@ -14,13 +12,13 @@ import tw.kevinzhang.data.domain.PostReadEntity
 import tw.kevinzhang.data.domain.ReadingHistoryEntity
 import tw.kevinzhang.data.domain.SavedPostEntity
 import tw.kevinzhang.extension_api.model.ThreadSummary
-import java.io.File
 import java.util.UUID
 import javax.inject.Inject
 
 class CollectionRepositoryImpl @Inject constructor(
     private val dao: CollectionDao,
     private val db: CollectionDatabase,
+    private val savedPostAssetStore: SavedPostAssetStore,
 ) : CollectionRepository, ReadingHistoryRepository, SavedPostRepository {
 
     override fun observeCollections(): Flow<List<CollectionEntity>> = dao.observeAll()
@@ -176,19 +174,7 @@ class CollectionRepositoryImpl @Inject constructor(
         db.savedPostDao().deleteAll()
     }
 
-    private val gson = Gson()
-    private val pathListType = object : TypeToken<List<String>>() {}.type
-
     private fun deleteScreenshots(entity: SavedPostEntity) {
-        try {
-            val paths: List<String> = gson.fromJson(entity.screenshotPaths, pathListType) ?: emptyList()
-            paths.forEach { path ->
-                val file = File(path)
-                if (file.exists()) {
-                    file.delete()
-                }
-            }
-        } catch (_: Exception) {
-        }
+        savedPostAssetStore.deleteSerializedReferences(entity.screenshotAssetRefs)
     }
 }
