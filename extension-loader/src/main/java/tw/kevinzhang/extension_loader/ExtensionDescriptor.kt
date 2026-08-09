@@ -3,6 +3,8 @@ package tw.kevinzhang.extension_loader
 import android.content.pm.ServiceInfo
 import tw.kevinzhang.extension_api.ExtensionProtocol
 import tw.kevinzhang.extension_api.NetworkOperationPolicy
+import tw.kevinzhang.extension_api.NamedHostCapabilities
+import tw.kevinzhang.extension_api.NetworkOperations
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 
 /** Host-owned metadata for one isolated Source service. */
@@ -14,6 +16,7 @@ data class ExtensionDescriptor(
     val name: String,
     val lang: String,
     val baseUrl: String,
+    val protocol: Int,
     val needsLogin: Boolean,
     val loginUrl: String?,
     val loginHosts: Set<String>,
@@ -34,6 +37,9 @@ internal object ExtensionDescriptorValidator {
         }
         require(service.flags and ServiceInfo.FLAG_EXTERNAL_SERVICE == 0) {
             "Source service must not use externalService"
+        }
+        require(service.processName.startsWith("${service.packageName}:")) {
+            "Source service must use a private package process"
         }
 
         fun required(key: String): String = metadata.getString(key)?.trim().orEmpty().also {
@@ -68,6 +74,7 @@ internal object ExtensionDescriptorValidator {
             name = required(ExtensionProtocol.META_SOURCE_NAME),
             lang = required(ExtensionProtocol.META_SOURCE_LANG),
             baseUrl = baseUrl,
+            protocol = metadata.getInt(ExtensionProtocol.META_PROTOCOL),
             needsLogin = needsLogin,
             loginUrl = loginUrl,
             loginHosts = loginHosts,
@@ -82,32 +89,34 @@ internal data class OfficialSourcePolicy(
 ) {
     fun networkPolicy() = SourceNetworkPolicy(
         exactHosts = exactHosts,
-        operations = setOf(
-            "catalog",
-            "thread_summaries",
-            "thread",
-            "comments",
-            "validate_session",
-            "resource",
-        ).associateWith { operation ->
+        operations = setOf(NetworkOperations.SOURCE_READ).associateWith { operation ->
             NetworkOperationPolicy(
                 name = operation,
                 methods = setOf("GET", "HEAD"),
                 pathPrefixes = setOf("/"),
-                credentialed = operation == "validate_session" || operation == "thread" || operation == "comments",
+                // Extensions never receive cookies; the Host may attach only this Source identity's jar.
+                credentialed = true,
             )
+        },
+        namedCapabilities = buildSet {
+            add(NamedHostCapabilities.RESOURCE_READ)
+            add(NamedHostCapabilities.EXTERNAL_LINK)
+            if (packageName == "tw.kevinzhang.newshub.extension.ptt" &&
+                sourceId == "tw.kevinzhang.newshub.extension.ptt"
+            ) {
+                add(NamedHostCapabilities.PTT_ADULT_CONSENT_STATUS)
+            }
+            if (packageName == "tw.kevinzhang.newshub.extension.eyny" &&
+                sourceId == "tw.kevinzhang.eyny"
+            ) {
+                add(NamedHostCapabilities.EYNY_CHALLENGE_PROOF)
+            }
         },
     )
 }
 
-/**
- * Bootstrap trust root. It is intentionally code-owned until the offline-root TUF client lands;
- * unknown packages and Source ids fail closed instead of falling back to a custom repository.
- */
+/** Host-owned capability policy; repository metadata authorizes exact package/signers and hashes it. */
 internal object OfficialExtensionCatalog {
-    const val RELEASE_SIGNER_SHA256 =
-        "3df4717435423d5ba7adfed43a22a6e18bbeadc8d509d0bea94d82c7b0f2998d"
-
     private val entries = listOf(
         OfficialSourcePolicy("tw.kevinzhang.newshub.extension.eyny", "tw.kevinzhang.eyny", setOf("eyny.com", "www.eyny.com")),
         OfficialSourcePolicy("tw.kevinzhang.newshub.extension.gamer", "tw.kevinzhang.newshub.extension.gamer", setOf("forum.gamer.com.tw")),

@@ -1,14 +1,26 @@
 package tw.kevinzhang.data.domain
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
+import androidx.room.Embedded
+import androidx.room.Relation
 import tw.kevinzhang.extension_api.model.ThreadSummary
 
 @Entity(
     tableName = "saved_posts",
-    primaryKeys = ["sourceId", "threadId"],
+    primaryKeys = ["sourceKey", "threadId"],
+    foreignKeys = [ForeignKey(
+        entity = SourceIdentityEntity::class,
+        parentColumns = ["sourceKey"],
+        childColumns = ["sourceKey"],
+        onDelete = ForeignKey.RESTRICT,
+        onUpdate = ForeignKey.CASCADE,
+    )],
+    indices = [Index("sourceKey")],
 )
 data class SavedPostEntity(
-    val sourceId: String,
+    val sourceKey: String,
     val sourceName: String? = null,
     val threadId: String,
     val boardUrl: String,
@@ -27,7 +39,7 @@ data class SavedPostEntity(
     /** JSON-serialized opaque references owned and validated by SavedPostAssetStore. */
     val screenshotAssetRefs: String,
 ) {
-    fun toThreadSummary(): ThreadSummary = ThreadSummary(
+    fun toThreadSummary(sourceId: String): ThreadSummary = ThreadSummary(
         sourceId = sourceId,
         boardUrl = boardUrl,
         id = threadId,
@@ -41,4 +53,12 @@ data class SavedPostEntity(
         previewContent = ParagraphListConverter().fromJson(previewContent),
         sourceIconUrl = sourceIconUrl,
     )
+}
+
+data class SavedPostRecord(
+    @Embedded val savedPost: SavedPostEntity,
+    @Relation(parentColumn = "sourceKey", entityColumn = "sourceKey")
+    val sourceIdentity: SourceIdentityEntity,
+) {
+    fun toThreadSummary(): ThreadSummary = savedPost.toThreadSummary(sourceIdentity.sourceId)
 }

@@ -75,7 +75,7 @@ fun SavedPostDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(entity?.title ?: "") },
+                title = { Text(entity?.savedPost?.title ?: "") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateUp) {
                         Icon(Icons.Outlined.ArrowBack, contentDescription = "Back")

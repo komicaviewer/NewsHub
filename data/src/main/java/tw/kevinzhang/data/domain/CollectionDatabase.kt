@@ -13,16 +13,18 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ReadingHistoryEntity::class,
         SavedPostEntity::class,
         PostReadEntity::class,
+        SourceIdentityEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
-@TypeConverters(ParagraphListConverter::class)
+@TypeConverters(ParagraphListConverter::class, SourceResolutionConverter::class)
 abstract class CollectionDatabase : RoomDatabase() {
     abstract fun collectionDao(): CollectionDao
     abstract fun readingHistoryDao(): ReadingHistoryDao
     abstract fun savedPostDao(): SavedPostDao
     abstract fun postReadDao(): PostReadDao
+    abstract fun sourceIdentityDao(): SourceIdentityDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -180,12 +182,19 @@ abstract class CollectionDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                migrateLegacySourcesToCanonicalIdentities(database)
+            }
+        }
+
         val ALL_MIGRATIONS = arrayOf(
             MIGRATION_1_2,
             MIGRATION_2_4,
             MIGRATION_4_5,
             MIGRATION_5_6,
             MIGRATION_6_7,
+            MIGRATION_7_8,
         )
     }
 }

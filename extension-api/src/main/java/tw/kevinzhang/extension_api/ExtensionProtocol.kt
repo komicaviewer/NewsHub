@@ -76,6 +76,9 @@ object ExtensionProtocol {
     const val STATUS_CANCELLED = 3
     const val STATUS_PAYLOAD_TOO_LARGE = 4
 
+    const val COOKIE_OP_PTT_ADULT_CONSENT_STATUS = 1
+    const val COOKIE_OP_EYNY_CHALLENGE_PROOF = 2
+
     const val MAX_CONTROL_BYTES = 64 * 1024
     const val MAX_RESULT_BYTES = 4 * 1024 * 1024
     const val MAX_NETWORK_REQUEST_BYTES = 2 * 1024 * 1024
@@ -242,9 +245,58 @@ private suspend fun executeSourceOperation(source: Source, operation: Int, reque
 
 private class BrokerRuntime(broker: IHostBroker) : SourceRuntime {
     override val network: SourceNetwork = BinderSourceNetwork(broker)
+    override val namedCookies: NamedCookieCapability = BinderNamedCookieCapability(broker)
     override val authentication: AuthenticationSession = object : AuthenticationSession {
         override val state: StateFlow<AuthState> = MutableStateFlow(AuthState.Unknown)
         override fun markExpired() = Unit
+    }
+}
+
+private class BinderNamedCookieCapability(private val broker: IHostBroker) : NamedCookieCapability {
+    private val requestIds = AtomicLong(0L)
+
+    override suspend fun hasPttAdultConsent(): Boolean =
+        call(ExtensionProtocol.COOKIE_OP_PTT_ADULT_CONSENT_STATUS, Unit)
+
+    override suspend fun storeEynyChallengeProof(proof: EynyChallengeProof) {
+        check(call<Boolean>(ExtensionProtocol.COOKIE_OP_EYNY_CHALLENGE_PROOF, proof))
+    }
+
+    private suspend inline fun <reified Result> call(operation: Int, request: Any): Result {
+        val requestId = requestIds.decrementAndGet()
+        val payload = ExtensionWireJson.encode(request)
+        require(payload.toByteArray(Charsets.UTF_8).size <= ExtensionProtocol.MAX_CONTROL_BYTES) {
+            "Named cookie request is too large"
+        }
+        val pipe = PipePayload.writeUtf8(payload)
+        return try {
+            withTimeout(ExtensionProtocol.REQUEST_TIMEOUT_MS) {
+                suspendCancellableCoroutine { continuation ->
+                    val callback = object : IHostBrokerCallback.Stub() {
+                        override fun onResult(id: Long, status: Int, response: ParcelFileDescriptor) {
+                            if (id != requestId || !continuation.isActive) {
+                                response.closeQuietly()
+                                return
+                            }
+                            CoroutineScope(Dispatchers.IO).launch {
+                                runCatching {
+                                    val json = PipePayload.readUtf8(response, ExtensionProtocol.MAX_CONTROL_BYTES)
+                                    if (status != ExtensionProtocol.STATUS_OK) throw IOException(json)
+                                    ExtensionWireJson.decode<Result>(json)
+                                }.onSuccess(continuation::resume)
+                                    .onFailure(continuation::resumeWithException)
+                            }
+                        }
+                    }
+                    continuation.invokeOnCancellation { runCatching { broker.cancel(requestId) } }
+                    runCatching {
+                        broker.executeNamedCookieOperation(requestId, operation, pipe, callback)
+                    }.onFailure(continuation::resumeWithException)
+                }
+            }
+        } finally {
+            pipe.closeQuietly()
+        }
     }
 }
 
@@ -324,11 +376,14 @@ object PipePayload {
 
     fun writeUtf8(value: String): ParcelFileDescriptor {
         val bytes = value.toByteArray(Charsets.UTF_8)
-        val pipe = ParcelFileDescriptor.createReliablePipe()
+        // Reliable-pipe status sockets report STATUS_DEAD spuriously for one-way Binder callbacks
+        // on Android 14 isolated processes. The AIDL status field already carries bounded errors;
+        // a kernel pipe keeps the payload one-way/FIFO without a second lifetime channel.
+        val pipe = ParcelFileDescriptor.createPipe()
         CoroutineScope(Dispatchers.IO).launch {
             runCatching {
                 ParcelFileDescriptor.AutoCloseOutputStream(pipe[1]).use { it.write(bytes) }
-            }.onFailure { pipe[1].closeWithError(it.message ?: "pipe write failed") }
+            }.onFailure { pipe[1].closeQuietly() }
         }
         return pipe[0]
     }

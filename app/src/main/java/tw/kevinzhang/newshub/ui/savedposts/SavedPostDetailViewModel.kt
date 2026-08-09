@@ -18,22 +18,22 @@ class SavedPostDetailViewModel @Inject constructor(
     private val savedPostAssetStore: SavedPostAssetStore,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
-    private val sourceId: String = checkNotNull(savedStateHandle["sourceId"])
+    private val sourceKey: String = checkNotNull(savedStateHandle["sourceKey"])
     private val threadId: String = checkNotNull(savedStateHandle["threadId"])
 
-    val entity = repository.observeSavedPost(sourceId, threadId)
+    val entity = repository.observeSavedPost(sourceKey, threadId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val screenshotFiles = entity
         .map { e ->
             if (e == null) emptyList()
-            else savedPostAssetStore.resolveReferences(e.screenshotAssetRefs)
+            else savedPostAssetStore.resolveReferences(e.savedPost.screenshotAssetRefs)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun deleteCurrentPost() {
         viewModelScope.launch {
-            repository.unsavePost(sourceId, threadId)
+            repository.unsavePost(sourceKey, threadId)
         }
     }
 }

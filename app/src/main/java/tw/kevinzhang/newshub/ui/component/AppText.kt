@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -45,12 +46,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import tw.kevinzhang.extension_api.ExternalLinkHandle
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.RichTextColor
 import tw.kevinzhang.extension_api.model.RichTextEmphasis
 import tw.kevinzhang.extension_api.model.RichTextLayout
-import tw.kevinzhang.newshub.ui.component.gallery.YouTubePlayer
-import tw.kevinzhang.newshub.ui.component.gallery.extractYouTubeVideoId
+import tw.kevinzhang.newshub.ui.component.gallery.VideoPlayer
+import tw.kevinzhang.newshub.auth.hostResourceProvider
 
 @Composable
 fun AppText(
@@ -446,6 +448,9 @@ private fun RichTextParagraph(
     style: TextStyle,
 ) {
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val resourceProvider = remember(context) { context.hostResourceProvider() }
     val text = buildAnnotatedString {
         runs.forEach { run ->
             val start = length
@@ -478,8 +483,12 @@ private fun RichTextParagraph(
             style
         },
         softWrap = true,
-        // Extension-provided URLs are inert until the host issues a validated resource/link handle.
-        onClick = {},
+        onClick = { offset ->
+            text.getStringAnnotations(RICH_TEXT_URL_TAG, offset, offset)
+                .firstOrNull()
+                ?.item
+                ?.let { openExternalLink(it, resourceProvider::consumeExternalLink, uriHandler::openUri) }
+        },
     )
 }
 
@@ -617,22 +626,34 @@ private fun ReplyReference(
 
 @Composable
 fun Paragraph.Link.View() {
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val resourceProvider = remember(context) { context.hostResourceProvider() }
+    val handle = remember(content) { ExternalLinkHandle.parse(content) }
     TextButton(
-        onClick = {},
-        enabled = false,
+        onClick = {
+            handle?.let { openExternalLink(it.asModel(), resourceProvider::consumeExternalLink, uriHandler::openUri) }
+        },
+        enabled = handle != null,
         contentPadding = PaddingValues(0.dp),
         shape = RectangleShape,
-    ) { Text(content) }
+    ) { Text(if (handle == null) "連結已封鎖" else "在瀏覽器開啟連結") }
 }
 
 @Composable
 fun Paragraph.Link.Small() {
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val resourceProvider = remember(context) { context.hostResourceProvider() }
+    val handle = remember(content) { ExternalLinkHandle.parse(content) }
     TextButton(
-        onClick = {},
-        enabled = false,
+        onClick = {
+            handle?.let { openExternalLink(it.asModel(), resourceProvider::consumeExternalLink, uriHandler::openUri) }
+        },
+        enabled = handle != null,
         contentPadding = PaddingValues(0.dp),
         shape = RectangleShape,
-    ) { BodySmallText(content) }
+    ) { BodySmallText(if (handle == null) "連結已封鎖" else "在瀏覽器開啟連結") }
 }
 
 @Composable
@@ -671,14 +692,20 @@ fun Paragraph.ImageInfo.View(
 
 @Composable
 fun Paragraph.VideoInfo.View(onClick: (() -> Unit)? = null) {
-    Box(
-        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 120.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "遠端影片已封鎖",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    VideoPlayer(
+        handleModel = url,
+        modifier = Modifier.fillMaxWidth().height(220.dp),
+    )
+}
+
+internal fun openExternalLink(
+    handleModel: String,
+    consume: (ExternalLinkHandle) -> String,
+    openUri: (String) -> Unit,
+): Boolean {
+    val handle = ExternalLinkHandle.parse(handleModel) ?: return false
+    return runCatching {
+        openUri(consume(handle))
+        true
+    }.getOrDefault(false)
 }

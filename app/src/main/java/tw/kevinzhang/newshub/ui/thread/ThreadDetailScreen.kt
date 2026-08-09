@@ -230,7 +230,7 @@ fun ThreadDetailScreen(
                 activity = activity,
                 posts = posts,
                 alwaysUseRawImage = alwaysUseRawImage,
-                sourceId = viewModel.sourceId,
+                sourceId = viewModel.sourceKey,
                 threadId = viewModel.threadId,
                 resourceProvider = viewModel.resourceProvider,
             )

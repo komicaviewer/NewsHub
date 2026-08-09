@@ -51,6 +51,7 @@ import kotlin.coroutines.resumeWithException
 internal class RemoteSourceConnection(
     context: Context,
     descriptor: ExtensionDescriptor,
+    private val onUnexpectedDisconnect: () -> Unit,
 ) : ServiceConnection {
     private val appContext = context.applicationContext
     private val component = ComponentName(descriptor.packageName, descriptor.serviceClassName)
@@ -84,31 +85,32 @@ internal class RemoteSourceConnection(
 
     override fun onServiceDisconnected(name: ComponentName) {
         service.value = null
+        onUnexpectedDisconnect()
     }
 
     override fun onBindingDied(name: ComponentName) {
         service.value = null
         bound = false
+        onUnexpectedDisconnect()
     }
 
     override fun onNullBinding(name: ComponentName) {
         service.value = null
+        onUnexpectedDisconnect()
     }
 }
 
 internal open class RemoteSource(
     protected val descriptor: ExtensionDescriptor,
-    private val signerSha256: String,
+    final override val sourceIdentity: SourceIdentity,
     private val policy: OfficialSourcePolicy,
     private val connection: RemoteSourceConnection,
     brokerProvider: HostBrokerProvider,
     private val resourceProvider: HostResourceProvider,
 ) : Source {
     private val requestIds = AtomicLong()
-    private val broker: IHostBroker = brokerProvider.brokerFor(
-        SourceIdentity(descriptor.packageName, signerSha256, descriptor.sourceId),
-        policy.networkPolicy(),
-    )
+    private val networkPolicy = policy.networkPolicy()
+    private val broker: IHostBroker = brokerProvider.brokerFor(sourceIdentity, networkPolicy)
 
     final override val id: String = descriptor.sourceId
     final override val name: String = descriptor.name
@@ -152,9 +154,8 @@ internal open class RemoteSource(
         }
 
     override suspend fun getWebUrl(summary: ThreadSummary): String? =
-        // Raw extension links are not Host capabilities. Link handles will use a separate,
-        // user-gesture-only contract; until then this path is deliberately unavailable.
-        null
+        call<WebUrlRequest, String?>(ExtensionProtocol.OP_WEB_URL, WebUrlRequest(summary))
+            ?.let(::linkModel)
 
     protected suspend inline fun <reified Request, reified Response> call(
         operation: Int,
@@ -201,13 +202,15 @@ internal open class RemoteSource(
     }
 
     private fun protect(thread: Thread): Thread = thread.copy(
-        url = null,
+        url = thread.url?.let(::linkModel),
         posts = thread.posts.map(::protect),
     )
 
     private fun protect(page: ThreadPage): ThreadPage = page.copy(
         posts = page.posts.map(::protect),
-        metadata = page.metadata?.copy(url = null),
+        metadata = page.metadata?.let { metadata ->
+            metadata.copy(url = metadata.url?.let(::linkModel))
+        },
     )
 
     private fun protect(summary: ThreadSummary): ThreadSummary = summary.copy(
@@ -234,31 +237,37 @@ internal open class RemoteSource(
         )
         is Paragraph.VideoInfo -> paragraph.copy(url = resourceModel(paragraph.url))
         is Paragraph.RichText -> paragraph.copy(
-            runs = paragraph.runs.map { it.copy(linkUrl = null) },
+            runs = paragraph.runs.map { run ->
+                run.copy(linkUrl = run.linkUrl?.let(::linkModel))
+            },
         )
-        is Paragraph.Link -> Paragraph.Text(paragraph.content)
+        is Paragraph.Link -> Paragraph.Link(linkModel(paragraph.content))
         else -> paragraph
     }
 
     private fun resourceModel(untrustedUrl: String): String = runCatching {
         resourceProvider.issueResource(
-            SourceIdentity(descriptor.packageName, signerSha256, descriptor.sourceId),
-            policy.networkPolicy(),
+            sourceIdentity,
+            networkPolicy,
             untrustedUrl,
         ).asModel()
     }.getOrDefault("newshub-blocked://resource")
+
+    private fun linkModel(untrustedUrl: String): String = runCatching {
+        resourceProvider.issueExternalLink(sourceIdentity, networkPolicy, untrustedUrl).asModel()
+    }.getOrDefault("newshub-blocked://link")
 }
 
 internal class RemoteAuthenticatedSource(
     descriptor: ExtensionDescriptor,
-    signerSha256: String,
+    sourceIdentity: SourceIdentity,
     policy: OfficialSourcePolicy,
     connection: RemoteSourceConnection,
     brokerProvider: HostBrokerProvider,
     resourceProvider: HostResourceProvider,
 ) : RemoteSource(
     descriptor,
-    signerSha256,
+    sourceIdentity,
     policy,
     connection,
     brokerProvider,

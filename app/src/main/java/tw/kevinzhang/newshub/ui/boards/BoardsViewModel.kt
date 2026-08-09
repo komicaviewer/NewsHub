@@ -12,6 +12,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import tw.kevinzhang.data.CollectionRepository
+import tw.kevinzhang.data.SourceIdentityRepository
 import tw.kevinzhang.extension_api.AuthState
 import tw.kevinzhang.extension_api.AuthenticatedSource
 import tw.kevinzhang.extension_api.Source
@@ -27,6 +28,7 @@ data class SourceWithBoards(val source: Source, val boards: List<Board>)
 class BoardsViewModel @Inject constructor(
     private val extensionLoader: ExtensionLoader,
     private val collectionRepo: CollectionRepository,
+    private val sourceIdentityRepository: SourceIdentityRepository,
     private val sessionManager: SourceSessionManager,
 ) : ViewModel() {
 
@@ -70,10 +72,12 @@ class BoardsViewModel @Inject constructor(
 
     fun addBoardToCollections(collectionIds: List<String>, board: Board, source: Source) {
         viewModelScope.launch {
+            val identity = source.sourceIdentity ?: return@launch
+            val sourceKey = sourceIdentityRepository.register(identity).sourceKey
             collectionIds.forEach { collectionId ->
                 collectionRepo.addBoardSubscription(
                     collectionId = collectionId,
-                    sourceId = source.id,
+                    sourceKey = sourceKey,
                     boardUrl = board.url,
                     boardName = board.name,
                 )

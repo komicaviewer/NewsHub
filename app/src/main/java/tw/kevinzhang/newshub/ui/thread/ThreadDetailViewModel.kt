@@ -21,6 +21,9 @@ import kotlinx.coroutines.withContext
 import tw.kevinzhang.data.ReadingHistoryRepository
 import tw.kevinzhang.data.SavedPostRepository
 import tw.kevinzhang.data.SavedPostAssetStore
+import tw.kevinzhang.data.SourceIdentityRepository
+import tw.kevinzhang.data.domain.CanonicalSourceIdentities
+import tw.kevinzhang.data.domain.SourceResolution
 import tw.kevinzhang.data.domain.ParagraphListConverter
 import tw.kevinzhang.data.domain.SavedPostEntity
 import tw.kevinzhang.extension_api.Source
@@ -56,6 +59,7 @@ class ThreadDetailViewModel @Inject constructor(
     private val historyRepository: ReadingHistoryRepository,
     private val savedPostRepository: SavedPostRepository,
     private val savedPostAssetStore: SavedPostAssetStore,
+    private val sourceIdentityRepository: SourceIdentityRepository,
     internal val resourceProvider: HostResourceProvider,
     private val sessionManager: SourceSessionManager,
     savedStateHandle: SavedStateHandle,
@@ -65,6 +69,9 @@ class ThreadDetailViewModel @Inject constructor(
     }
     val sourceId: String = checkNotNull(savedStateHandle["sourceId"]) {
         "ThreadDetailViewModel requires 'sourceId' in SavedStateHandle"
+    }
+    val sourceKey: String = checkNotNull(savedStateHandle["sourceKey"]) {
+        "ThreadDetailViewModel requires 'sourceKey' in SavedStateHandle"
     }
     private val boardUrl: String = checkNotNull(savedStateHandle["boardUrl"]) {
         "ThreadDetailViewModel requires 'boardUrl' in SavedStateHandle"
@@ -110,7 +117,7 @@ class ThreadDetailViewModel @Inject constructor(
         )
 
     val readPostIds: StateFlow<Set<String>> = historyRepository
-        .observeReadPostIds(sourceId, threadId)
+        .observeReadPostIds(sourceKey, threadId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     private var cachedSource: Source? = null
@@ -126,7 +133,7 @@ class ThreadDetailViewModel @Inject constructor(
     private var threadLoadGeneration = 0L
 
     val isSaved: StateFlow<Boolean> = savedPostRepository
-        .observeSavedPost(sourceId, threadId)
+        .observeSavedPost(sourceKey, threadId)
         .map { it != null }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
@@ -164,7 +171,7 @@ class ThreadDetailViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val source = extensionLoader.getSource(sourceId)
+            val source = resolveTrustedSource()
             if (source == null) {
                 _loadError.value = "找不到這個內容來源，可能需要重新安裝擴充套件。"
                 _isLoading.value = false
@@ -179,7 +186,7 @@ class ThreadDetailViewModel @Inject constructor(
 
     fun refresh() {
         viewModelScope.launch {
-            val source = cachedSource ?: extensionLoader.getSource(sourceId)
+            val source = cachedSource ?: resolveTrustedSource()
             if (source == null) {
                 _loadError.value = "找不到這個內容來源，可能需要重新安裝擴充套件。"
                 _isLoading.value = false
@@ -297,7 +304,7 @@ class ThreadDetailViewModel @Inject constructor(
         _threadPaging.value = appending
 
         viewModelScope.launch {
-            val source = cachedSource ?: extensionLoader.getSource(sourceId)
+            val source = cachedSource ?: resolveTrustedSource()
             if (source == null) {
                 if (generation == threadLoadGeneration) {
                     _threadPaging.update {
@@ -372,7 +379,7 @@ class ThreadDetailViewModel @Inject constructor(
         }
         viewModelScope.launch {
             recordHistoryIfNeeded()
-            historyRepository.markPostRead(sourceId, threadId, postId)
+            historyRepository.markPostRead(sourceKey, threadId, postId)
         }
     }
 
@@ -389,7 +396,7 @@ class ThreadDetailViewModel @Inject constructor(
         pendingReadPostIds += unreadIds
         viewModelScope.launch {
             recordHistoryIfNeeded()
-            historyRepository.markPostsRead(sourceId, threadId, unreadIds)
+            historyRepository.markPostsRead(sourceKey, threadId, unreadIds)
         }
     }
 
@@ -398,6 +405,7 @@ class ThreadDetailViewModel @Inject constructor(
         val summary = historySummary ?: return
         historyRecorded = true
         historyRepository.recordRead(
+            sourceKey = sourceKey,
             summary = summary,
             sourceName = cachedSource?.name,
             boardName = boardName,
@@ -504,7 +512,7 @@ class ThreadDetailViewModel @Inject constructor(
     fun requestToggleSave() {
         if (isSaved.value) {
             viewModelScope.launch {
-                savedPostRepository.unsavePost(sourceId, threadId)
+                savedPostRepository.unsavePost(sourceKey, threadId)
             }
         } else {
             _isSavingScreenshots.value = true
@@ -522,7 +530,7 @@ class ThreadDetailViewModel @Inject constructor(
             ?.firstOrNull()
         val converter = ParagraphListConverter()
         val entity = SavedPostEntity(
-            sourceId = sourceId,
+            sourceKey = sourceKey,
             sourceName = cachedSource?.name,
             threadId = threadId,
             boardUrl = boardUrl,
@@ -550,5 +558,16 @@ class ThreadDetailViewModel @Inject constructor(
                 _isSavingScreenshots.value = false
             }
         }
+    }
+
+    private suspend fun resolveTrustedSource(): Source? {
+        val storedIdentity = sourceIdentityRepository.getByKey(sourceKey) ?: return null
+        if (storedIdentity.resolution != SourceResolution.OFFICIAL || storedIdentity.sourceId != sourceId) {
+            return null
+        }
+        val source = extensionLoader.getSource(sourceId) ?: return null
+        val runtimeIdentity = source.sourceIdentity ?: return null
+        val runtimeKey = CanonicalSourceIdentities.fromRuntimeIdentity(runtimeIdentity).sourceKey
+        return source.takeIf { runtimeKey == sourceKey }
     }
 }

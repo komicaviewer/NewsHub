@@ -25,6 +25,12 @@ class ExtensionDescriptorTest {
     }
 
     @Test
+    fun `rejects isolated service process outside its package private namespace`() {
+        assertInvalid(validService().apply { processName = ":shared" })
+        assertInvalid(validService().apply { processName = "attacker.package:shared" })
+    }
+
+    @Test
     fun `rejects service without host signature bind permission`() {
         assertInvalid(validService().apply { permission = null })
     }
@@ -33,6 +39,29 @@ class ExtensionDescriptorTest {
     fun `rejects legacy or future protocol instead of negotiating fallback`() {
         assertInvalid(validService().apply { metaData.putInt(ExtensionProtocol.META_PROTOCOL, 0) })
         assertInvalid(validService().apply { metaData.putInt(ExtensionProtocol.META_PROTOCOL, 2) })
+    }
+
+    @Test
+    fun `signed service metadata must match every runtime descriptor field`() {
+        val descriptor = ExtensionDescriptorValidator.fromServiceInfo(validService())
+        val expected = ExpectedSourceService(
+            serviceClassName = descriptor.serviceClassName,
+            name = descriptor.name,
+            lang = descriptor.lang,
+            baseUrl = descriptor.baseUrl,
+            protocol = descriptor.protocol,
+            policyHash = "a".repeat(64),
+        )
+        verifyServiceDescriptor(descriptor, expected)
+        listOf(
+            expected.copy(serviceClassName = "attacker.OtherService"),
+            expected.copy(name = "Lookalike"),
+            expected.copy(lang = "zh-TW"),
+            expected.copy(baseUrl = "https://attacker.example"),
+            expected.copy(protocol = expected.protocol + 1),
+        ).forEach { mismatch ->
+            assertInvalidDescriptor { verifyServiceDescriptor(descriptor, mismatch) }
+        }
     }
 
     @Test
@@ -61,6 +90,15 @@ class ExtensionDescriptorTest {
         try {
             ExtensionDescriptorValidator.fromServiceInfo(service)
             fail("Expected invalid Source service")
+        } catch (_: IllegalArgumentException) {
+            // expected
+        }
+    }
+
+    private fun assertInvalidDescriptor(block: () -> Unit) {
+        try {
+            block()
+            fail("Expected signed descriptor mismatch")
         } catch (_: IllegalArgumentException) {
             // expected
         }

@@ -133,7 +133,7 @@ fun rememberCollectionTimelineState(collectionId: String): CollectionTimelineSta
 fun CollectionTimelineScreen(
     timelineState: CollectionTimelineState,
     onOpenDrawer: () -> Unit,
-    onThreadClick: (ThreadSummary, boardName: String?) -> Unit,
+    onThreadClick: (sourceKey: String, ThreadSummary, boardName: String?) -> Unit,
     onNavigateToBoardPicker: () -> Unit,
     onNavigateToBoards: () -> Unit,
     bottomOverlayHeight: Dp = 0.dp,
@@ -255,9 +255,11 @@ fun CollectionTimelineScreen(
                         count = items.itemCount,
                     ) { index ->
                         val summary = items[index] ?: return@items
-                        val subscription = subscriptions?.firstOrNull {
-                            it.sourceId == summary.sourceId && it.boardUrl == summary.boardUrl
+                        val subscriptionRecord = subscriptions?.firstOrNull {
+                            it.sourceIdentity.sourceId == summary.sourceId &&
+                                it.subscription.boardUrl == summary.boardUrl
                         }
+                        val subscription = subscriptionRecord?.subscription
                         ThreadSummaryCard(
                             summary = summary,
                             alwaysUseRawImage = summary.sourceId in rawImageSourceIds,
@@ -265,8 +267,12 @@ fun CollectionTimelineScreen(
                             sourceName = sourceNames[summary.sourceId],
                             boardName = subscription?.boardName,
                             displayMode = timelineDisplayMode,
-                            isRead = (summary.sourceId to summary.id) in readThreadKeys,
-                            onClick = { onThreadClick(summary, subscription?.boardName) },
+                            isRead = subscription?.let { (it.sourceKey to summary.id) in readThreadKeys } == true,
+                            onClick = {
+                                subscription?.let {
+                                    onThreadClick(it.sourceKey, summary, it.boardName)
+                                }
+                            },
                         )
                     }
                     when (val appendState = items.loadState.append) {

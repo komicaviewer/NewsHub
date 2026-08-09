@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.SourceIdentity
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.BoardCategory
 import tw.kevinzhang.extension_api.model.BoardPageRequest
@@ -34,10 +35,12 @@ data class SourceWithBoards(
 
 data class SelectedBoard(
     val sourceId: String,
+    val sourceKey: String,
     val boardUrl: String,
     val boardName: String,
+    val sourceIdentity: SourceIdentity? = null,
 ) {
-    val key: String get() = selectedBoardKey(sourceId, boardUrl)
+    val key: String get() = selectedBoardKey(sourceKey, boardUrl)
 }
 
 /** A source-level board request failure, retained so the UI can explain what can be retried. */

@@ -6,7 +6,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import tw.kevinzhang.data.domain.BoardSubscriptionEntity
+import tw.kevinzhang.data.domain.BoardSubscriptionRecord
+import tw.kevinzhang.data.domain.CanonicalSourceIdentities
+import tw.kevinzhang.data.domain.SourceResolution
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.AuthenticationRequiredException
 import tw.kevinzhang.extension_api.model.Board
@@ -19,7 +21,7 @@ data class SourceLoadFailure(
 )
 
 class MergedTimelinePagingSource(
-    private val subscriptions: List<BoardSubscriptionEntity>,
+    private val subscriptions: List<BoardSubscriptionRecord>,
     private val sourceResolver: (String) -> Source?,
     private val onAuthenticationRequired: (String) -> Unit,
     private val onSourceLoadFailures: (List<SourceLoadFailure>) -> Unit = {},
@@ -32,25 +34,34 @@ class MergedTimelinePagingSource(
         val results = coroutineScope {
             subscriptions
                 .map { sub ->
-                    val board = Board(sourceId = sub.sourceId, url = sub.boardUrl, name = sub.boardName)
+                    val entity = sub.subscription
+                    val sourceId = sub.sourceIdentity.sourceId
+                    val board = Board(sourceId = sourceId, url = entity.boardUrl, name = entity.boardName)
                     async {
                         try {
-                            val source = sourceResolver(sub.sourceId)
-                                ?: throw IllegalStateException("找不到來源：${sub.sourceId}")
+                            check(sub.sourceIdentity.resolution == SourceResolution.OFFICIAL)
+                            val source = sourceResolver(sourceId)
+                                ?: throw IllegalStateException("找不到來源：$sourceId")
+                            val runtimeIdentity = source.sourceIdentity
+                                ?: throw SecurityException("來源缺少 Host 驗證身分")
+                            check(
+                                CanonicalSourceIdentities.fromRuntimeIdentity(runtimeIdentity).sourceKey ==
+                                    entity.sourceKey
+                            ) { "來源擁有者不相符" }
                             SourceTimelineResult.Success(
                                 source.getThreadSummaries(board, page)
                                     .map { it.copy(sourceIconUrl = source.iconUrl) },
                             )
                         } catch (error: AuthenticationRequiredException) {
-                            onAuthenticationRequired(sub.sourceId)
+                            onAuthenticationRequired(sourceId)
                             SourceTimelineResult.Failure(
-                                SourceLoadFailure(sub.sourceId, sub.boardName, error),
+                                SourceLoadFailure(sourceId, entity.boardName, error),
                             )
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: Exception) {
                             SourceTimelineResult.Failure(
-                                SourceLoadFailure(sub.sourceId, sub.boardName, error),
+                                SourceLoadFailure(sourceId, entity.boardName, error),
                             )
                         }
                     }

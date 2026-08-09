@@ -24,7 +24,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import tw.kevinzhang.data.CollectionRepository
 import tw.kevinzhang.data.ReadingHistoryRepository
-import tw.kevinzhang.data.domain.BoardSubscriptionEntity
+import tw.kevinzhang.data.SourceIdentityRepository
+import tw.kevinzhang.data.domain.BoardSubscriptionRecord
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.newshub.auth.SourceSessionManager
@@ -36,6 +37,7 @@ import javax.inject.Inject
 @HiltViewModel
 class CollectionTimelineViewModel @Inject constructor(
     private val collectionRepo: CollectionRepository,
+    private val sourceIdentityRepository: SourceIdentityRepository,
     readingHistoryRepository: ReadingHistoryRepository,
     private val extensionLoader: ExtensionLoader,
     private val sessionManager: SourceSessionManager,
@@ -70,7 +72,7 @@ class CollectionTimelineViewModel @Inject constructor(
 
     val readThreadKeys: StateFlow<Set<Pair<String, String>>> = readingHistoryRepository
         .observeReadingHistory()
-        .map { history -> history.mapTo(mutableSetOf()) { it.sourceId to it.threadId } }
+        .map { history -> history.mapTo(mutableSetOf()) { it.history.sourceKey to it.history.threadId } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     private val _sourceLoadFailures = MutableStateFlow<List<SourceLoadFailure>>(emptyList())
@@ -80,14 +82,14 @@ class CollectionTimelineViewModel @Inject constructor(
         .map { list -> list.firstOrNull { it.id == collectionId }?.name ?: "" }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
-    val subscriptions: StateFlow<List<BoardSubscriptionEntity>?> =
+    val subscriptions: StateFlow<List<BoardSubscriptionRecord>?> =
         collectionRepo.observeSubscriptions(collectionId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Sources represented by the current collection's board subscriptions, in display order. */
     val availableSourceIds: StateFlow<List<String>> = subscriptions
         .map { subscriptions ->
-            subscriptions.orEmpty().map(BoardSubscriptionEntity::sourceId).distinct()
+            subscriptions.orEmpty().map { it.sourceIdentity.sourceId }.distinct()
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -107,7 +109,7 @@ class CollectionTimelineViewModel @Inject constructor(
         SourceSelection(
             savedSourceId = savedSourceId,
             availableSourceIds = currentSubscriptions
-                ?.map(BoardSubscriptionEntity::sourceId)
+                ?.map { it.sourceIdentity.sourceId }
                 ?.toSet(),
         )
     }
@@ -184,9 +186,12 @@ class CollectionTimelineViewModel @Inject constructor(
 
     fun addBoardSubscription(sourceId: String, boardUrl: String, boardName: String) {
         viewModelScope.launch {
+            val source = extensionLoader.getSource(sourceId) ?: return@launch
+            val identity = source.sourceIdentity ?: return@launch
+            val sourceKey = sourceIdentityRepository.register(identity).sourceKey
             collectionRepo.addBoardSubscription(
                 collectionId = collectionId,
-                sourceId = sourceId,
+                sourceKey = sourceKey,
                 boardUrl = boardUrl,
                 boardName = boardName,
             )
@@ -211,9 +216,9 @@ internal fun resolveSelectedSourceId(
 }
 
 internal fun filterSubscriptionsBySource(
-    subscriptions: List<BoardSubscriptionEntity>,
+    subscriptions: List<BoardSubscriptionRecord>,
     selectedSourceId: String?,
-): List<BoardSubscriptionEntity> = when (selectedSourceId) {
+): List<BoardSubscriptionRecord> = when (selectedSourceId) {
     null -> subscriptions
-    else -> subscriptions.filter { it.sourceId == selectedSourceId }
+    else -> subscriptions.filter { it.sourceIdentity.sourceId == selectedSourceId }
 }

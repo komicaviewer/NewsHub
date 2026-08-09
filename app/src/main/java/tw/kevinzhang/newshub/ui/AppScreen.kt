@@ -92,7 +92,7 @@ import tw.kevinzhang.newshub.ui.theme.NewshubTheme
 import tw.kevinzhang.newshub.ui.thread.ThreadDetailScreen
 
 private const val THREAD_DETAIL_ROUTE =
-    "thread_detail?threadId={threadId}&sourceId={sourceId}&boardUrl={boardUrl}" +
+    "thread_detail?threadId={threadId}&sourceId={sourceId}&sourceKey={sourceKey}&boardUrl={boardUrl}" +
         "&threadTitle={threadTitle}&boardName={boardName}"
 
 private const val AUTH_WEB_LOGIN_ROUTE = "auth_web_login"
@@ -122,13 +122,14 @@ internal fun resolveAppBottomBarAction(
     )
 }
 
-private fun ThreadSummary.threadDetailRoute(boardName: String? = null): String {
+private fun ThreadSummary.threadDetailRoute(sourceKey: String, boardName: String? = null): String {
     val encodedThreadId = id.encode()
     val encodedSourceId = sourceId.encode()
+    val encodedSourceKey = sourceKey.encode()
     val encodedBoardUrl = boardUrl.encode()
     val encodedTitle = title?.encode() ?: ""
     val encodedBoardName = boardName?.encode() ?: ""
-    return "thread_detail?threadId=$encodedThreadId&sourceId=$encodedSourceId" +
+    return "thread_detail?threadId=$encodedThreadId&sourceId=$encodedSourceId&sourceKey=$encodedSourceKey" +
         "&boardUrl=$encodedBoardUrl&threadTitle=$encodedTitle&boardName=$encodedBoardName"
 }
 
@@ -141,6 +142,7 @@ private fun NavGraphBuilder.threadDetailDestination(
         arguments = listOf(
             navArgument("threadId") { type = NavType.StringType },
             navArgument("sourceId") { type = NavType.StringType },
+            navArgument("sourceKey") { type = NavType.StringType },
             navArgument("boardUrl") { type = NavType.StringType },
             navArgument("threadTitle") {
                 type = NavType.StringType
@@ -206,8 +208,8 @@ private fun CollectionTimelineDestination(
                             onNavigateToBoardPicker = {
                                 navController.navigate("board_picker/collection/$collectionId")
                             },
-                            onThreadClick = { summary, boardName ->
-                                detailNavController.navigate(summary.threadDetailRoute(boardName)) {
+                            onThreadClick = { sourceKey, summary, boardName ->
+                                detailNavController.navigate(summary.threadDetailRoute(sourceKey, boardName)) {
                                     popUpTo("detail_empty")
                                     launchSingleTop = true
                                 }
@@ -260,8 +262,8 @@ private fun CollectionTimelineDestination(
                     onNavigateToBoardPicker = {
                         navController.navigate("board_picker/collection/$collectionId")
                     },
-                    onThreadClick = { summary, boardName ->
-                        navController.navigate(summary.threadDetailRoute(boardName))
+                    onThreadClick = { sourceKey, summary, boardName ->
+                        navController.navigate(summary.threadDetailRoute(sourceKey, boardName))
                     },
                 )
             }
@@ -543,25 +545,25 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                         composable("reading_history") {
                             ReadingHistoryScreen(
                                 onNavigateUp = { navController.navigateUp() },
-                                onThreadClick = { summary ->
-                                    navController.navigate(summary.threadDetailRoute())
+                                onThreadClick = { sourceKey, summary ->
+                                    navController.navigate(summary.threadDetailRoute(sourceKey))
                                 },
                             )
                         }
                         composable("saved_posts") {
                             SavedPostsScreen(
                                 onNavigateUp = { navController.navigateUp() },
-                                onThreadClick = { entity ->
-                                    val sourceId = entity.sourceId.encode()
-                                    val threadId = entity.threadId.encode()
-                                    navController.navigate("saved_post_detail?sourceId=$sourceId&threadId=$threadId")
+                                onThreadClick = { record ->
+                                    val sourceKey = record.savedPost.sourceKey.encode()
+                                    val threadId = record.savedPost.threadId.encode()
+                                    navController.navigate("saved_post_detail?sourceKey=$sourceKey&threadId=$threadId")
                                 },
                             )
                         }
                         composable(
-                            route = "saved_post_detail?sourceId={sourceId}&threadId={threadId}",
+                            route = "saved_post_detail?sourceKey={sourceKey}&threadId={threadId}",
                             arguments = listOf(
-                                navArgument("sourceId") { type = NavType.StringType },
+                                navArgument("sourceKey") { type = NavType.StringType },
                                 navArgument("threadId") { type = NavType.StringType },
                             ),
                         ) {

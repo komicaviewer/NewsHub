@@ -12,12 +12,15 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tw.kevinzhang.data.CollectionRepository
+import tw.kevinzhang.data.SourceIdentityRepository
 import tw.kevinzhang.data.domain.BoardSubscriptionEntity
+import tw.kevinzhang.data.domain.BoardSubscriptionRecord
 import javax.inject.Inject
 
 @HiltViewModel
 class EditCollectionViewModel @Inject constructor(
     private val collectionRepo: CollectionRepository,
+    private val sourceIdentityRepository: SourceIdentityRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -40,7 +43,7 @@ class EditCollectionViewModel @Inject constructor(
 
     // Captured once at init time. Safe because navigation creates a new ViewModel instance
     // per destination, so originalSubscriptions won't be stale across navigation cycles.
-    private var originalSubscriptions: List<BoardSubscriptionEntity> = emptyList()
+    private var originalSubscriptions: List<BoardSubscriptionRecord> = emptyList()
 
     init {
         viewModelScope.launch {
@@ -50,9 +53,11 @@ class EditCollectionViewModel @Inject constructor(
             _emoji.value = collection.emoji
 
             originalSubscriptions = collectionRepo.observeSubscriptions(collectionId).first()
-            _selectedBoards.value = originalSubscriptions.map { sub ->
+            _selectedBoards.value = originalSubscriptions.map { record ->
+                val sub = record.subscription
                 SelectedBoard(
-                    sourceId = sub.sourceId,
+                    sourceId = record.sourceIdentity.sourceId,
+                    sourceKey = sub.sourceKey,
                     boardUrl = sub.boardUrl,
                     boardName = sub.boardName,
                 )
@@ -80,15 +85,18 @@ class EditCollectionViewModel @Inject constructor(
             )
 
             // Diff board subscriptions
-            val existingKeys = originalSubscriptions.associateBy { "${it.sourceId}:${it.boardUrl}" }
+            val existingKeys = originalSubscriptions.associateBy {
+                selectedBoardKey(it.subscription.sourceKey, it.subscription.boardUrl)
+            }
             val newKeys = _selectedBoards.value.associateBy { it.key }
 
             // Add new subscriptions
             newKeys.keys.filter { it !in existingKeys }.forEach { key ->
                 val board = newKeys.getValue(key)
+                board.sourceIdentity?.let { sourceIdentityRepository.register(it) }
                 collectionRepo.addBoardSubscription(
                     collectionId = collectionId,
-                    sourceId = board.sourceId,
+                    sourceKey = board.sourceKey,
                     boardUrl = board.boardUrl,
                     boardName = board.boardName,
                 )
@@ -97,7 +105,7 @@ class EditCollectionViewModel @Inject constructor(
             // Remove deleted subscriptions
             existingKeys.keys.filter { it !in newKeys }.forEach { key ->
                 val sub = existingKeys.getValue(key)
-                collectionRepo.removeBoardSubscription(sub.id)
+                collectionRepo.removeBoardSubscription(sub.subscription.id)
             }
 
             _saved.emit(Unit)

@@ -4,6 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import tw.kevinzhang.data.domain.BoardSubscriptionEntity
+import tw.kevinzhang.data.domain.BoardSubscriptionRecord
+import tw.kevinzhang.data.domain.CanonicalSourceIdentities
+import tw.kevinzhang.extension_api.SourceIdentity
 
 class CollectionTimelineSourceFilterTest {
 
@@ -19,7 +22,7 @@ class CollectionTimelineSourceFilterTest {
     fun `selected source keeps only its subscriptions`() {
         val filtered = filterSubscriptionsBySource(subscriptions(), selectedSourceId = "gamer")
 
-        assertEquals(listOf("gamer", "gamer"), filtered.map(BoardSubscriptionEntity::sourceId))
+        assertEquals(listOf("gamer", "gamer"), filtered.map { it.sourceIdentity.sourceId })
         assertEquals("gamer", resolveSelectedSourceId("gamer", setOf("gamer", "komica")))
     }
 
@@ -36,7 +39,7 @@ class CollectionTimelineSourceFilterTest {
         assertEquals(
             listOf("gamer", "gamer"),
             filterSubscriptionsBySource(subscriptions, selectedSourceId)
-                .map(BoardSubscriptionEntity::sourceId),
+                .map { it.sourceIdentity.sourceId },
         )
     }
 
@@ -55,12 +58,19 @@ class CollectionTimelineSourceFilterTest {
         subscription(id = "3", sourceId = "gamer"),
     )
 
-    private fun subscription(id: String, sourceId: String) = BoardSubscriptionEntity(
-        id = id,
-        collectionId = "collection",
-        sourceId = sourceId,
-        boardUrl = "https://example.com/$id",
-        boardName = id,
-        sortOrder = id.toInt(),
-    )
+    private fun subscription(id: String, sourceId: String): BoardSubscriptionRecord {
+        val identity = SourceIdentity("test.$sourceId", "a".repeat(64), sourceId)
+        val stored = CanonicalSourceIdentities.fromRuntimeIdentity(identity)
+        return BoardSubscriptionRecord(
+            subscription = BoardSubscriptionEntity(
+                id = id,
+                collectionId = "collection",
+                sourceKey = stored.sourceKey,
+                boardUrl = "https://example.com/$id",
+                boardName = id,
+                sortOrder = id.toInt(),
+            ),
+            sourceIdentity = stored,
+        )
+    }
 }

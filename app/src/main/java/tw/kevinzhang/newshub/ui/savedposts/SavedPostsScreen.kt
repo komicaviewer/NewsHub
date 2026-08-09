@@ -33,7 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import tw.kevinzhang.data.domain.SavedPostEntity
+import tw.kevinzhang.data.domain.SavedPostRecord
 import tw.kevinzhang.newshub.ui.component.BodySmallText
 import tw.kevinzhang.newshub.ui.component.ThreadSummaryCard
 import tw.kevinzhang.newshub.ui.component.timelineCardMetadata
@@ -42,7 +42,7 @@ import tw.kevinzhang.newshub.ui.component.timelineCardMetadata
 @Composable
 fun SavedPostsScreen(
     onNavigateUp: () -> Unit,
-    onThreadClick: (SavedPostEntity) -> Unit,
+    onThreadClick: (SavedPostRecord) -> Unit,
     viewModel: SavedPostsViewModel = hiltViewModel(),
 ) {
     val savedPosts by viewModel.savedPosts.collectAsStateWithLifecycle()
@@ -117,10 +117,11 @@ fun SavedPostsScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(savedPosts, key = { "${it.sourceId}:${it.threadId}" }) { entity ->
-                        val summary = entity.toThreadSummary()
+                    items(savedPosts, key = { "${it.savedPost.sourceKey}:${it.savedPost.threadId}" }) { record ->
+                        val entity = record.savedPost
+                        val summary = record.toThreadSummary()
                         val metadata = timelineCardMetadata(
-                            sourceId = entity.sourceId,
+                            sourceId = record.sourceIdentity.sourceId,
                             sourceName = entity.sourceName,
                             boardName = entity.boardName,
                             rawImageSourceIds = rawImageSourceIds,
@@ -132,7 +133,7 @@ fun SavedPostsScreen(
                             sourceName = metadata.sourceName,
                             boardName = metadata.boardName,
                             displayMode = timelineDisplayMode,
-                            onClick = { onThreadClick(entity) },
+                            onClick = { onThreadClick(record) },
                         )
                     }
                     item {

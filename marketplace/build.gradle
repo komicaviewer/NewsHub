@@ -7,7 +7,7 @@ plugins {
 
 android {
     compileSdk 34
-    defaultConfig { minSdk 21 }
+    defaultConfig { minSdk 29 }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
@@ -17,6 +17,7 @@ android {
 }
 
 dependencies {
+    implementation project(':extension-api')
     implementation libs.hilt.android
     ksp libs.hilt.compiler
     implementation libs.okhttp.core
@@ -24,4 +25,26 @@ dependencies {
     implementation libs.androidx.core.ktx
     implementation libs.coroutines.android
     testImplementation libs.junit4
+}
+
+def productionTrustRoot = layout.projectDirectory.file('src/main/assets/extension-root.json')
+tasks.register('verifyReleaseTrustRoot') {
+    // The absence of the production root is an intentional release-blocking
+    // state. Do not model it as a Gradle input: Gradle validates missing input
+    // files before doLast and would hide the actionable security error below.
+    doLast {
+        def rootFile = productionTrustRoot.asFile
+        if (!rootFile.isFile() || rootFile.length() == 0L) {
+            throw new GradleException(
+                'Release blocked: provision the reviewed production TUF root at ' +
+                    'marketplace/src/main/assets/extension-root.json. Debug fixture roots are forbidden.'
+            )
+        }
+    }
+}
+
+tasks.configureEach { task ->
+    if (task.name == 'preReleaseBuild') {
+        task.dependsOn tasks.named('verifyReleaseTrustRoot')
+    }
 }

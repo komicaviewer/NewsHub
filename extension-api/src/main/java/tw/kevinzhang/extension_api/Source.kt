@@ -13,6 +13,9 @@ import tw.kevinzhang.extension_api.model.ThreadPageMetadata
 import tw.kevinzhang.extension_api.model.ThreadSummary
 
 interface Source {
+    /** Host-verified runtime identity. In-process extension implementations leave this null. */
+    val sourceIdentity: SourceIdentity?
+        get() = null
     val id: String
     val name: String
     val language: String
@@ -129,7 +132,42 @@ class AuthenticationRequiredException(
 interface SourceRuntime {
     /** The only ambient capability available inside an isolated extension process. */
     val network: SourceNetwork
+    /** Identity-bound, Host-owned operations. This never exposes a generic cookie jar. */
+    val namedCookies: NamedCookieCapability
+        get() = UnsupportedNamedCookieCapability
     val authentication: AuthenticationSession
+}
+
+data class EynyChallengeProof(
+    val host: String,
+    val cookiePrefix: String,
+    val nonce: Long,
+    val timestamp: String,
+    val challenge: String,
+) {
+    init {
+        require(host == "eyny.com" || host == "www.eyny.com") { "Unsupported EYNY host" }
+        require(cookiePrefix.matches(Regex("[a-f0-9]{6,16}"))) { "Invalid EYNY cookie prefix" }
+        require(nonce in 0..2_000_000L) { "Invalid EYNY nonce" }
+        require(timestamp.matches(Regex("[0-9]{6,20}"))) { "Invalid EYNY timestamp" }
+        require(challenge.matches(Regex("[a-fA-F0-9]{16,128}"))) { "Invalid EYNY challenge" }
+    }
+}
+
+interface NamedCookieCapability {
+    /** Reveals only whether the exact PTT consent cookie would be sent to www.ptt.cc. */
+    suspend fun hasPttAdultConsent(): Boolean
+
+    /** Blindly stores one bounded EYNY challenge proof under Host-fixed cookie attributes. */
+    suspend fun storeEynyChallengeProof(proof: EynyChallengeProof)
+}
+
+private object UnsupportedNamedCookieCapability : NamedCookieCapability {
+    override suspend fun hasPttAdultConsent(): Boolean =
+        throw UnsupportedOperationException("PTT consent capability is unavailable")
+
+    override suspend fun storeEynyChallengeProof(proof: EynyChallengeProof): Nothing =
+        throw UnsupportedOperationException("EYNY challenge capability is unavailable")
 }
 
 data class SourceNetworkRequest(

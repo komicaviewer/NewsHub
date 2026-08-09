@@ -21,11 +21,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import tw.kevinzhang.extension_api.ExtensionProtocol
 import tw.kevinzhang.extension_api.HostBrokerProvider
 import tw.kevinzhang.extension_api.HostResourceProvider
+import tw.kevinzhang.extension_api.SourceIdentity
+import tw.kevinzhang.extension_api.sha256
 import java.io.File
 import java.security.MessageDigest
+import java.nio.file.Paths
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -43,9 +49,13 @@ class ExtensionManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val brokerProvider: HostBrokerProvider,
     private val resourceProvider: HostResourceProvider,
+    private val trustPolicyProvider: ExtensionTrustPolicyProvider,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val activeConnections = mutableListOf<RemoteSourceConnection>()
+    private val activeIdentities = mutableListOf<SourceIdentity>()
+    private val refreshMutex = Mutex()
+    private val refreshGeneration = AtomicLong()
     private val _installedExtensions = MutableStateFlow<List<InstalledExtension>>(emptyList())
     val installedExtensions: StateFlow<List<InstalledExtension>> = _installedExtensions.asStateFlow()
     private val _quarantinedExtensions = MutableStateFlow<List<QuarantinedExtension>>(emptyList())
@@ -81,16 +91,40 @@ class ExtensionManager @Inject constructor(
     }
 
     fun refreshAllExtensions() {
+        val generation = refreshGeneration.incrementAndGet()
         scope.launch {
-            val scan = scanInstalledExtensions()
-            synchronized(activeConnections) {
-                activeConnections.forEach(RemoteSourceConnection::close)
-                activeConnections.clear()
-                activeConnections += scan.connections
-            }
-            _quarantinedExtensions.value = scan.quarantined
-            _installedExtensions.value = scan.installed
+            refresh(generation)
         }
+    }
+
+    /** Deterministic refresh boundary used by install orchestration and device-level verification. */
+    suspend fun refreshAllExtensionsAndAwait() {
+        refresh(refreshGeneration.incrementAndGet())
+    }
+
+    private suspend fun refresh(generation: Long) = refreshMutex.withLock {
+        if (generation != refreshGeneration.get()) return@withLock
+        synchronized(activeConnections) {
+            // Revoke every Host capability before the explicit Service unbind.
+            activeIdentities.forEach(resourceProvider::revoke)
+            activeIdentities.clear()
+            activeConnections.forEach(RemoteSourceConnection::close)
+            activeConnections.clear()
+        }
+        // Never expose RemoteSource objects whose connections were just revoked.
+        _installedExtensions.value = emptyList()
+        val scan = scanInstalledExtensions()
+        if (generation != refreshGeneration.get()) {
+            scan.identities.forEach(resourceProvider::revoke)
+            scan.connections.forEach(RemoteSourceConnection::close)
+            return@withLock
+        }
+        synchronized(activeConnections) {
+            activeConnections += scan.connections
+            activeIdentities += scan.identities
+        }
+        _quarantinedExtensions.value = scan.quarantined
+        _installedExtensions.value = scan.installed
     }
 
     fun notifyPackageChanged(packageName: String) = refreshAllExtensions()
@@ -132,21 +166,38 @@ class ExtensionManager @Inject constructor(
 
     private fun scanInstalledExtensions(): ScanResult {
         verifyHostBindPermission()
-        val candidates = querySourceServices()
+        val candidateServices = querySourceServices().mapNotNull(ResolveInfo::serviceInfo)
         val quarantined = mutableListOf<QuarantinedExtension>()
-        val accepted = candidates.mapNotNull { resolveInfo ->
-            val service = resolveInfo.serviceInfo ?: return@mapNotNull null
+        val accepted = candidateServices.groupBy { it.packageName }.flatMap { (packageName, services) ->
             runCatching {
-                val descriptor = ExtensionDescriptorValidator.fromServiceInfo(service)
-                val policy = requireNotNull(
-                    OfficialExtensionCatalog.policyFor(descriptor.packageName, descriptor.sourceId),
-                ) { "Package/Source is not in the official trust root" }
-                val signer = verifiedSigner(descriptor.packageName)
-                Candidate(descriptor, policy, signer)
+                val signingPolicy = requireNotNull(trustPolicyProvider.policyForPackage(packageName)) {
+                    "No current threshold-verified package policy"
+                }
+                val info = packageInfo(packageName)
+                verifyInstalledPackageArtifact(info.toInstalledArtifact(), signingPolicy)
+                val descriptors = services.map(ExtensionDescriptorValidator::fromServiceInfo)
+                verifyExpectedServiceSet(descriptors, signingPolicy)
+                val signingIdentity = verifiedSigningIdentity(packageName, info, signingPolicy)
+                val packageMarker = info.toInstalledMarker(signingIdentity)
+                descriptors.map { descriptor ->
+                    val expectedService = requireNotNull(signingPolicy.sources[descriptor.sourceId]) {
+                        "Source is absent from signed target"
+                    }
+                    verifyServiceDescriptor(descriptor, expectedService)
+                    val policy = requireNotNull(
+                        OfficialExtensionCatalog.policyFor(descriptor.packageName, descriptor.sourceId),
+                    ) { "Package/Source is not in the official trust root" }
+                    require(expectedService.policyHash == policy.networkPolicy().sha256()) {
+                        "Signed Source policy hash does not match Host policy"
+                    }
+                    Candidate(descriptor, policy, signingPolicy, signingIdentity, packageMarker)
+                }
             }.onFailure { error ->
-                quarantined += QuarantinedExtension(service.packageName, service.name, error.message.orEmpty())
-                Log.w(TAG, "Quarantining ${service.packageName}/${service.name}: ${error.message}")
-            }.getOrNull()
+                services.forEach { service ->
+                    quarantined += QuarantinedExtension(packageName, service.name, error.message.orEmpty())
+                }
+                Log.w(TAG, "Quarantining $packageName: ${error.message}")
+            }.getOrDefault(emptyList())
         }.toMutableList()
 
         val duplicateSourceIds = accepted.groupBy { it.descriptor.sourceId }
@@ -171,38 +222,89 @@ class ExtensionManager @Inject constructor(
         }
 
         val connections = mutableListOf<RemoteSourceConnection>()
-        val sourcesByPackage = unique.mapNotNull { candidate ->
-            val connection = RemoteSourceConnection(context, candidate.descriptor)
-            if (!connection.bind()) {
-                quarantined += QuarantinedExtension(
-                    candidate.descriptor.packageName,
-                    candidate.descriptor.serviceClassName,
-                    "Explicit bind failed",
-                )
-                return@mapNotNull null
-            }
-            connections += connection
-            val source = if (candidate.descriptor.needsLogin) {
-                RemoteAuthenticatedSource(
-                    candidate.descriptor,
-                    candidate.signerSha256,
-                    candidate.policy,
-                    connection,
-                    brokerProvider,
-                    resourceProvider,
-                )
-            } else {
-                RemoteSource(
-                    candidate.descriptor,
-                    candidate.signerSha256,
-                    candidate.policy,
-                    connection,
-                    brokerProvider,
-                    resourceProvider,
-                )
-            }
-            candidate.descriptor.packageName to source
-        }.groupBy({ it.first }, { it.second })
+        val identities = mutableListOf<SourceIdentity>()
+        val sourcesByPackage = unique.groupBy { it.descriptor.packageName }
+            .flatMap { (packageName, packageCandidates) ->
+                val bound = mutableListOf<BoundCandidate>()
+                var bindFailure: String? = null
+                for (candidate in packageCandidates) {
+                    val identity = SourceIdentity(
+                        packageName,
+                        candidate.signingIdentity.lineageAnchorSha256,
+                        candidate.descriptor.sourceId,
+                        candidate.signingIdentity.currentSignerSha256,
+                    )
+                    val connection = RemoteSourceConnection(context, candidate.descriptor) {
+                        resourceProvider.revoke(identity)
+                    }
+                    if (!connection.bind()) {
+                        bindFailure = "Explicit bind failed"
+                        break
+                    }
+                    val unchangedAfterBind = runCatching {
+                        val currentInfo = packageInfo(packageName)
+                        val currentSigningIdentity = verifiedSigningIdentity(
+                            packageName,
+                            currentInfo,
+                            candidate.signingPolicy,
+                        )
+                        verifyPackageUnchangedAfterBind(
+                            candidate.packageMarker,
+                            currentInfo.toInstalledMarker(currentSigningIdentity),
+                        )
+                    }
+                    if (unchangedAfterBind.isFailure) {
+                        connection.close()
+                        resourceProvider.revoke(identity)
+                        bindFailure = unchangedAfterBind.exceptionOrNull()?.message.orEmpty()
+                        break
+                    }
+                    bound += BoundCandidate(candidate, identity, connection)
+                }
+
+                if (bindFailure != null || bound.size != packageCandidates.size) {
+                    bound.forEach { item ->
+                        item.connection.close()
+                        resourceProvider.revoke(item.identity)
+                    }
+                    val reason = bindFailure ?: "Package bind did not complete"
+                    packageCandidates.forEach { candidate ->
+                        quarantined += QuarantinedExtension(
+                            packageName,
+                            candidate.descriptor.serviceClassName,
+                            reason,
+                        )
+                    }
+                    Log.w(TAG, "Quarantining $packageName after bind: $reason")
+                    emptyList()
+                } else {
+                    connections += bound.map(BoundCandidate::connection)
+                    identities += bound.map(BoundCandidate::identity)
+                    bound.map { item ->
+                        val candidate = item.candidate
+                        val source = if (candidate.descriptor.needsLogin) {
+                            RemoteAuthenticatedSource(
+                                candidate.descriptor,
+                                item.identity,
+                                candidate.policy,
+                                item.connection,
+                                brokerProvider,
+                                resourceProvider,
+                            )
+                        } else {
+                            RemoteSource(
+                                candidate.descriptor,
+                                item.identity,
+                                candidate.policy,
+                                item.connection,
+                                brokerProvider,
+                                resourceProvider,
+                            )
+                        }
+                        packageName to source
+                    }
+                }
+            }.groupBy({ it.first }, { it.second })
 
         val installed = sourcesByPackage.map { (packageName, sources) ->
             val info = packageInfo(packageName)
@@ -215,7 +317,7 @@ class ExtensionManager @Inject constructor(
                 sources = sources,
             )
         }
-        return ScanResult(installed, quarantined, connections)
+        return ScanResult(installed, quarantined, connections, identities)
     }
 
     private fun verifyHostBindPermission() {
@@ -239,20 +341,63 @@ class ExtensionManager @Inject constructor(
         }
     }
 
-    private fun verifiedSigner(packageName: String): String {
+    private fun verifiedSigningIdentity(
+        packageName: String,
+        info: PackageInfo,
+        trustPolicy: ExtensionSigningPolicy,
+    ): VerifiedSigningIdentity {
         require(OfficialExtensionCatalog.isOfficialPackage(packageName)) { "Unknown extension package" }
-        val info = packageInfo(packageName)
+        require(info.packageName == packageName) { "PackageInfo belongs to a different package" }
         val signingInfo = requireNotNull(info.signingInfo) { "Package has no signing information" }
         require(!signingInfo.hasMultipleSigners()) { "Multi-signer extension packages are not supported" }
-        val history = signingInfo.signingCertificateHistory.orEmpty().map { certificate ->
-            MessageDigest.getInstance("SHA-256")
-                .digest(certificate.toByteArray())
-                .joinToString("") { "%02x".format(it) }
+        val history = signingInfo.signingCertificateHistory.orEmpty().map(::certificateSha256).toSet()
+        val currentSigners = signingInfo.apkContentsSigners.orEmpty().map(::certificateSha256).toSet()
+        require(currentSigners.size == 1) { "Extension must have exactly one current signer" }
+        val currentSigner = currentSigners.single()
+        require(currentSigner in history) { "Current signer is outside the authorized lineage" }
+        require(currentSigner in trustPolicy.approvedCurrentSignersSha256) {
+            "Current extension signer is not approved"
         }
-        require(OfficialExtensionCatalog.RELEASE_SIGNER_SHA256 in history) {
-            "Extension signer is not trusted"
-        }
-        return history.last()
+        val approvedAnchors = history.intersect(trustPolicy.lineageAnchorsSha256)
+        require(approvedAnchors.size == 1) { "Extension signing lineage has no unique approved anchor" }
+        return VerifiedSigningIdentity(
+            lineageAnchorSha256 = approvedAnchors.single(),
+            currentSignerSha256 = currentSigner,
+        )
+    }
+
+    private fun certificateSha256(certificate: android.content.pm.Signature): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(certificate.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+
+    private fun PackageInfo.toInstalledArtifact(): InstalledPackageArtifact {
+        val appInfo = requireNotNull(applicationInfo) { "Extension package has no ApplicationInfo" }
+        val sourceDir = appInfo.sourceDir?.takeIf(String::isNotBlank)
+            ?: throw IllegalArgumentException("Extension package has no base APK path")
+        return InstalledPackageArtifact(
+            versionCode = PackageInfoCompat.getLongVersionCode(this),
+            sourcePath = Paths.get(sourceDir),
+            splitSourcePaths = buildList {
+                splitNames?.let(::addAll)
+                appInfo.splitSourceDirs?.let(::addAll)
+            },
+        )
+    }
+
+    private fun PackageInfo.toInstalledMarker(
+        signingIdentity: VerifiedSigningIdentity,
+    ): InstalledPackageMarker {
+        val appInfo = requireNotNull(applicationInfo) { "Extension package has no ApplicationInfo" }
+        return InstalledPackageMarker(
+            versionCode = PackageInfoCompat.getLongVersionCode(this),
+            sourceDir = appInfo.sourceDir.orEmpty(),
+            splitNames = splitNames.orEmpty().toList(),
+            splitSourceDirs = appInfo.splitSourceDirs.orEmpty().toList(),
+            lastUpdateTime = lastUpdateTime,
+            lineageAnchorSha256 = signingIdentity.lineageAnchorSha256,
+            currentSignerSha256 = signingIdentity.currentSignerSha256,
+        )
     }
 
     private fun packageInfo(packageName: String): PackageInfo =
@@ -269,12 +414,26 @@ class ExtensionManager @Inject constructor(
     private data class Candidate(
         val descriptor: ExtensionDescriptor,
         val policy: OfficialSourcePolicy,
-        val signerSha256: String,
+        val signingPolicy: ExtensionSigningPolicy,
+        val signingIdentity: VerifiedSigningIdentity,
+        val packageMarker: InstalledPackageMarker,
+    )
+
+    private data class BoundCandidate(
+        val candidate: Candidate,
+        val identity: SourceIdentity,
+        val connection: RemoteSourceConnection,
+    )
+
+    private data class VerifiedSigningIdentity(
+        val lineageAnchorSha256: String,
+        val currentSignerSha256: String,
     )
 
     private data class ScanResult(
         val installed: List<InstalledExtension>,
         val quarantined: List<QuarantinedExtension>,
         val connections: List<RemoteSourceConnection>,
+        val identities: List<SourceIdentity>,
     )
 }

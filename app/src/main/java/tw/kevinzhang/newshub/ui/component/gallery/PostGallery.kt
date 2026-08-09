@@ -374,12 +374,10 @@ private fun GalleryMediaPager(
                 }
             }
 
-            is Paragraph.VideoInfo -> Box(
+            is Paragraph.VideoInfo -> VideoPlayer(
+                handleModel = item.url,
                 modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("遠端影片已封鎖")
-            }
+            )
 
             else -> Unit
         }

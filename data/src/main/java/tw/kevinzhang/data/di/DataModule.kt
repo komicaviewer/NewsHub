@@ -12,11 +12,13 @@ import tw.kevinzhang.data.CollectionRepository
 import tw.kevinzhang.data.CollectionRepositoryImpl
 import tw.kevinzhang.data.ReadingHistoryRepository
 import tw.kevinzhang.data.SavedPostRepository
+import tw.kevinzhang.data.SourceIdentityRepository
 import tw.kevinzhang.data.domain.CollectionDao
 import tw.kevinzhang.data.domain.CollectionDatabase
 import tw.kevinzhang.data.domain.PostReadDao
 import tw.kevinzhang.data.domain.ReadingHistoryDao
 import tw.kevinzhang.data.domain.SavedPostDao
+import tw.kevinzhang.data.domain.SourceIdentityDao
 import javax.inject.Singleton
 
 @Module
@@ -34,6 +36,10 @@ abstract class DataModule {
     @Binds
     @Singleton
     abstract fun bindSavedPostRepository(impl: CollectionRepositoryImpl): SavedPostRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSourceIdentityRepository(impl: CollectionRepositoryImpl): SourceIdentityRepository
 
     companion object {
         @Provides
@@ -54,5 +60,8 @@ abstract class DataModule {
 
         @Provides
         fun providePostReadDao(db: CollectionDatabase): PostReadDao = db.postReadDao()
+
+        @Provides
+        fun provideSourceIdentityDao(db: CollectionDatabase): SourceIdentityDao = db.sourceIdentityDao()
     }
 }

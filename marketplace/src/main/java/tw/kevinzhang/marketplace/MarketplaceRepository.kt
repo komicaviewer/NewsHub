@@ -6,12 +6,12 @@ import tw.kevinzhang.marketplace.data.RepoMetadata
 import java.io.File
 
 interface MarketplaceRepository {
-    /** Fails closed until the embedded-root trusted repository client is enabled. */
+    /** Returns only metadata authenticated by the embedded-root trusted client. */
     suspend fun fetchRepoMetadata(repoUrl: String): RepoMetadata
 
-    /** Fails closed until the embedded-root trusted repository client is enabled. */
+    /** Returns only targets authenticated by the embedded-root trusted client. */
     suspend fun fetchExtensions(repoUrl: String): List<ExtensionInfo>
 
     fun getInstallState(info: ExtensionInfo): InstallState
-    suspend fun downloadApk(apkUrl: String, expectedSha256: String?): File
+    suspend fun downloadApk(info: ExtensionInfo): File
 }

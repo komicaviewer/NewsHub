@@ -47,12 +47,16 @@ Singleton. Queries the explicit `tw.kevinzhang.newshub.extension.SERVICE` contra
 
 ### Marketplace (`marketplace` module)
 `MarketplaceRepository` interface:
-- `fetchRepoMetadata(repoUrl)` — parses `repo.json`
-- `fetchExtensions(repoUrl)` — parses `index.json` (flat array of `RemoteExtensionDto`)
-- `downloadApk(url, sha256)` — downloads + SHA-256 verifies to cache dir
-- `getInstallState(info)` — compares `PackageManager` versionCode vs index
+- `fetchRepoMetadata(repoUrl)` / `fetchExtensions(repoUrl)` — refresh threshold-signed,
+  expiring repository metadata from the one code-owned official origin
+- `downloadApk(info)` — verifies signed length/hash, package/version, signing lineage,
+  requested permissions, and the exact isolated-Service manifest before install
+- `getInstallState(info)` — compares the installed version and current signer with
+  the verified target policy
 
-GitHub URL → raw URL: `https://github.com/owner/repo` → `https://raw.githubusercontent.com/owner/repo/main`
+The updater is pinned to the embedded root and supports old+new threshold root
+rotation, rollback/freeze protection, bounded responses, and no redirects. Custom
+repository origins and the legacy unsigned `repo.json`/`index.json` path fail closed.
 
 ### RepoRepository (`app`)
 Persists user-configured repo URLs in DataStore (`repo_settings`). Interface: `getRepoUrls(): Flow<Set<String>>`, `addRepoUrl`, `removeRepoUrl`.
@@ -77,28 +81,20 @@ manifest, broker, and marketplace contract.
 
 ---
 
-## index.json Format (extensions repo)
+## Trusted repository layout
 
-```json
-[
-  {
-    "pkg":         "tw.kevinzhang.extension.gamer",
-    "name":        "Gamer 巴哈姆特",
-    "versionCode": 1,
-    "versionName": "1.0",
-    "lang":        "zh-TW",
-    "apkName":     "tw.kevinzhang.extension.gamer.apk",
-    "iconName":    "tw.kevinzhang.extension.gamer.png",
-    "sha256":      "<hex>",
-    "sources": [
-      { "id": "tw.kevinzhang.gamer", "name": "Gamer 巴哈姆特",
-        "lang": "zh-TW", "baseUrl": "https://forum.gamer.com.tw" }
-    ]
-  }
-]
+```text
+metadata/root.json
+metadata/timestamp.json
+metadata/<version>.snapshot.json
+metadata/<version>.targets.json
+targets/apk/<content-versioned-name>.apk
 ```
 
-APK URL = `{repo.baseUrl}/apk/{apkName}` · Icon URL = `{repo.baseUrl}/icon/{iconName}`
+The root and targets roles use 2-of-2 signatures; snapshot and timestamp use
+separate 1-of-1 roles. Signed target custom metadata binds package name,
+version, signing-lineage root, approved current signers, exact Source services,
+protocol, and Host network-policy hash.
 
 ---
 
@@ -108,11 +104,11 @@ APK URL = `{repo.baseUrl}/apk/{apkName}` · Icon URL = `{repo.baseUrl}/icon/{ico
 |---------------------|------------------------------------------------------------------------------------------------|
 | `ExtensionModule`   | `ExtensionLoader`                                                                              |
 | `MarketplaceModule` | `Gson`, `MarketplaceRepository`                                                                |
-| `CollectionModule`  | `CollectionRepository`, `ReadingHistoryRepository`, `SavedPostRepository`, Room DB (version 4) |
+| `CollectionModule`  | Collection/history/saved repositories, `SourceIdentityRepository`, Room DB (version 8) |
 | `AppModule`         | `authDataStore`, `@Named("repoDataStore")`, `ImageLoader`, `ApplicationScope`                  |
 | `RepoModule`        | `RepoRepository`                                                                               |
-| `AuthModule`        | `SourceContext` (→ `AndroidSourceContext`)                                                     |
-| `NetworkModule`     | `OkHttpClient`                                                                                 |
+| `ExtensionTrustModule` | Verified repository trust snapshot → loader trust provider                                 |
+| `NetworkModule`     | Host-only broker `OkHttpClient`; never passed to extension code                                |
 
 ---
 
@@ -151,24 +147,31 @@ Sub-screens (pushed on stack):
 | Repo | Purpose |
 |------|---------|
 | `komicaviewer/extensions-source` | Source code for third-party extensions (modelled after keiyoushi, **flat `src/<name>/`**, no language subdirs) |
-| `komicaviewer/extensions` | Distribution repo: `repo.json`, `index.json`, `apk/`, `icon/` |
+| `komicaviewer/extensions` | Destination-owned signed metadata, targets, and admission policy |
 
-CI/CD: `extensions-source` builds APKs via GitHub Actions (`build_push.yml`), runs `scripts/generate_index.py` (uses `aapt`), commits result to `extensions` repo.
+CI/CD first builds/tests without secrets, then signs each bundle in its own
+protected environment. A credential-isolated aggregator creates a candidate;
+the destination repository validates signatures, Source ownership, canonical
+Host policy hashes, threshold metadata, rollback rules, and the full catalog.
 
-Required GitHub secrets in `extensions-source`: `SIGNING_KEY`, `KEY_STORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`, `EXTENSIONS_REPO_TOKEN`.
+Each `extension-sign-<module>` environment owns only that bundle's signing
+material. Distribution credentials are exposed only to the final publishing
+step. TUF role keys are separate from Android APK signing keys.
 
 ---
 
 ## collection Module — Room DB Schema
 
-`CollectionDatabase` version 4. Tables:
+`CollectionDatabase` version 8. Identity-bearing tables use canonical
+`sourceKey`, never a naked Source ID:
 
 | Table | Entity | Purpose |
 |-------|--------|---------|
 | `collections` | `CollectionEntity` | User-created named collections |
-| `board_subscriptions` | `BoardSubscriptionEntity` | Boards subscribed per collection |
-| `reading_history` | `ReadingHistoryEntity` | Thread read history (composite PK: sourceId+threadId) |
-| `saved_posts` | `SavedPostEntity` | Bookmarked threads with screenshot paths |
+| `source_identities` | `SourceIdentityEntity` | Package + stable signing-lineage anchor + local Source ID |
+| `board_subscriptions` | `BoardSubscriptionEntity` | Boards subscribed per collection and Source identity |
+| `reading_history` | `ReadingHistoryEntity` | Thread read history keyed by Source identity + thread |
+| `saved_posts` | `SavedPostEntity` | Bookmarked threads with contained opaque asset references |
 
 `ReadingHistoryEntity` and `SavedPostEntity` both mirror `ThreadSummary` fields. `previewContent` stored as JSON via `ParagraphListConverter` (Gson). Both expose `toThreadSummary()` for direct use with `ThreadSummaryCard`.
 
@@ -176,11 +179,13 @@ Required GitHub secrets in `extensions-source`: `SIGNING_KEY`, `KEY_STORE_PASSWO
 
 ---
 
-## Pending Work
+## Release activation gate
 
-- **Task 1-3/1-4** — CI/CD workflows need signing secrets configured; `build_push.yml` exists but hasn't run successfully yet
-- **Task 1-5** — Remove `GamerSource` from `extensions-builtin` and `ExtensionModule` once the external APK is confirmed working
-- **Task 4** — Redesign `MarketplaceScreen` (deferred until Tasks 1–3 are stable)
+Release builds intentionally fail until the reviewed production threshold root
+is installed at `marketplace/src/main/assets/extension-root.json`, the seven
+per-package protected signing environments are provisioned, and the
+destination-owned production policy pins those lineages. Debug fixtures and
+ephemeral emulator keys must never be promoted to production.
 
 ---
 

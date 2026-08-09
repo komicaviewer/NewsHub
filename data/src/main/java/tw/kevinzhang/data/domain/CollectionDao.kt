@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -25,11 +26,12 @@ interface CollectionDao {
     @Update
     suspend fun updateCollection(entity: CollectionEntity)
 
+    @Transaction
     @Query("SELECT * FROM board_subscriptions WHERE collectionId = :collectionId ORDER BY sortOrder")
-    fun observeSubscriptions(collectionId: String): Flow<List<BoardSubscriptionEntity>>
+    fun observeSubscriptions(collectionId: String): Flow<List<BoardSubscriptionRecord>>
 
-    @Query("SELECT COUNT(*) FROM board_subscriptions WHERE collectionId = :collectionId AND sourceId = :sourceId AND boardUrl = :boardUrl")
-    suspend fun countSubscription(collectionId: String, sourceId: String, boardUrl: String): Int
+    @Query("SELECT COUNT(*) FROM board_subscriptions WHERE collectionId = :collectionId AND sourceKey = :sourceKey AND boardUrl = :boardUrl")
+    suspend fun countSubscription(collectionId: String, sourceKey: String, boardUrl: String): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSubscription(entity: BoardSubscriptionEntity)
@@ -37,8 +39,8 @@ interface CollectionDao {
     @Delete
     suspend fun deleteSubscription(entity: BoardSubscriptionEntity)
 
-    @Query("DELETE FROM board_subscriptions WHERE sourceId = :sourceId")
-    suspend fun deleteSubscriptionsBySource(sourceId: String)
+    @Query("DELETE FROM board_subscriptions WHERE sourceKey = :sourceKey")
+    suspend fun deleteSubscriptionsBySource(sourceKey: String)
 
     @Query("DELETE FROM board_subscriptions WHERE id = :id")
     suspend fun deleteSubscriptionById(id: String)
