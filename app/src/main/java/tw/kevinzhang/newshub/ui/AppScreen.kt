@@ -31,6 +31,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -43,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -97,6 +99,87 @@ private const val THREAD_DETAIL_ROUTE =
 
 private const val AUTH_WEB_LOGIN_ROUTE = "auth_web_login"
 private const val APP_BAR_ANIMATION_MILLIS = 220
+
+private class CollectionBottomBarBinding {
+    private var timelineState by mutableStateOf<CollectionTimelineState?>(null)
+
+    val barsVisible: Boolean
+        get() = timelineState?.barsVisible ?: true
+
+    fun attach(state: CollectionTimelineState) {
+        timelineState = state
+    }
+
+    fun detach(state: CollectionTimelineState) {
+        if (timelineState === state) timelineState = null
+    }
+
+    suspend fun scrollToTop() {
+        timelineState?.scrollToTop()
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+internal fun AppBottomBarOverlay(
+    isCollectionRoute: Boolean,
+    collectionBarsVisible: Boolean,
+    navItems: List<NavItems>,
+    selectedTab: NavItems,
+    onNavItemClick: (NavItems) -> Unit,
+    onHeightChanged: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .onSizeChanged { size ->
+                if (size.height > 0) onHeightChanged(size.height)
+            },
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        AnimatedVisibility(
+            visible = !isCollectionRoute || collectionBarsVisible,
+            enter = if (isCollectionRoute) {
+                slideInVertically(
+                    animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
+                    initialOffsetY = { it },
+                ) + fadeIn(animationSpec = tween(APP_BAR_ANIMATION_MILLIS))
+            } else {
+                EnterTransition.None
+            },
+            exit = if (isCollectionRoute) {
+                slideOutVertically(
+                    animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
+                    targetOffsetY = { it },
+                ) + fadeOut(animationSpec = tween(APP_BAR_ANIMATION_MILLIS))
+            } else {
+                ExitTransition.None
+            },
+        ) {
+            AppBottomBar(
+                navItems = navItems,
+                selectedItem = selectedTab,
+                onNavItemClick = onNavItemClick,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BottomBarPaddedContent(
+    bottomBarHeight: Dp,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = bottomBarHeight),
+    ) {
+        content()
+    }
+}
+
 internal sealed class AppBottomBarAction {
     data object ScrollCollectionToTop : AppBottomBarAction()
 
@@ -174,20 +257,16 @@ private fun NavGraphBuilder.threadDetailDestination(
 private fun CollectionTimelineDestination(
     collectionId: String,
     navController: NavHostController,
-    navItems: List<NavItems>,
-    selectedTab: NavItems,
+    bottomOverlayHeight: Dp,
+    bottomBarBinding: CollectionBottomBarBinding,
     onOpenDrawer: () -> Unit,
-    onBottomBarItemClick: (NavItems) -> Unit,
 ) {
     val timelineState = rememberCollectionTimelineState(collectionId)
-    val coroutineScope = rememberCoroutineScope()
-    var bottomOverlayHeightPx by remember { mutableIntStateOf(0) }
-    val bottomOverlayHeight = with(LocalDensity.current) { bottomOverlayHeightPx.toDp() }
-    val onCollectionBottomBarItemClick: (NavItems) -> Unit = { item ->
-        if (item.route == MainNavItems.Collections.route) {
-            coroutineScope.launch { timelineState.scrollToTop() }
-        } else {
-            onBottomBarItemClick(item)
+
+    DisposableEffect(bottomBarBinding, timelineState) {
+        bottomBarBinding.attach(timelineState)
+        onDispose {
+            bottomBarBinding.detach(timelineState)
         }
     }
 
@@ -268,35 +347,6 @@ private fun CollectionTimelineDestination(
                 )
             }
         }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .onSizeChanged { size ->
-                    // Keep the final measured height while hidden so showing bars never shifts
-                    // the timeline viewport.
-                    if (size.height > 0) bottomOverlayHeightPx = size.height
-                },
-            contentAlignment = Alignment.BottomCenter,
-        ) {
-            AnimatedVisibility(
-                visible = timelineState.barsVisible,
-                enter = slideInVertically(
-                    animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
-                    initialOffsetY = { it },
-                ) + fadeIn(animationSpec = tween(APP_BAR_ANIMATION_MILLIS)),
-                exit = slideOutVertically(
-                    animationSpec = tween(APP_BAR_ANIMATION_MILLIS), targetOffsetY = { it },
-                ) + fadeOut(animationSpec = tween(APP_BAR_ANIMATION_MILLIS)),
-            ) {
-                AppBottomBar(
-                    navItems = navItems,
-                    selectedItem = selectedTab,
-                    onNavItemClick = onCollectionBottomBarItemClick,
-                )
-            }
-        }
     }
 }
 
@@ -324,6 +374,9 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     } ?: MainNavItems.Collections
 
     val defaultCollectionId by appViewModel.defaultCollectionId.collectAsStateWithLifecycle()
+    val bottomBarBinding = remember { CollectionBottomBarBinding() }
+    var bottomOverlayHeightPx by remember { mutableIntStateOf(0) }
+    val bottomOverlayHeight = with(LocalDensity.current) { bottomOverlayHeightPx.toDp() }
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
@@ -336,10 +389,9 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                 defaultCollectionId = defaultCollectionId,
             )
         ) {
-            // The collection destination intercepts its own reselect and scrolls immediately.
-            // This branch is intentionally a no-op because it cannot be reached by the shell's
-            // bottom bar while a collection route is visible.
-            AppBottomBarAction.ScrollCollectionToTop -> Unit
+            AppBottomBarAction.ScrollCollectionToTop -> {
+                coroutineScope.launch { bottomBarBinding.scrollToTop() }
+            }
 
             is AppBottomBarAction.Navigate -> {
                 navController.navigate(action.route) {
@@ -392,17 +444,6 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     contentWindowInsets = WindowInsets(0),
-                    bottomBar = {
-                        // Collections draw this bar as a sibling overlay so the timeline's
-                        // viewport never receives a changing Scaffold bottom padding.
-                        if (showBottomBar && !isCollectionRoute) {
-                            AppBottomBar(
-                                navItems = navItems,
-                                selectedItem = selectedTab,
-                                onNavItemClick = onBottomBarItemClick,
-                            )
-                        }
-                    },
                 ) { padding ->
                     NavHost(
                         navController = navController,
@@ -449,28 +490,30 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             }
 
                             if (defaultCollectionId.isNullOrBlank()) {
-                                Scaffold(
-                                    topBar = {
-                                        TopAppBar(
-                                            title = {},
-                                            navigationIcon = {
-                                                IconButton(onClick = { openDrawer() }) {
-                                                    Icon(Icons.Default.Menu, contentDescription = "Open drawer")
-                                                }
-                                            },
-                                        )
-                                    },
-                                ) { innerPadding ->
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(innerPadding),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        BodyLargeText(
-                                            text = "Swipe right or tap \u2630 to select a collection",
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
+                                BottomBarPaddedContent(bottomOverlayHeight) {
+                                    Scaffold(
+                                        topBar = {
+                                            TopAppBar(
+                                                title = {},
+                                                navigationIcon = {
+                                                    IconButton(onClick = { openDrawer() }) {
+                                                        Icon(Icons.Default.Menu, contentDescription = "Open drawer")
+                                                    }
+                                                },
+                                            )
+                                        },
+                                    ) { innerPadding ->
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(innerPadding),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            BodyLargeText(
+                                                text = "Swipe right or tap \u2630 to select a collection",
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -483,10 +526,9 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             CollectionTimelineDestination(
                                 collectionId = collectionId,
                                 navController = navController,
-                                navItems = navItems,
-                                selectedTab = selectedTab,
+                                bottomOverlayHeight = bottomOverlayHeight,
+                                bottomBarBinding = bottomBarBinding,
                                 onOpenDrawer = { openDrawer() },
-                                onBottomBarItemClick = onBottomBarItemClick,
                             )
                         }
                     }
@@ -495,14 +537,16 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                         onNavigateToBoards = { navController.navigate(MainNavItems.Boards.route) },
                     )
                     composable("boards") {
-                        BoardsScreen(
-                            onNavigateToMarketplace = { navController.navigate("marketplace") },
-                            onNavigateToGroupDetail = { sourceId ->
-                                navController.navigate("board_group/${sourceId.encode()}")
-                            },
-                            onLoginClick = { sourceId -> authViewModel.triggerLogin(sourceId) },
-                            onLogoutClick = { sourceId -> authViewModel.logout(sourceId) },
-                        )
+                        BottomBarPaddedContent(bottomOverlayHeight) {
+                            BoardsScreen(
+                                onNavigateToMarketplace = { navController.navigate("marketplace") },
+                                onNavigateToGroupDetail = { sourceId ->
+                                    navController.navigate("board_group/${sourceId.encode()}")
+                                },
+                                onLoginClick = { sourceId -> authViewModel.triggerLogin(sourceId) },
+                                onLogoutClick = { sourceId -> authViewModel.logout(sourceId) },
+                            )
+                        }
                     }
                     composable(
                         route = "board_group/{sourceId}",
@@ -531,34 +575,44 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                         startDestination = "settings_home",
                     ) {
                         composable("settings_home") {
-                            SettingsScreen(
-                                onNavigateToReadingHistory = { navController.navigate("reading_history") },
-                                onNavigateToSavedPosts = { navController.navigate("saved_posts") },
-                                onNavigateToReadingPreferences = {
-                                    navController.navigate("reading_preferences")
-                                },
-                            )
+                            BottomBarPaddedContent(bottomOverlayHeight) {
+                                SettingsScreen(
+                                    onNavigateToReadingHistory = { navController.navigate("reading_history") },
+                                    onNavigateToSavedPosts = { navController.navigate("saved_posts") },
+                                    onNavigateToReadingPreferences = {
+                                        navController.navigate("reading_preferences")
+                                    },
+                                )
+                            }
                         }
                         composable("reading_preferences") {
-                            ReadingPreferencesScreen(onNavigateUp = { navController.navigateUp() })
+                            BottomBarPaddedContent(bottomOverlayHeight) {
+                                ReadingPreferencesScreen(onNavigateUp = { navController.navigateUp() })
+                            }
                         }
                         composable("reading_history") {
-                            ReadingHistoryScreen(
-                                onNavigateUp = { navController.navigateUp() },
-                                onThreadClick = { sourceKey, summary ->
-                                    navController.navigate(summary.threadDetailRoute(sourceKey))
-                                },
-                            )
+                            BottomBarPaddedContent(bottomOverlayHeight) {
+                                ReadingHistoryScreen(
+                                    onNavigateUp = { navController.navigateUp() },
+                                    onThreadClick = { sourceKey, summary ->
+                                        navController.navigate(summary.threadDetailRoute(sourceKey))
+                                    },
+                                )
+                            }
                         }
                         composable("saved_posts") {
-                            SavedPostsScreen(
-                                onNavigateUp = { navController.navigateUp() },
-                                onThreadClick = { record ->
-                                    val sourceKey = record.savedPost.sourceKey.encode()
-                                    val threadId = record.savedPost.threadId.encode()
-                                    navController.navigate("saved_post_detail?sourceKey=$sourceKey&threadId=$threadId")
-                                },
-                            )
+                            BottomBarPaddedContent(bottomOverlayHeight) {
+                                SavedPostsScreen(
+                                    onNavigateUp = { navController.navigateUp() },
+                                    onThreadClick = { record ->
+                                        val sourceKey = record.savedPost.sourceKey.encode()
+                                        val threadId = record.savedPost.threadId.encode()
+                                        navController.navigate(
+                                            "saved_post_detail?sourceKey=$sourceKey&threadId=$threadId",
+                                        )
+                                    },
+                                )
+                            }
                         }
                         composable(
                             route = "saved_post_detail?sourceKey={sourceKey}&threadId={threadId}",
@@ -567,10 +621,12 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                                 navArgument("threadId") { type = NavType.StringType },
                             ),
                         ) {
-                            SavedPostDetailScreen(
-                                onNavigateUp = { navController.navigateUp() },
-                                onOpenWebClick = {},
-                            )
+                            BottomBarPaddedContent(bottomOverlayHeight) {
+                                SavedPostDetailScreen(
+                                    onNavigateUp = { navController.navigateUp() },
+                                    onOpenWebClick = {},
+                                )
+                            }
                         }
                     }
                     composable("create_collection") {
@@ -649,6 +705,22 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     }
                 }
 
+                if (showBottomBar) {
+                    AppBottomBarOverlay(
+                        isCollectionRoute = isCollectionRoute,
+                        collectionBarsVisible = bottomBarBinding.barsVisible,
+                        navItems = navItems,
+                        selectedTab = selectedTab,
+                        onNavItemClick = onBottomBarItemClick,
+                        onHeightChanged = { height ->
+                            // Retain the complete bar height after a collection scroll hides it,
+                            // keeping both timeline and ordinary-tab viewports stable.
+                            bottomOverlayHeightPx = height
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter),
+                    )
+                }
             }
         }
     }

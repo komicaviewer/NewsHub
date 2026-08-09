@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import tw.kevinzhang.newshub.ui.navigation.MainNavItems
@@ -27,15 +28,19 @@ import tw.kevinzhang.newshub.ui.navigation.NavItems
 import tw.kevinzhang.newshub.ui.navigation.mainNavItems
 import tw.kevinzhang.newshub.ui.theme.NewshubTheme
 
+const val APP_BOTTOM_BAR_TEST_TAG = "app_bottom_bar"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppBottomBar(
     navItems: List<NavItems>,
+    modifier: Modifier = Modifier,
     scrollBehavior: BottomAppBarScrollBehavior? = null,
     onNavItemClick: (NavItems) -> Unit = {},
     selectedItem: NavItems? = null,
 ) {
     BottomAppBar(
+        modifier = modifier.testTag(APP_BOTTOM_BAR_TEST_TAG),
         scrollBehavior = scrollBehavior,
         contentPadding = PaddingValues(0.dp),
     ) {
