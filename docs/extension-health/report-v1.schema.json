@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/komicaviewer/NewsHub/blob/dev/docs/extension-health/report-v1.schema.json",
+  "title": "NewsHub sanitized extension health report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "profileId", "startedAtEpochMs", "finishedAtEpochMs", "status", "requestCount", "results"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "profileId": { "type": "string" },
+    "startedAtEpochMs": { "type": "integer", "minimum": 0 },
+    "finishedAtEpochMs": { "type": "integer", "minimum": 0 },
+    "status": { "$ref": "#/$defs/status" },
+    "requestCount": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "results": { "type": "array", "items": { "$ref": "#/$defs/sourceResult" } }
+  },
+  "$defs": {
+    "status": { "enum": ["PASS", "FAIL"] },
+    "sourceResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "packageName", "status", "durationMs", "steps"],
+      "properties": {
+        "sourceId": { "type": "string" },
+        "packageName": { "type": "string" },
+        "status": { "$ref": "#/$defs/status" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+        "evidenceScreenshot": { "type": ["string", "null"], "pattern": "^screenshots/[A-Za-z0-9._-]+\\.png$" }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "status", "durationMs"],
+      "properties": {
+        "operation": { "type": "string", "pattern": "^[a-z_]{1,64}$" },
+        "status": { "$ref": "#/$defs/status" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "observedCount": { "type": ["integer", "null"], "minimum": 0 },
+        "failureClass": {
+          "type": ["string", "null"],
+          "enum": ["AUTH_REQUIRED", "RATE_LIMITED", "SITE_UNAVAILABLE", "PARSER_CONTRACT", "HOST_RUNTIME", "TIMEOUT", "PROFILE_INVALID", "UNKNOWN", null]
+        },
+        "failureFingerprint": { "type": ["string", "null"], "pattern": "^[a-f0-9]{24}$" }
+      }
+    }
+  }
+}

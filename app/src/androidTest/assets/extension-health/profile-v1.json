@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "profileId": "official-live-v1",
+  "operationTimeoutMs": 25000,
+  "runTimeoutMs": 420000,
+  "maxRequests": 48,
+  "sources": [
+    {
+      "sourceId": "tw.kevinzhang.eyny",
+      "packageName": "tw.kevinzhang.newshub.extension.eyny",
+      "allowedHosts": ["eyny.com", "www.eyny.com"],
+      "requireAuthenticatedSession": true
+    },
+    {
+      "sourceId": "tw.kevinzhang.newshub.extension.gamer",
+      "packageName": "tw.kevinzhang.newshub.extension.gamer",
+      "allowedHosts": ["forum.gamer.com.tw"],
+      "requireAuthenticatedSession": true
+    },
+    {
+      "sourceId": "tw.kevinzhang.newshub.extension.hackernews",
+      "packageName": "tw.kevinzhang.newshub.extension.hackernews",
+      "allowedHosts": ["news.ycombinator.com"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.komica.twocat",
+      "packageName": "tw.kevinzhang.newshub.extension.komica",
+      "allowedHosts": ["2cat.org"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.komica.sora",
+      "packageName": "tw.kevinzhang.newshub.extension.komica",
+      "allowedHosts": ["komica1.org"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.akraft",
+      "packageName": "tw.kevinzhang.newshub.extension.komica",
+      "allowedHosts": ["www.akraft.net"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.nagatoyuki",
+      "packageName": "tw.kevinzhang.newshub.extension.komica",
+      "allowedHosts": ["eclair.nagatoyuki.org"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.wtako",
+      "packageName": "tw.kevinzhang.newshub.extension.komica",
+      "allowedHosts": ["kemono.wtako.net"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.komica2.twocat",
+      "packageName": "tw.kevinzhang.newshub.extension.komica2",
+      "allowedHosts": ["2cat.org"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.komica2.sora",
+      "packageName": "tw.kevinzhang.newshub.extension.komica2",
+      "allowedHosts": ["komica1.org"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.komica2.zawarudo",
+      "packageName": "tw.kevinzhang.newshub.extension.komica2",
+      "allowedHosts": ["majeur.zawarudo.org"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.mobile01",
+      "packageName": "tw.kevinzhang.newshub.extension.mobile01",
+      "allowedHosts": ["www.mobile01.com"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.newshub.extension.ptt",
+      "packageName": "tw.kevinzhang.newshub.extension.ptt",
+      "allowedHosts": ["www.ptt.cc"]
+    }
+  ]
+}

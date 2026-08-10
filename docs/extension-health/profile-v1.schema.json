@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/komicaviewer/NewsHub/blob/dev/docs/extension-health/profile-v1.schema.json",
+  "title": "NewsHub trusted extension health profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "profileId", "operationTimeoutMs", "runTimeoutMs", "maxRequests", "sources"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "profileId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
+    "operationTimeoutMs": { "type": "integer", "minimum": 1000, "maximum": 30000 },
+    "runTimeoutMs": { "type": "integer", "minimum": 1000, "maximum": 600000 },
+    "maxRequests": { "type": "integer", "minimum": 1, "maximum": 100 },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 25,
+      "items": { "$ref": "#/$defs/source" }
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "packageName", "allowedHosts"],
+      "properties": {
+        "sourceId": { "$ref": "#/$defs/safeName" },
+        "packageName": { "$ref": "#/$defs/safeName" },
+        "allowedHosts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$" }
+        },
+        "boardQuery": { "type": "string", "maxLength": 100, "pattern": "^[^\\u0000-\\u001f\\u007f]*$" },
+        "boardNameContains": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "boardUrl": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "requireAuthenticatedSession": { "type": "boolean" },
+        "minimumSummaries": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "minimumPosts": { "type": "integer", "minimum": 1, "maximum": 20 }
+      }
+    },
+    "safeName": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$" }
+  }
+}

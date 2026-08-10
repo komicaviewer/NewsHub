@@ -34,6 +34,7 @@ class ExtensionIsolationE2ETest {
             context,
             ExtensionManagementEntryPoint::class.java,
         )
+        entryPoint.trustProvider().clear()
 
         entryPoint.trustProvider().installVerifiedSnapshot(
             snapshot(context, targetsVersion = 1, validPins = false, validContent = true),
@@ -74,7 +75,7 @@ class ExtensionIsolationE2ETest {
     }
 
     @Suppress("DEPRECATION")
-    private fun snapshot(
+    internal fun snapshot(
         context: Context,
         targetsVersion: Long,
         validPins: Boolean,
