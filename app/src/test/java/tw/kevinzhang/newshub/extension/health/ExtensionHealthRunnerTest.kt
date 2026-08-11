@@ -10,6 +10,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.SourceIdentity
+import tw.kevinzhang.extension_api.AuthSpec
+import tw.kevinzhang.extension_api.AuthenticatedSource
+import tw.kevinzhang.extension_api.SourceRuntime
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.BoardPage
 import tw.kevinzhang.extension_api.model.BoardPageRequest
@@ -40,14 +43,24 @@ class ExtensionHealthRunnerTest {
     @Test
     fun malformedSummaryIsClassifiedWithoutLeakingExceptionText() = runBlocking {
         val source = FakeSource(summary = FakeSource.summary.copy(id = ""))
+        var evidenceCalls = 0
 
-        val report = ExtensionHealthRunner().run(loadProfile(), listOf(source))
+        val report = ExtensionHealthRunner().run(
+            loadProfile(),
+            listOf(source),
+            captureEvidence = {
+                evidenceCalls += 1
+                "screenshots/test-source.png"
+            },
+        )
 
         val failure = report.results.single().steps.last()
         assertEquals(HealthStatus.FAIL, report.status)
         assertEquals(HealthFailureClass.PARSER_CONTRACT, failure.failureClass)
         assertTrue(failure.failureFingerprint?.matches(Regex("[a-f0-9]{24}")) == true)
         assertFalse(ExtensionHealthJson.encodeReport(report).contains("Summary fields failed contract"))
+        assertEquals(0, evidenceCalls)
+        assertNull(report.results.single().evidenceScreenshot)
     }
 
     @Test
@@ -101,6 +114,69 @@ class ExtensionHealthRunnerTest {
 
         assertEquals(1, report.requestCount)
         assertEquals(HealthFailureClass.TIMEOUT, report.results.single().steps.single().failureClass)
+    }
+
+    @Test
+    fun missingHostOwnedSessionIsPendingWithoutCallingCandidateCode() = runBlocking {
+        val profile = loadProfile().copy(
+            maxRequests = 4,
+            sources = loadProfile().sources.map { it.copy(requireAuthenticatedSession = true) },
+        )
+        val source = FakeAuthenticatedSource()
+
+        val report = ExtensionHealthRunner().run(profile, listOf(source))
+
+        assertEquals(HealthStatus.PARTIAL_AUTH_PENDING, report.status)
+        assertEquals(HealthStatus.AUTH_PENDING, report.results.single().status)
+        assertEquals("session_provision", report.results.single().steps.single().operation)
+        assertEquals(HealthFailureClass.AUTH_REQUIRED, report.results.single().steps.single().failureClass)
+        assertEquals(0, report.requestCount)
+        assertEquals(0, source.calls)
+    }
+
+    @Test
+    fun provisionedButExpiredSessionRemainsPendingAndNeverLooksHealthy() = runBlocking {
+        val profile = loadProfile().copy(
+            maxRequests = 4,
+            sources = loadProfile().sources.map { it.copy(requireAuthenticatedSession = true) },
+        )
+        val source = FakeAuthenticatedSource(sessionValid = false)
+        var evidenceCalls = 0
+
+        val report = ExtensionHealthRunner().run(
+            profile,
+            listOf(source),
+            authenticatedSessionSourceIds = setOf("test.source"),
+            captureEvidence = {
+                evidenceCalls += 1
+                "screenshots/test-source.png"
+            },
+        )
+
+        assertEquals(HealthStatus.PARTIAL_AUTH_PENDING, report.status)
+        assertEquals("validate_session", report.results.single().steps.single().operation)
+        assertEquals(1, report.requestCount)
+        assertEquals(1, source.calls)
+        assertEquals(0, evidenceCalls)
+        assertNull(report.results.single().evidenceScreenshot)
+    }
+
+    @Test
+    fun capturesEvidenceOnlyAfterSourcePasses() = runBlocking {
+        var evidenceCalls = 0
+
+        val report = ExtensionHealthRunner().run(
+            profile = loadProfile(),
+            sources = listOf(FakeSource()),
+            captureEvidence = {
+                evidenceCalls += 1
+                "screenshots/test-source.png"
+            },
+        )
+
+        assertEquals(HealthStatus.PASS, report.status)
+        assertEquals(1, evidenceCalls)
+        assertEquals("screenshots/test-source.png", report.results.single().evidenceScreenshot)
     }
 
     private fun loadProfile(): ExtensionHealthProfile = ExtensionHealthJson.decodeProfile(resource("profile-v1.json"))
@@ -164,6 +240,36 @@ class ExtensionHealthRunnerTest {
                 content = listOf(Paragraph.Text("private post body")),
                 comments = emptyList(),
             )
+        }
+    }
+
+    private class FakeAuthenticatedSource(
+        private val sessionValid: Boolean = true,
+    ) : AuthenticatedSource {
+        var calls = 0
+        override val sourceIdentity = SourceIdentity("test.extension", "a".repeat(64), "test.source")
+        override val id = "test.source"
+        override val name = "Authenticated test"
+        override val language = "en"
+        override val version = 1
+        override val iconUrl: String? = null
+        override val supportsCommentPagination = false
+        override val alwaysUseRawImage = false
+        override val needsLogin = false
+        override val authSpec: AuthSpec = AuthSpec.None
+        override fun onAttach(runtime: SourceRuntime) = Unit
+        override suspend fun validateSession(): Boolean { calls += 1; return sessionValid }
+        override suspend fun getBoardPage(request: BoardPageRequest): BoardPage {
+            calls += 1
+            return BoardPage(emptyList())
+        }
+        override suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary> {
+            calls += 1
+            return emptyList()
+        }
+        override suspend fun getThread(summary: ThreadSummary): Thread {
+            calls += 1
+            error("not reached")
         }
     }
 }

@@ -6,6 +6,7 @@ import dagger.hilt.components.SingletonComponent
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.extension_loader.ExtensionManager
 import tw.kevinzhang.extension_loader.ExtensionTrustPolicyProvider
+import tw.kevinzhang.newshub.auth.SourceSessionManager
 
 /** Internal process boundary used by package broadcasts and instrumentation verification. */
 @EntryPoint
@@ -14,4 +15,5 @@ internal interface ExtensionManagementEntryPoint {
     fun manager(): ExtensionManager
     fun loader(): ExtensionLoader
     fun trustProvider(): ExtensionTrustPolicyProvider
+    fun sessionManager(): SourceSessionManager
 }

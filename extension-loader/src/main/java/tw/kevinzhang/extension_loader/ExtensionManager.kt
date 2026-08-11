@@ -382,6 +382,7 @@ class ExtensionManager @Inject constructor(
                 splitNames?.let(::addAll)
                 appInfo.splitSourceDirs?.let(::addAll)
             },
+            requestedPermissions = requestedPermissions.orEmpty().toList(),
         )
     }
 
@@ -404,11 +405,16 @@ class ExtensionManager @Inject constructor(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.packageManager.getPackageInfo(
                 packageName,
-                PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()),
+                PackageManager.PackageInfoFlags.of(
+                    (PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_PERMISSIONS).toLong(),
+                ),
             )
         } else {
             @Suppress("DEPRECATION")
-            context.packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+            context.packageManager.getPackageInfo(
+                packageName,
+                PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_PERMISSIONS,
+            )
         }
 
     private data class Candidate(

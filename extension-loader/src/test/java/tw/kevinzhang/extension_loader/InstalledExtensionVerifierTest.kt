@@ -38,6 +38,25 @@ class InstalledExtensionVerifierTest {
         }
     }
 
+    @Test fun `rejects extension packages requesting shared storage permissions`() {
+        val apk = temporaryFolder.newFile("storage-extension.apk").toPath()
+        Files.write(apk, "trusted-apk".toByteArray())
+        val policy = policy(Files.size(apk), sha256(Files.readAllBytes(apk)))
+        val artifact = InstalledPackageArtifact(
+            versionCode = 9,
+            sourcePath = apk,
+            splitSourcePaths = emptyList(),
+            requestedPermissions = listOf("android.permission.READ_MEDIA_IMAGES"),
+        )
+
+        try {
+            verifyInstalledPackageArtifact(artifact, policy)
+            throw AssertionError("Expected forbidden storage permission rejection")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message.orEmpty().contains("storage"))
+        }
+    }
+
     @Test fun `installed Source service set must exactly match signed target`() {
         val descriptor = descriptor("example.source", "example.extension.ExampleService")
         val policy = policy(length = 4, hash = "c".repeat(64))

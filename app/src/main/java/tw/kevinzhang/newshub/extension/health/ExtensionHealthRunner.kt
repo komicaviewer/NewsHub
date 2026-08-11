@@ -22,6 +22,7 @@ class ExtensionHealthRunner(
     suspend fun run(
         profile: ExtensionHealthProfile,
         sources: Collection<Source>,
+        authenticatedSessionSourceIds: Set<String> = emptySet(),
         captureEvidence: suspend (sourceId: String) -> String? = { null },
     ): ExtensionHealthReport {
         val checkedProfile = profile.validated()
@@ -109,18 +110,23 @@ class ExtensionHealthRunner(
 
                     var continueProbe = true
                     if (sourceProfile.requireAuthenticatedSession) {
-                        val authenticated = request(
-                            operation = "validate_session",
-                            block = {
-                                require(source is AuthenticatedSource) {
-                                    "Configured source does not implement authentication"
-                                }
-                                check(source.validateSession()) { "Authenticated session is unavailable" }
-                                true
-                            },
-                            validate = { null },
-                        )
-                        continueProbe = authenticated == true
+                        if (sourceProfile.sourceId !in authenticatedSessionSourceIds) {
+                            steps += pendingStep(sourceProfile, "session_provision", 0)
+                            continueProbe = false
+                        } else {
+                            val authenticated = request(
+                                operation = "validate_session",
+                                block = {
+                                    require(source is AuthenticatedSource) {
+                                        "Configured source does not implement authentication"
+                                    }
+                                    if (!source.validateSession()) throw AuthenticationRequiredException()
+                                    true
+                                },
+                                validate = { null },
+                            )
+                            continueProbe = authenticated == true
+                        }
                     }
 
                     val board = if (continueProbe) {
@@ -182,10 +188,23 @@ class ExtensionHealthRunner(
                 }
             }
 
-            val status = if (steps.isNotEmpty() && steps.all { it.status == HealthStatus.PASS }) {
-                HealthStatus.PASS
+            val status = when {
+                steps.isNotEmpty() && steps.all { it.status == HealthStatus.PASS } -> HealthStatus.PASS
+                steps.isNotEmpty() && steps.all {
+                    it.status == HealthStatus.PASS || it.status == HealthStatus.AUTH_PENDING
+                } && steps.any { it.status == HealthStatus.AUTH_PENDING } -> HealthStatus.AUTH_PENDING
+                else -> HealthStatus.FAIL
+            }
+            val evidenceScreenshot = if (status == HealthStatus.PASS) {
+                try {
+                    captureEvidence(sourceProfile.sourceId)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    null
+                }
             } else {
-                HealthStatus.FAIL
+                null
             }
             results += SourceHealthResult(
                 sourceId = sourceProfile.sourceId,
@@ -193,13 +212,7 @@ class ExtensionHealthRunner(
                 status = status,
                 durationMs = elapsed(sourceStartedAt),
                 steps = steps,
-                evidenceScreenshot = try {
-                    captureEvidence(sourceProfile.sourceId)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: Exception) {
-                    null
-                },
+                evidenceScreenshot = evidenceScreenshot,
             )
         }
 
@@ -207,10 +220,12 @@ class ExtensionHealthRunner(
             profileId = checkedProfile.profileId,
             startedAtEpochMs = startedAt,
             finishedAtEpochMs = now(),
-            status = if (results.size == checkedProfile.sources.size && results.all { it.status == HealthStatus.PASS }) {
-                HealthStatus.PASS
-            } else {
-                HealthStatus.FAIL
+            status = when {
+                results.size != checkedProfile.sources.size || results.any { it.status == HealthStatus.FAIL } ->
+                    HealthStatus.FAIL
+                results.all { it.status == HealthStatus.PASS } -> HealthStatus.PASS
+                results.any { it.status == HealthStatus.AUTH_PENDING } -> HealthStatus.PARTIAL_AUTH_PENDING
+                else -> HealthStatus.FAIL
             },
             requestCount = requestCount,
             results = results,
@@ -238,7 +253,11 @@ private fun failedStep(
     durationMs: Long,
 ) = HealthStepResult(
     operation = operation,
-    status = HealthStatus.FAIL,
+    status = if (failureClass == HealthFailureClass.AUTH_REQUIRED) {
+        HealthStatus.AUTH_PENDING
+    } else {
+        HealthStatus.FAIL
+    },
     durationMs = durationMs,
     failureClass = failureClass,
     failureFingerprint = failureFingerprint(
@@ -248,6 +267,12 @@ private fun failedStep(
         packageName = profile.packageName,
     ),
 )
+
+private fun pendingStep(
+    profile: SourceHealthProfile,
+    operation: String,
+    durationMs: Long,
+) = failedStep(profile, operation, HealthFailureClass.AUTH_REQUIRED, durationMs)
 
 /** Classifies with private exception text but never stores or logs that text. */
 internal fun classifyFailure(error: Throwable): HealthFailureClass {

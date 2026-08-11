@@ -78,7 +78,8 @@ data class SourceHealthProfile(
     }
 }
 
-enum class HealthStatus { PASS, FAIL }
+/** AUTH_PENDING is explicit incomplete evidence; it must never be treated as PASS. */
+enum class HealthStatus { PASS, AUTH_PENDING, PARTIAL_AUTH_PENDING, FAIL }
 
 enum class HealthFailureClass {
     AUTH_REQUIRED,

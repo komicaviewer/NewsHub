@@ -9,6 +9,19 @@ internal data class InstalledPackageArtifact(
     val versionCode: Long,
     val sourcePath: Path,
     val splitSourcePaths: List<String>,
+    val requestedPermissions: List<String> = emptyList(),
+)
+
+private val FORBIDDEN_EXTENSION_STORAGE_PERMISSIONS = setOf(
+    "android.permission.READ_EXTERNAL_STORAGE",
+    "android.permission.WRITE_EXTERNAL_STORAGE",
+    "android.permission.MANAGE_EXTERNAL_STORAGE",
+    "android.permission.MANAGE_MEDIA",
+    "android.permission.ACCESS_MEDIA_LOCATION",
+    "android.permission.READ_MEDIA_IMAGES",
+    "android.permission.READ_MEDIA_VIDEO",
+    "android.permission.READ_MEDIA_AUDIO",
+    "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
 )
 
 internal data class InstalledPackageMarker(
@@ -36,6 +49,9 @@ internal fun verifyInstalledPackageArtifact(
         "Installed extension version does not match signed target"
     }
     require(artifact.splitSourcePaths.isEmpty()) { "Split extension APKs are not supported" }
+    require(artifact.requestedPermissions.none { it in FORBIDDEN_EXTENSION_STORAGE_PERMISSIONS }) {
+        "Extension package requests forbidden storage access"
+    }
     require(Files.isRegularFile(artifact.sourcePath, LinkOption.NOFOLLOW_LINKS)) {
         "Installed extension base APK is not a regular file"
     }

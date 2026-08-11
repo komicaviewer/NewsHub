@@ -204,6 +204,25 @@ class SourceSessionManager @Inject constructor(
         session(sourceId).setState(AuthState.Expired)
     }
 
+    /** Imports a pre-validated Host snapshot before any extension service is bound. */
+    fun importHostOwnedSession(
+        identity: SourceIdentity,
+        cookies: List<Cookie>,
+    ) {
+        require(cookies.isNotEmpty()) { "Host session import is empty" }
+        val storageKey = identity.storageKey()
+        synchronized(sessions) {
+            require(sourceIdentities[identity.sourceId] == null || sourceIdentities[identity.sourceId] == storageKey) {
+                "Host session identity mismatch"
+            }
+            sourceIdentities[identity.sourceId] = storageKey
+        }
+        session(identity.sourceId).apply {
+            jar.saveAllFromResponses(cookies)
+            setState(AuthState.Unknown)
+        }
+    }
+
     /**
      * Called when a foreground request reaches a protected resource. The user explicitly starts
      * login later from Boards, so this only expires the source session and emits a notice.

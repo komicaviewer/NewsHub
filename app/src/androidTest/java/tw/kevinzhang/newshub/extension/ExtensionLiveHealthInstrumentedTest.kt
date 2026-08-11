@@ -15,8 +15,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import tw.kevinzhang.newshub.extension.health.ExtensionHealthJson
 import tw.kevinzhang.newshub.extension.health.ExtensionHealthOutputDirectory
+import tw.kevinzhang.newshub.extension.health.ExtensionHealthProfileSelection
 import tw.kevinzhang.newshub.extension.health.ExtensionHealthRunner
+import tw.kevinzhang.newshub.extension.health.HostOwnedSessionSnapshot
 import tw.kevinzhang.newshub.extension.health.HealthStatus
+import tw.kevinzhang.newshub.extension.health.SourceHealthProfile
+import tw.kevinzhang.extension_api.SourceIdentity
 import java.io.File
 import java.io.FileOutputStream
 
@@ -32,18 +36,49 @@ class ExtensionLiveHealthInstrumentedTest {
     fun officialExtensionsSatisfyLiveStructuralContract() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = ApplicationProvider.getApplicationContext<Context>()
+        val selection = ExtensionHealthProfileSelection.selectionFor(
+            InstrumentationRegistry.getArguments().getString(PROFILE_ARGUMENT),
+        )
         val profileJson = instrumentation.context.assets
-            .open(TRUSTED_PROFILE_ASSET)
+            .open(selection.assetPath)
             .bufferedReader()
             .use { it.readText() }
-        val profile = ExtensionHealthJson.decodeProfile(profileJson)
+        val profile = selection.select(ExtensionHealthJson.decodeProfile(profileJson))
         val entryPoint = EntryPointAccessors.fromApplication(
             context,
             ExtensionManagementEntryPoint::class.java,
         )
 
-        // The trust fixture is Host-owned and still validates package bytes and production signer
-        // pins. Private CI separately binds the installed candidate to the reviewed commit SHA.
+        // Candidate and public FTL profiles never receive or parse raw sessions. A trusted,
+        // self-hosted full-profile run consumes the fixed external file and deletes it before
+        // any extension package is admitted or bound.
+        val authenticatedSessionSourceIds = if (selection.profileId == ExtensionHealthProfileSelection.FULL_PROFILE) {
+            val signerReader = ExtensionIsolationE2ETest()
+            val expectedSigners = profile.sources.filter(SourceHealthProfile::requireAuthenticatedSession)
+                .associate { source ->
+                    @Suppress("DEPRECATION")
+                    val packageInfo = context.packageManager.getPackageInfo(
+                        source.packageName,
+                        android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES,
+                    )
+                    source.packageName to signerReader.installedSignerSha256(packageInfo)
+                }
+            readAndDeleteSessionSnapshot(instrumentation, expectedSigners)
+                ?.sessions.orEmpty().mapTo(linkedSetOf()) { session ->
+                entryPoint.sessionManager().importHostOwnedSession(
+                    SourceIdentity(session.packageName, session.signerSha256, session.sourceId),
+                    session.cookies,
+                )
+                session.sourceId
+            }
+        } else {
+            deleteSessionSnapshotWithoutReading(instrumentation)
+            emptySet()
+        }
+
+        // This Host-owned test fixture binds exact installed package bytes to the signer observed
+        // on that installed package. External CI separately pins the reviewed commit and APK SHA;
+        // this dynamic fixture is not a replacement for production TUF metadata.
         entryPoint.trustProvider().clear()
         entryPoint.trustProvider().installVerifiedSnapshot(
             ExtensionIsolationE2ETest().snapshot(
@@ -51,6 +86,8 @@ class ExtensionLiveHealthInstrumentedTest {
                 targetsVersion = 1,
                 validPins = true,
                 validContent = true,
+                sourceIds = profile.sources.mapTo(linkedSetOf()) { it.sourceId },
+                pinInstalledSigner = true,
             ),
         )
         entryPoint.manager().refreshAllExtensionsAndAwait()
@@ -70,6 +107,7 @@ class ExtensionLiveHealthInstrumentedTest {
         val report = ExtensionHealthRunner().run(
             profile = profile,
             sources = entryPoint.loader().sourcesFlow.value,
+            authenticatedSessionSourceIds = authenticatedSessionSourceIds,
             captureEvidence = { sourceId ->
                 captureScreenshot(
                     bitmap = instrumentation.uiAutomation.takeScreenshot(),
@@ -87,7 +125,14 @@ class ExtensionLiveHealthInstrumentedTest {
             exportArtifacts(instrumentation, stagingDirectory, exportDirectory, reportName)
         }
 
-        assertEquals("Extension health report was written with failures", HealthStatus.PASS, report.status)
+        val acceptedStatuses = if (selection.allowAuthPending) {
+            setOf(HealthStatus.PASS, HealthStatus.PARTIAL_AUTH_PENDING)
+        } else {
+            setOf(HealthStatus.PASS)
+        }
+        check(report.status in acceptedStatuses) {
+            "Extension health report was written with structural failures"
+        }
     }
 
     private fun captureScreenshot(bitmap: Bitmap?, directory: File, sourceId: String): String? {
@@ -128,13 +173,20 @@ class ExtensionLiveHealthInstrumentedTest {
     }
 
     private fun runShellCommand(instrumentation: android.app.Instrumentation, command: String): String =
+        runShellCommand(instrumentation, command, MAX_SHELL_OUTPUT_CHARS)
+
+    private fun runShellCommand(
+        instrumentation: android.app.Instrumentation,
+        command: String,
+        maxOutputChars: Int,
+    ): String =
         instrumentation.uiAutomation.executeShellCommand(command).use { descriptor ->
             ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { reader ->
                 val output = StringBuilder()
                 val buffer = CharArray(SHELL_OUTPUT_BUFFER_CHARS)
                 var reachedEof = false
-                while (output.length < MAX_SHELL_OUTPUT_CHARS) {
-                    val remaining = minOf(buffer.size, MAX_SHELL_OUTPUT_CHARS - output.length)
+                while (output.length < maxOutputChars) {
+                    val remaining = minOf(buffer.size, maxOutputChars - output.length)
                     val read = reader.read(buffer, 0, remaining)
                     if (read < 0) {
                         reachedEof = true
@@ -149,14 +201,42 @@ class ExtensionLiveHealthInstrumentedTest {
             }
         }
 
+    private fun readAndDeleteSessionSnapshot(
+        instrumentation: android.app.Instrumentation,
+        expectedSignerByPackage: Map<String, String>,
+    ): HostOwnedSessionSnapshot? {
+        val output = runShellCommand(
+            instrumentation,
+            "if test -f $SESSION_SNAPSHOT_PATH; then " +
+                "printf '$SESSION_PRESENT_MARKER\\n'; " +
+                "trap 'rm -f $SESSION_SNAPSHOT_PATH' EXIT; " +
+                "cat $SESSION_SNAPSHOT_PATH; fi",
+            HostOwnedSessionSnapshot.MAX_BYTES + SESSION_PRESENT_MARKER.length + 2,
+        )
+        if (output.isEmpty()) return null
+        check(output.startsWith("$SESSION_PRESENT_MARKER\n")) { "Invalid Host session transport" }
+        return HostOwnedSessionSnapshot.decode(
+            output.substringAfter('\n'),
+            expectedSignerByPackage = expectedSignerByPackage,
+        )
+    }
+
+    private fun deleteSessionSnapshotWithoutReading(instrumentation: android.app.Instrumentation) {
+        check(runShellCommand(instrumentation, "rm -f $SESSION_SNAPSHOT_PATH").isBlank()) {
+            "Unable to clear forbidden Host session input"
+        }
+    }
+
     private companion object {
-        const val TRUSTED_PROFILE_ASSET = "extension-health/profile-v1.json"
         const val REPORT_DIRECTORY = "extension-health"
+        const val PROFILE_ARGUMENT = "extensionHealthProfile"
         const val OUTPUT_ROOT_ARGUMENT = "extensionHealthOutputRoot"
         const val REPORT_NAME_ARGUMENT = "extensionHealthReportName"
         const val DEFAULT_REPORT_NAME = "health-report.json"
         const val MAX_SHELL_OUTPUT_CHARS = 16 * 1024
         const val SHELL_OUTPUT_BUFFER_CHARS = 1024
+        const val SESSION_SNAPSHOT_PATH = "/sdcard/Download/newshub-private/session-snapshot.json"
+        const val SESSION_PRESENT_MARKER = "NEWSHUB_SESSION_V1"
         val SAFE_REPORT_NAME = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,63}\\.json")
     }
 }

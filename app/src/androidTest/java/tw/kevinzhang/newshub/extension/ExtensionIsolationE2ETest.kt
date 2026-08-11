@@ -28,6 +28,29 @@ import java.security.MessageDigest
 @RunWith(AndroidJUnit4::class)
 class ExtensionIsolationE2ETest {
     @Test
+    fun liveHealthFixturePinsTheActuallyInstalledSingleSigner() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val packageName = "tw.kevinzhang.newshub.extension.hackernews"
+        @Suppress("DEPRECATION")
+        val packageInfo = context.packageManager.getPackageInfo(
+            packageName,
+            PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SERVICES or PackageManager.GET_META_DATA,
+        )
+        val actualSigner = installedSignerSha256(packageInfo)
+        val policy = snapshot(
+            context,
+            targetsVersion = 1,
+            validPins = true,
+            validContent = true,
+            sourceIds = setOf("tw.kevinzhang.newshub.extension.hackernews"),
+            pinInstalledSigner = true,
+        ).policies.single()
+
+        assertEquals(setOf(actualSigner), policy.approvedCurrentSignersSha256)
+        assertEquals(setOf(actualSigner), policy.lineageAnchorsSha256)
+    }
+
+    @Test
     fun wrongSignersAreQuarantinedThenThresholdTrustedServicesBindAndExecute() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val entryPoint = EntryPointAccessors.fromApplication(
@@ -80,8 +103,14 @@ class ExtensionIsolationE2ETest {
         targetsVersion: Long,
         validPins: Boolean,
         validContent: Boolean,
+        sourceIds: Set<String> = SOURCE_POLICIES.mapTo(linkedSetOf()) { it.sourceId },
+        pinInstalledSigner: Boolean = false,
     ): VerifiedExtensionTrustSnapshot {
-        val packagePolicies = SOURCE_POLICIES.groupBy { it.packageName }.map { (packageName, sources) ->
+        val selectedPolicies = SOURCE_POLICIES.filter { it.sourceId in sourceIds }
+        require(selectedPolicies.mapTo(linkedSetOf()) { it.sourceId } == sourceIds) {
+            "Unknown Source requested by health profile"
+        }
+        val packagePolicies = selectedPolicies.groupBy { it.packageName }.map { (packageName, sources) ->
             val packageInfo = context.packageManager.getPackageInfo(
                 packageName,
                 PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SERVICES or
@@ -89,7 +118,12 @@ class ExtensionIsolationE2ETest {
             )
             val baseApk = File(requireNotNull(packageInfo.applicationInfo).sourceDir)
             val packageServices = requireNotNull(packageInfo.services)
-            val pin = if (validPins) SIGNER_PINS.getValue(packageName) else "0".repeat(64)
+            val installedSigner = installedSignerSha256(packageInfo)
+            val pin = if (validPins) {
+                if (pinInstalledSigner) installedSigner else SIGNER_PINS.getValue(packageName)
+            } else {
+                "0".repeat(64)
+            }
             ExtensionSigningPolicy(
                 packageName = packageName,
                 expectedVersionCode = PackageInfoCompat.getLongVersionCode(packageInfo),
@@ -130,6 +164,16 @@ class ExtensionIsolationE2ETest {
             digest.update(buffer, 0, read)
         }
         digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    internal fun installedSignerSha256(packageInfo: android.content.pm.PackageInfo): String {
+        val signingInfo = requireNotNull(packageInfo.signingInfo) { "Extension package has no signing identity" }
+        require(!signingInfo.hasMultipleSigners()) { "Health fixture requires one current signer" }
+        val current = signingInfo.apkContentsSigners.toList()
+        require(current.size == 1) { "Health fixture requires one current signer" }
+        return MessageDigest.getInstance("SHA-256")
+            .digest(current.single().toByteArray())
+            .joinToString("") { "%02x".format(it) }
     }
 
     private data class TestSourcePolicy(

@@ -42,6 +42,15 @@
 2. 下載最新版本的 `.apk` 檔案
 3. 在手機上開啟 `.apk` 並允許安裝未知來源的應用程式
 
+### 發佈自動化狀態
+
+本專案不使用 GitHub Actions。推送 `v*.*.*` tag 目前不會自動建置、簽署或建立
+NewsHub app release；app release 需依另行審核的人工流程處理，目前沒有擅自新增替代的
+Cloud Build 發佈管線。
+
+第三方 extension 的定期健康檢查、修復、候選驗證、獨立審核與發佈則由 GCP 上的
+`extension-ops`／Cloud Build 控制面負責，與 NewsHub app tag release 分離。
+
 ---
 
 ## 開始使用
