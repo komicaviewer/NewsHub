@@ -1,13 +1,10 @@
-# Firebase Test Lab live extension health test
+# Firebase Test Lab 即時 Extension 健康檢測
 
-`ExtensionLiveHealthInstrumentedTest` runs the trusted NewsHub host against the seven official
-extension APK bundles. Structural contracts in `health-report.json` determine success; PNG files
-under `screenshots/` are supporting evidence only.
+`ExtensionLiveHealthInstrumentedTest` 會以可信任的 NewsHub host 測試七個官方 extension APK bundles。`health-report.json` 的結構契約是成功與否的判定依據；`screenshots/` 下的 PNG 只作為輔助證據。
 
-## Build and preflight locally
+## 先在本機建置與檢查
 
-Build the app and instrumentation APKs first, then run the same test on a local emulator before
-using paid Test Lab capacity:
+使用可能計費的 Test Lab 前，先建置 app 與 instrumentation APK，並在本機 emulator 執行相同測試：
 
 ```bash
 ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
@@ -24,20 +21,17 @@ adb install-multiple -r \
 adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 ```
 
-The seven files supplied as additional APKs must be the exact signed artifacts already admitted
-by the extension release process. Do not substitute an unsigned PR build.
+七個 additional APK 必須是 extension 發布流程已准入的精確 signed artifacts，不得以未簽署的 PR build 代替。
 
-## Run one bounded Test Lab matrix
+## 執行一個有界 Test Lab matrix
 
-The following example uses one virtual device, disables retries, and sets a ten-minute hard
-timeout. The embedded profile has a seven-minute run timeout, per-operation timeouts no longer
-than 25 seconds, and a maximum of 48 extension requests.
+以下範例只使用一台 virtual device、停用重試，並設定 10 分鐘 hard timeout。內嵌 profile 的整體 timeout 為 7 分鐘，每個 operation 最長 25 秒，extension requests 上限為 48 次。
 
 ```bash
 PULL_ROOT=/sdcard/Download/newshub-extension-health
 
 gcloud firebase test android run \
-  --project=cellular-unity-466016-v5 \
+  --project=analog-marking-505217-n3 \
   --type=instrumentation \
   --app=app/build/outputs/apk/debug/app-debug.apk \
   --test=app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
@@ -52,15 +46,16 @@ gcloud firebase test android run \
   --no-record-video
 ```
 
-`MediumPhone.arm` with Android 35 was confirmed available through a read-only model lookup on
-2026-08-12. Confirm it again immediately before running with
-`gcloud firebase test android models describe MediumPhone.arm`; Test Lab availability changes over time. The CLI
-accepts more additional APKs, but this workflow intentionally caps the list at the seven release
-bundles.
+`MediumPhone.arm` 與 Android 35 曾在 2026-08-12 透過唯讀 device lookup 確認可用。Test Lab device catalog 會變動，執行前必須再次確認：
 
-The `extensionHealthOutputRoot` instrumentation argument is not a credential. It accepts only a
-normalized descendant of `/sdcard`, `/storage`, or `/data/local/tmp`, rejects traversal and shell
-syntax, and exports these files:
+```bash
+gcloud firebase test android models describe MediumPhone.arm \
+  --project=analog-marking-505217-n3
+```
+
+CLI 雖可接受更多 additional APKs，本工作流固定只允許七個正式 release bundles。
+
+`extensionHealthOutputRoot` instrumentation argument 不是 credential。它只接受 `/sdcard`、`/storage` 或 `/data/local/tmp` 下的 normalized descendant，並拒絕 traversal 與 shell syntax。輸出結構如下：
 
 ```text
 newshub-extension-health/
@@ -69,27 +64,19 @@ newshub-extension-health/
     └── <source-id>.png
 ```
 
-If `extensionHealthOutputRoot` is omitted, the test retains the existing behavior and writes to
-the app-owned external-files `extension-health` directory.
+省略 `extensionHealthOutputRoot` 時，測試會維持既有行為，寫入 app-owned external-files 的 `extension-health` 目錄。
 
-## Credential boundary
+## Credential 邊界
 
-Never pass usernames, passwords, cookies, API keys, one-time codes, or MFA material through
-`--environment-variables`, `--client-details`, APK filenames, result labels, or command arguments.
-Test Lab mirrors environment variables to `am instrument`, and test artifacts are uploaded to the
-configured results bucket. The checked-in GCP wrapper places a credential file under
-`/sdcard/Download/newshub-private/` while pulling only `/sdcard/Download/newshub-health/`; these
-paths must remain disjoint.
+不得透過 `--environment-variables`、`--client-details`、APK filename、result label 或 command argument 傳遞 username、password、cookie、API key、one-time code 或 MFA material。Test Lab 會將 environment variables 傳入 `am instrument`，測試 artifacts 也會上傳到指定 result bucket。
 
-Gamer and EYNY will report `AUTH_REQUIRED` unless an approved private mechanism has already
-provisioned their Host-owned authenticated state. This command deliberately does not weaken that
-boundary. Public-source checks still run, and no extension receives raw credentials.
+GCP wrapper 會把 credential file 放在 `/sdcard/Download/newshub-private/`，但只 pull `/sdcard/Download/newshub-health/`；兩個路徑必須永遠保持分離。
 
-Firebase Test Lab execution and retained Cloud Storage artifacts may incur charges. Keep the
-matrix to one approved device, retain `--timeout=10m` and zero retries, and apply the project's
-results-bucket lifecycle policy before increasing the device matrix or retention period.
+在核准的私有機制完成 host-owned authenticated state 前，Gamer 與 EYNY 會回報 `AUTH_REQUIRED`。本命令不會放寬此邊界；不需要登入的 Sources 仍會正常受測，任何 extension 都不會取得 raw credentials。
 
-Official references:
+Firebase Test Lab 與保留在 Cloud Storage 的 artifacts 可能產生費用。除非重新取得費用核准，matrix 必須維持一台已核准 device、`--timeout=10m`、零重試，並在提高 device 數量或 retention 前先確認 result bucket lifecycle policy。
 
-- [gcloud firebase test android run reference](https://docs.cloud.google.com/sdk/gcloud/reference/firebase/test/android/run)
-- [Firebase Test Lab gcloud guide](https://firebase.google.com/docs/test-lab/android/command-line)
+官方參考資料：
+
+- [gcloud firebase test android run 指令參考](https://docs.cloud.google.com/sdk/gcloud/reference/firebase/test/android/run)
+- [Firebase Test Lab gcloud 操作指南](https://firebase.google.com/docs/test-lab/android/command-line)
