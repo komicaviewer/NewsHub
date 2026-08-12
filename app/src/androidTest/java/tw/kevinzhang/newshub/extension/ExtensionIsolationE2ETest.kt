@@ -240,14 +240,14 @@ class ExtensionIsolationE2ETest {
             ),
         )
 
-        val SIGNER_PINS = mapOf(
-            "tw.kevinzhang.newshub.extension.eyny" to "61a305edcf6de4056c249af968ac84e762ddf5c89e88d67b6f0c049847df71a9",
-            "tw.kevinzhang.newshub.extension.gamer" to "bdf003b9cd64a049d4f4e3ebba52ebe804bbd7dab559d82e69fdb659c4c10ad0",
-            "tw.kevinzhang.newshub.extension.hackernews" to "99c1fb14a8a91ca27d2514834bd95c0aad013bb20502dafe7bc3034910a521d1",
-            "tw.kevinzhang.newshub.extension.komica" to "832056f0edf9e61a7ab5c0b2e092e2a81d33decaa5bef6515ab81447817615fc",
-            "tw.kevinzhang.newshub.extension.komica2" to "8e424801d1541463488903dc00aa17cc733e0a95a728b9ae85ca6f71b18c1f14",
-            "tw.kevinzhang.newshub.extension.mobile01" to "bb2a875a20916e0f5e5bbfec4036294732564decf0897e04c8a667adfa700350",
-            "tw.kevinzhang.newshub.extension.ptt" to "beab0396b65f7016c69f07a8a47bcc23aabf3413cb9b8db3c0757da95e57e0cd",
-        )
+        private const val PRODUCTION_EXTENSION_SIGNER_SHA256 =
+            "3df4717435423d5ba7adfed43a22a6e18bbeadc8d509d0bea94d82c7b0f2998d"
+
+        // The published distribution currently maintains upgrade compatibility through one
+        // production signer. Keep this as an explicit pin: the live fixture must never infer
+        // trust from whichever APK happens to be installed on the test device.
+        val SIGNER_PINS = SOURCE_POLICIES.associate { policy ->
+            policy.packageName to PRODUCTION_EXTENSION_SIGNER_SHA256
+        }
     }
 }
