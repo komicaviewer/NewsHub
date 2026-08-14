@@ -86,6 +86,7 @@ enum class HealthFailureClass {
     RATE_LIMITED,
     SITE_UNAVAILABLE,
     PARSER_CONTRACT,
+    HOST_POLICY,
     HOST_RUNTIME,
     TIMEOUT,
     PROFILE_INVALID,
@@ -119,7 +120,15 @@ data class HealthStepResult(
     val failureClass: HealthFailureClass? = null,
     /** Stable grouping key. It is derived from safe identifiers, never exception text. */
     val failureFingerprint: String? = null,
+    /** Safe policy evidence only; URL paths, queries, page content, and exception text are omitted. */
+    val observedHost: String? = null,
+    val allowedHosts: List<String>? = null,
 )
+
+internal class HostPolicyViolationException(
+    val observedHost: String,
+    val allowedHosts: Set<String>,
+) : IllegalArgumentException("URL is outside the trusted host allowlist")
 
 object ExtensionHealthJson {
     private val gson = GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create()
@@ -201,8 +210,9 @@ internal fun failureFingerprint(
 
 internal fun requireHostAllowed(url: String, allowedHosts: Set<String>) {
     val parsed = runCatching { URI(url) }.getOrElse { throw IllegalArgumentException("Invalid URL") }
-    require(parsed.scheme == "https" && parsed.host?.lowercase() in allowedHosts) {
-        "URL is outside the trusted host allowlist"
+    val observedHost = parsed.host?.lowercase().orEmpty()
+    if (parsed.scheme != "https" || observedHost !in allowedHosts) {
+        throw HostPolicyViolationException(observedHost, allowedHosts)
     }
     require(parsed.userInfo == null) { "URL user-info is forbidden" }
 }

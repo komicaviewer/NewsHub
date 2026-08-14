@@ -103,6 +103,7 @@ class ExtensionHealthRunner(
                                 operation,
                                 classification,
                                 elapsed(operationStartedAt),
+                                error,
                             )
                             null
                         }
@@ -251,6 +252,7 @@ private fun failedStep(
     operation: String,
     failureClass: HealthFailureClass,
     durationMs: Long,
+    error: Throwable? = null,
 ) = HealthStepResult(
     operation = operation,
     status = if (failureClass == HealthFailureClass.AUTH_REQUIRED) {
@@ -266,6 +268,8 @@ private fun failedStep(
         failureClass = failureClass,
         packageName = profile.packageName,
     ),
+    observedHost = (error as? HostPolicyViolationException)?.observedHost,
+    allowedHosts = (error as? HostPolicyViolationException)?.allowedHosts?.sorted(),
 )
 
 private fun pendingStep(
@@ -280,6 +284,7 @@ internal fun classifyFailure(error: Throwable): HealthFailureClass {
         return HealthFailureClass.TIMEOUT
     }
     if (error is AuthenticationRequiredException) return HealthFailureClass.AUTH_REQUIRED
+    if (error is HostPolicyViolationException) return HealthFailureClass.HOST_POLICY
     if (error is DeadObjectException || error is SecurityException) return HealthFailureClass.HOST_RUNTIME
 
     val privateMessage = generateSequence(error) { it.cause }

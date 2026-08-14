@@ -104,6 +104,21 @@ class ExtensionHealthRunnerTest {
     }
 
     @Test
+    fun exactHostPolicyFailureIsDistinctAndCarriesOnlySafeHostEvidence() = runBlocking {
+        val source = FakeSource(boardUrl = "https://gita.komica1.org/00b/pixmicat.php?secret=query")
+
+        val report = ExtensionHealthRunner().run(loadProfile(), listOf(source))
+        val failure = report.results.single().steps.single()
+        val json = ExtensionHealthJson.encodeReport(report)
+
+        assertEquals(HealthFailureClass.HOST_POLICY, failure.failureClass)
+        assertEquals("gita.komica1.org", failure.observedHost)
+        assertEquals(listOf("example.com"), failure.allowedHosts)
+        assertFalse(json.contains("pixmicat.php"))
+        assertFalse(json.contains("secret=query"))
+    }
+
+    @Test
     fun slowOperationStopsAtConfiguredTimeout() = runBlocking {
         val profile = loadProfile().copy(operationTimeoutMs = 1_000)
 
@@ -194,6 +209,7 @@ class ExtensionHealthRunnerTest {
         private val summary: ThreadSummary = Companion.summary,
         private val boardFailure: Throwable? = null,
         private val boardDelayMs: Long = 0,
+        private val boardUrl: String = "https://example.com/board",
     ) : Source {
         override val id = "test.source"
         override val name = "Test"
@@ -207,7 +223,7 @@ class ExtensionHealthRunnerTest {
         override suspend fun getBoardPage(request: BoardPageRequest): BoardPage {
             boardFailure?.let { throw it }
             if (boardDelayMs > 0) delay(boardDelayMs)
-            return BoardPage(listOf(Board(id, "https://example.com/board", "Board")))
+            return BoardPage(listOf(Board(id, boardUrl, "Board")))
         }
 
         override suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary> = listOf(summary)
