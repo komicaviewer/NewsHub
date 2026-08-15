@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+import subprocess
 
 
 RELEASE_DIR = Path(__file__).resolve().parents[1]
@@ -14,7 +15,7 @@ sys.path.insert(0, str(RELEASE_DIR))
 
 from release_contract import ReleaseContractError, parse_release_tag, validate_release_bundle
 from reserve_release_cost import CostReservationError, reserve_release
-from validate_release_source import validate_production_root
+from validate_release_source import validate_git_source, validate_production_root
 
 
 def bundle(**overrides: object) -> str:
@@ -32,6 +33,53 @@ def bundle(**overrides: object) -> str:
 
 
 class ReleaseContractTest(unittest.TestCase):
+    def test_cloud_build_detached_checkout_verifies_annotated_remote_tag(self) -> None:
+        expected = "a" * 40
+        tag_object = "b" * 40
+        calls: list[list[str]] = []
+
+        def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            calls.append(command)
+            if command[1:3] == ["rev-parse", "HEAD"]:
+                output = expected + "\n"
+            elif command[1:4] == ["remote", "get-url", "origin"]:
+                output = "https://github.com/komicaviewer/NewsHub.git\n"
+            else:
+                output = (
+                    f"{tag_object}\trefs/tags/v0.0.12\n"
+                    f"{expected}\trefs/tags/v0.0.12^{{}}\n"
+                )
+            return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
+
+        validate_git_source(Path("/workspace"), "v0.0.12", expected, run=run)
+        self.assertIn("ls-remote", calls[-1])
+        self.assertNotIn("rev-list", [item for command in calls for item in command])
+
+    def test_remote_tag_must_match_event_commit_and_reviewed_origin(self) -> None:
+        expected = "a" * 40
+
+        def runner(origin: str, remote_sha: str):
+            def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+                if command[1:3] == ["rev-parse", "HEAD"]:
+                    output = expected + "\n"
+                elif command[1:4] == ["remote", "get-url", "origin"]:
+                    output = origin + "\n"
+                else:
+                    output = f"{remote_sha}\trefs/tags/v0.0.12\n"
+                return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
+            return run
+
+        with self.assertRaisesRegex(ReleaseContractError, "reviewed NewsHub repository"):
+            validate_git_source(
+                Path("/workspace"), "v0.0.12", expected,
+                run=runner("https://github.com/attacker/NewsHub", expected),
+            )
+        with self.assertRaisesRegex(ReleaseContractError, "does not resolve"):
+            validate_git_source(
+                Path("/workspace"), "v0.0.12", expected,
+                run=runner("https://github.com/komicaviewer/NewsHub", "c" * 40),
+            )
+
     def test_production_root_must_exist_and_must_not_equal_debug_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

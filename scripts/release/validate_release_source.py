@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from typing import Callable
 
 from release_contract import ReleaseContractError, load_strict_json, parse_release_tag, require_commit_sha
 
@@ -29,10 +30,19 @@ def validate_production_root(source_root: Path) -> None:
         raise ReleaseContractError("debug fixture TUF root cannot be promoted to production")
 
 
-def validate_git_source(source_root: Path, tag: str, commit_sha: str) -> None:
+Run = Callable[..., subprocess.CompletedProcess[str]]
+
+
+def validate_git_source(
+    source_root: Path,
+    tag: str,
+    commit_sha: str,
+    *,
+    run: Run = subprocess.run,
+) -> None:
     parse_release_tag(tag)
     expected_sha = require_commit_sha(commit_sha)
-    actual_sha = subprocess.run(
+    actual_sha = run(
         ["git", "rev-parse", "HEAD"],
         cwd=source_root,
         check=True,
@@ -41,13 +51,42 @@ def validate_git_source(source_root: Path, tag: str, commit_sha: str) -> None:
     ).stdout.strip().lower()
     if actual_sha != expected_sha:
         raise ReleaseContractError("Cloud Build source does not match the triggering commit")
-    tag_sha = subprocess.run(
-        ["git", "rev-list", "-n", "1", tag],
+
+    origin = run(
+        ["git", "remote", "get-url", "origin"],
         cwd=source_root,
         check=True,
         text=True,
         capture_output=True,
-    ).stdout.strip().lower()
+    ).stdout.strip()
+    normalized_origin = origin.removesuffix(".git").removesuffix("/")
+    if normalized_origin not in {
+        "https://github.com/komicaviewer/NewsHub",
+        "git@github.com:komicaviewer/NewsHub",
+    }:
+        raise ReleaseContractError("release source origin is not the reviewed NewsHub repository")
+
+    remote = run(
+        [
+            "git", "ls-remote", "--exit-code", "--tags", "origin",
+            f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}",
+        ],
+        cwd=source_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    refs: dict[str, str] = {}
+    allowed_refs = {f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}"}
+    for line in remote.stdout.splitlines():
+        sha, separator, ref = line.partition("\t")
+        if not separator or ref not in allowed_refs or ref in refs:
+            raise ReleaseContractError("release tag lookup returned unexpected refs")
+        refs[ref] = require_commit_sha(sha)
+    direct = refs.get(f"refs/tags/{tag}")
+    tag_sha = refs.get(f"refs/tags/{tag}^{{}}", direct)
+    if direct is None or tag_sha is None:
+        raise ReleaseContractError("release tag was not found on the reviewed origin")
     if tag_sha != expected_sha:
         raise ReleaseContractError("release tag does not resolve to the triggering commit")
 
