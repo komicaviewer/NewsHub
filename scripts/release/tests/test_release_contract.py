@@ -166,6 +166,82 @@ class ReleaseContractTest(unittest.TestCase):
                 monthly_release_limit=4,
             )
 
+    def test_fifth_release_requires_exact_august_v0017_override(self) -> None:
+        exact_commit = "d" * 40
+        state = {
+            "month": "2026-08",
+            "buildMinutes": 100,
+            "appReleaseJobs": 4,
+            "repairJobs": 3,
+        }
+        result = reserve_release(
+            state,
+            now=datetime(2026, 8, 16, tzinfo=timezone.utc),
+            build_minutes=20,
+            monthly_build_limit=2_000,
+            monthly_release_limit=4,
+            release_tag="v0.0.17",
+            release_commit_sha=exact_commit,
+            emergency_approved=True,
+            emergency_month="2026-08",
+            emergency_max_releases=5,
+            emergency_tag="v0.0.17",
+            emergency_commit_sha=exact_commit,
+        )
+        self.assertEqual(5, result["appReleaseJobs"])
+        self.assertEqual(120, result["buildMinutes"])
+        self.assertEqual(4, state["appReleaseJobs"])
+        self.assertEqual(100, state["buildMinutes"])
+
+    def test_emergency_override_rejects_other_month_tag_commit_and_sixth_release(self) -> None:
+        exact_commit = "d" * 40
+        base = {
+            "build_minutes": 20,
+            "monthly_build_limit": 2_000,
+            "monthly_release_limit": 4,
+            "release_tag": "v0.0.17",
+            "release_commit_sha": exact_commit,
+            "emergency_approved": True,
+            "emergency_month": "2026-08",
+            "emergency_max_releases": 5,
+            "emergency_tag": "v0.0.17",
+            "emergency_commit_sha": exact_commit,
+        }
+        cases = (
+            (
+                {"month": "2026-09", "buildMinutes": 100, "appReleaseJobs": 4},
+                datetime(2026, 9, 1, tzinfo=timezone.utc),
+                {},
+            ),
+            (
+                {"month": "2026-08", "buildMinutes": 100, "appReleaseJobs": 4},
+                datetime(2026, 8, 16, tzinfo=timezone.utc),
+                {"release_tag": "v0.0.18"},
+            ),
+            (
+                {"month": "2026-08", "buildMinutes": 100, "appReleaseJobs": 4},
+                datetime(2026, 8, 16, tzinfo=timezone.utc),
+                {"release_commit_sha": "e" * 40},
+            ),
+            (
+                {"month": "2026-08", "buildMinutes": 120, "appReleaseJobs": 5},
+                datetime(2026, 8, 16, tzinfo=timezone.utc),
+                {},
+            ),
+        )
+        for state, now, overrides in cases:
+            with self.subTest(state=state, overrides=overrides), self.assertRaises(CostReservationError):
+                reserve_release(state, now=now, **(base | overrides))
+
+    def test_monthly_release_limit_cannot_be_raised_to_five(self) -> None:
+        with self.assertRaises(CostReservationError):
+            reserve_release(
+                {"month": "2026-08", "buildMinutes": 0, "appReleaseJobs": 0},
+                now=datetime(2026, 8, 16, tzinfo=timezone.utc),
+                build_minutes=20,
+                monthly_build_limit=2_000,
+                monthly_release_limit=5,
+            )
     def test_cloud_build_contract_is_bounded_and_version_pinned(self) -> None:
         workflow = (RELEASE_DIR.parents[1] / "cloudbuild" / "release.yaml").read_text()
         self.assertIn("timeout: 1200s", workflow)
@@ -178,6 +254,9 @@ class ReleaseContractTest(unittest.TestCase):
         )
         self.assertIn("certificate-and-digest", workflow)
         self.assertIn("_NEWSHUB_APP_SIGNING_CERT_SHA256", workflow)
+        self.assertIn("_APP_RELEASE_EMERGENCY_OVERRIDE_APPROVED", workflow)
+        self.assertIn("--release-commit-sha", workflow)
+        self.assertIn("--emergency-commit-sha", workflow)
         self.assertNotIn("/versions/latest", workflow)
         self.assertNotIn("retry", workflow.lower())
 

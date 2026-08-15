@@ -44,6 +44,20 @@ steps:
       - $_MONTHLY_BUILD_MINUTES
       - --monthly-release-limit
       - $_MAX_APP_RELEASE_JOBS_PER_MONTH
+      - --release-tag
+      - $TAG_NAME
+      - --release-commit-sha
+      - $COMMIT_SHA
+      - --emergency-approved
+      - $_APP_RELEASE_EMERGENCY_OVERRIDE_APPROVED
+      - --emergency-month
+      - $_APP_RELEASE_EMERGENCY_OVERRIDE_MONTH
+      - --emergency-max-releases
+      - $_APP_RELEASE_EMERGENCY_OVERRIDE_MAX_JOBS
+      - --emergency-tag
+      - $_APP_RELEASE_EMERGENCY_OVERRIDE_TAG
+      - --emergency-commit-sha
+      - $_APP_RELEASE_EMERGENCY_OVERRIDE_COMMIT_SHA
 
   - id: persist-cost-before-build
     name: $_GCLOUD_BUILDER_IMAGE
