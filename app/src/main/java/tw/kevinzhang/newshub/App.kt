@@ -6,9 +6,11 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import tw.kevinzhang.marketplace.MarketplaceRepository
 import tw.kevinzhang.newshub.di.ApplicationScope
+import tw.kevinzhang.newshub.repo.RepoRepository
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -21,6 +23,9 @@ class App: Application(), ImageLoaderFactory {
     lateinit var marketplaceRepository: MarketplaceRepository
 
     @Inject
+    lateinit var repoRepository: RepoRepository
+
+    @Inject
     @ApplicationScope
     lateinit var applicationScope: CoroutineScope
 
@@ -29,6 +34,9 @@ class App: Application(), ImageLoaderFactory {
         // Repository construction restores the last threshold-verified snapshot. Refresh in the
         // application scope so installed Sources do not depend on visiting Marketplace first.
         applicationScope.launch {
+            marketplaceRepository.registerRepositoryDomains(
+                repoRepository.getRepositoryDomains().first(),
+            )
             runCatching { marketplaceRepository.fetchExtensions(OFFICIAL_EXTENSION_REPOSITORY) }
                 .onFailure { error -> Log.w(TAG, "Unable to refresh extension trust", error) }
         }
