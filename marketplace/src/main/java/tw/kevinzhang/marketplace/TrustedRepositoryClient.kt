@@ -18,10 +18,17 @@ import tw.kevinzhang.marketplace.data.AvailableSource
 import tw.kevinzhang.marketplace.data.ExtensionInfo
 import tw.kevinzhang.marketplace.data.RepoMetadata
 import tw.kevinzhang.extension_api.ExtensionProtocol
+import tw.kevinzhang.extension_api.NamedHostCapabilities
+import tw.kevinzhang.extension_api.NetworkOperationPolicy
+import tw.kevinzhang.extension_api.NetworkOperations
+import tw.kevinzhang.extension_api.SourceNetworkPolicy
+import tw.kevinzhang.extension_api.sha256
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.net.Proxy
+import java.net.IDN
+import java.net.URI
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.Locale
@@ -44,7 +51,13 @@ internal interface RepositoryStateStore {
     fun loadVersions(): RepositoryVersions
     fun loadRoot(): ByteArray?
     fun loadTargets(): ByteArray?
-    fun save(root: ByteArray, targets: ByteArray, versions: RepositoryVersions)
+    fun save(
+        root: ByteArray,
+        timestamp: ByteArray,
+        snapshot: ByteArray,
+        targets: ByteArray,
+        versions: RepositoryVersions,
+    )
 }
 
 internal class PreferencesRepositoryStateStore(context: Context) : RepositoryStateStore {
@@ -64,7 +77,13 @@ internal class PreferencesRepositoryStateStore(context: Context) : RepositorySta
     override fun loadTargets(): ByteArray? = preferences.getString(TARGETS_BYTES, null)
         ?.let { runCatching { java.util.Base64.getDecoder().decode(it) }.getOrNull() }
 
-    override fun save(root: ByteArray, targets: ByteArray, versions: RepositoryVersions) {
+    override fun save(
+        root: ByteArray,
+        timestamp: ByteArray,
+        snapshot: ByteArray,
+        targets: ByteArray,
+        versions: RepositoryVersions,
+    ) {
         val committed = preferences.edit()
             .putString(ROOT_BYTES, java.util.Base64.getEncoder().encodeToString(root))
             .putString(TARGETS_BYTES, java.util.Base64.getEncoder().encodeToString(targets))
@@ -89,13 +108,26 @@ internal class PreferencesRepositoryStateStore(context: Context) : RepositorySta
     }
 }
 
-/** A bounded TUF-style updater for the one code-owned official extension repository. */
+/** A bounded TUF-style updater scoped to exactly one repository trust domain. */
 internal class TrustedRepositoryClient(
     baseClient: OkHttpClient,
     private val embeddedRoot: ByteArray,
     private val stateStore: RepositoryStateStore,
+    private val domain: RepositoryTrustDomain = RepositoryTrustDomains.official(embeddedRoot),
     private val now: () -> Instant = Instant::now,
 ) {
+    init {
+        // The trust-domain descriptor is itself pinned to the exact bootstrap root shown to or
+        // built into the user agent. Root rotation is subsequently authorized by TUF thresholds.
+        TrustedMetadataVerifier(embeddedRoot, now)
+        val bootstrap = inspectTrustedRoot(embeddedRoot)
+        if (bootstrap.threshold != domain.rootThreshold ||
+            bootstrap.keyFingerprints != domain.rootKeyFingerprints
+        ) {
+            throw TrustedMetadataException("Repository domain does not match its pinned root")
+        }
+    }
+
     private val client = baseClient.newBuilder()
         .followRedirects(false)
         .followSslRedirects(false)
@@ -105,6 +137,7 @@ internal class TrustedRepositoryClient(
     private val mutex = Mutex()
 
     fun loadPersistedSnapshot(): RepositorySnapshot? {
+        requireDomainActive()
         val targetsBytes = stateStore.loadTargets() ?: return null
         val versions = stateStore.loadVersions()
         if (versions.trustedUntilEpochMillis <= now().toEpochMilli()) {
@@ -120,7 +153,7 @@ internal class TrustedRepositoryClient(
             throw TrustedMetadataException("Persisted targets version mismatch")
         }
         return parseTargets(
-            officialBaseUrl(OFFICIAL_BASE),
+            domain.baseUrl,
             targets.signed,
             verifier.rootVersion,
             targets.version,
@@ -130,7 +163,8 @@ internal class TrustedRepositoryClient(
 
     suspend fun refresh(repoUrl: String): RepositorySnapshot = mutex.withLock {
         withContext(Dispatchers.IO) {
-            val baseUrl = officialBaseUrl(repoUrl)
+            requireDomainActive()
+            val baseUrl = repositoryBaseUrl(repoUrl)
             val previous = stateStore.loadVersions()
             var trustedRootBytes = stateStore.loadRoot() ?: embeddedRoot
             var verifier = runCatching { TrustedMetadataVerifier(trustedRootBytes, now) }
@@ -194,6 +228,8 @@ internal class TrustedRepositoryClient(
             )
             stateStore.save(
                 trustedRootBytes,
+                timestampBytes,
+                snapshotBytes,
                 targetsBytes,
                 RepositoryVersions(
                     root = verifier.rootVersion,
@@ -208,7 +244,11 @@ internal class TrustedRepositoryClient(
     }
 
     suspend fun downloadAndVerify(context: Context, info: ExtensionInfo): File = withContext(Dispatchers.IO) {
-        val expectedUrl = officialTargetUrl(info.apkUrl)
+        requireDomainActive()
+        if (info.repositoryDomainId != domain.id) {
+            throw TrustedMetadataException("APK belongs to a different repository trust domain")
+        }
+        val expectedUrl = signedTargetUrl(info.apkUrl)
         val bytes = fetchRequired(expectedUrl, maxBytes = info.targetLength)
         if (bytes.size.toLong() != info.targetLength) throw TrustedMetadataException("APK length mismatch")
         if (!MessageDigest.isEqual(bytes.sha256(), info.sha256.hexBytes())) {
@@ -225,7 +265,7 @@ internal class TrustedRepositoryClient(
         destination
     }
 
-    private fun parseTargets(
+    internal fun parseTargets(
         baseUrl: HttpUrl,
         signed: JsonObject,
         rootVersion: Long,
@@ -237,7 +277,7 @@ internal class TrustedRepositoryClient(
         val repository = RepoMetadata(
             name = repositoryObject.requiredString("name"),
             description = repositoryObject.requiredString("description"),
-            baseUrl = OFFICIAL_BASE,
+            baseUrl = domain.canonicalBaseUrl,
             iconUrl = repositoryObject.optionalString("iconUrl"),
             website = repositoryObject.optionalString("website"),
             signingKeyFingerprint = null,
@@ -264,16 +304,27 @@ internal class TrustedRepositoryClient(
             }
             val sources = metadata.requiredArray("sources").map { sourceElement ->
                 val source = sourceElement.asJsonObject
+                val policyHash = source.requiredString("policyHash").lowercase(Locale.ROOT).also {
+                    if (!it.matches(SHA256_PATTERN)) throw TrustedMetadataException("Invalid policy hash")
+                }
+                val networkPolicy = parseNetworkPolicy(source.requiredObject("networkPolicy"))
+                if (!MessageDigest.isEqual(policyHash.hexBytes(), networkPolicy.sha256().hexBytes())) {
+                    throw TrustedMetadataException("Source network policy hash mismatch")
+                }
+                val sourceBaseUrl = source.requiredString("baseUrl")
+                val sourceHost = canonicalSourceBaseHost(sourceBaseUrl)
+                if (sourceHost !in networkPolicy.exactHosts) {
+                    throw TrustedMetadataException("Source base URL is outside its network policy")
+                }
                 AvailableSource(
                     id = source.requiredString("id"),
                     name = source.optionalString("name") ?: source.requiredString("id"),
                     lang = source.optionalString("lang") ?: "und",
-                    baseUrl = source.requiredString("baseUrl"),
+                    baseUrl = sourceBaseUrl,
                     serviceClass = source.requiredString("service"),
                     protocol = source.requiredPositiveLong("protocol").toInt(),
-                    policyHash = source.requiredString("policyHash").lowercase(Locale.ROOT).also {
-                        if (!it.matches(SHA256_PATTERN)) throw TrustedMetadataException("Invalid policy hash")
-                    },
+                    policyHash = policyHash,
+                    networkPolicy = networkPolicy,
                 )
             }
             if (sources.isEmpty()) throw TrustedMetadataException("Extension has no Sources")
@@ -294,6 +345,7 @@ internal class TrustedRepositoryClient(
                 lineageRootSha256 = lineageRoot,
                 signerPins = signerPins,
                 sources = sources,
+                repositoryDomainId = domain.id,
             )
         }
         if (extensions.map { it.id }.toSet().size != extensions.size) {
@@ -319,8 +371,10 @@ internal class TrustedRepositoryClient(
                         baseUrl = source.baseUrl,
                         protocol = source.protocol,
                         policyHash = source.policyHash,
+                        networkPolicy = source.networkPolicy,
                     )
                 },
+                repositoryDomainId = domain.id,
             )
         }
         return RepositorySnapshot(
@@ -331,6 +385,7 @@ internal class TrustedRepositoryClient(
                 targetsVersion = targetsVersion,
                 expiresAtEpochMillis = expiresAtEpochMillis,
                 policies = signingPolicies,
+                repositoryDomainId = domain.id,
             ),
         )
     }
@@ -351,8 +406,8 @@ internal class TrustedRepositoryClient(
     }
 
     private fun execute(url: HttpUrl, maxBytes: Long): Response {
-        if (url.scheme != "https" || url.host != OFFICIAL_HOST || url.port != 443) {
-            throw TrustedMetadataException("Repository URL escaped official origin")
+        if (!isWithinDomain(url)) {
+            throw TrustedMetadataException("Repository URL escaped its trust domain")
         }
         return client.newCall(Request.Builder().url(url).get().build()).execute().also { response ->
             if (response.request.url != url) {
@@ -367,25 +422,135 @@ internal class TrustedRepositoryClient(
         }
     }
 
-    private fun officialBaseUrl(value: String): HttpUrl {
+    private fun repositoryBaseUrl(value: String): HttpUrl {
         val normalized = value.trimEnd('/')
-        val canonical = when (normalized) {
-            OFFICIAL_WEB -> OFFICIAL_BASE
-            OFFICIAL_BASE -> OFFICIAL_BASE
-            else -> throw TrustedMetadataException("Only the official extension repository is trusted")
+        val canonical = when {
+            normalized == domain.canonicalBaseUrl -> domain.canonicalBaseUrl
+            domain.id == RepositoryTrustDomains.OFFICIAL_ID && normalized == OFFICIAL_WEB ->
+                RepositoryTrustDomains.OFFICIAL_BASE_URL
+            else -> throw TrustedMetadataException("Repository URL does not match its trust domain")
         }
         return "$canonical/".toHttpUrl()
     }
 
-    private fun officialTargetUrl(value: String): HttpUrl {
+    private fun signedTargetUrl(value: String): HttpUrl {
         val url = runCatching { value.toHttpUrl() }
             .getOrElse { throw TrustedMetadataException("Invalid APK target URL", it) }
-        if (url.scheme != "https" || url.host != OFFICIAL_HOST || url.port != 443 ||
-            !url.encodedPath.startsWith("/komicaviewer/extensions/main/targets/apk/")
-        ) {
+        val targetPrefix = domain.baseUrl.resolve("targets/apk/")
+            ?: throw TrustedMetadataException("Invalid repository target base")
+        if (!isWithinDomain(url) || !url.encodedPath.startsWith(targetPrefix.encodedPath)) {
             throw TrustedMetadataException("APK URL is outside signed target origin")
         }
         return url
+    }
+
+    private fun isWithinDomain(url: HttpUrl): Boolean {
+        val base = domain.baseUrl
+        return url.scheme == base.scheme && url.host == base.host && url.port == base.port &&
+            url.encodedPath.startsWith(base.encodedPath)
+    }
+
+    private fun requireDomainActive() {
+        if (domain.state != RepositoryDomainState.ACTIVE) {
+            throw TrustedMetadataException("Repository trust domain is ${domain.state}")
+        }
+    }
+
+    private fun parseNetworkPolicy(policyObject: JsonObject): SourceNetworkPolicy {
+        policyObject.requireExactKeys(setOf("exactHosts", "operations", "namedCapabilities"), "networkPolicy")
+        val hosts = policyObject.requiredArray("exactHosts")
+        if (hosts.size() !in 1..MAX_POLICY_HOSTS) throw TrustedMetadataException("Invalid policy host count")
+        val exactHosts = hosts.mapTo(linkedSetOf()) { element ->
+            canonicalExactHost(element.requiredStringValue("network policy host"))
+        }
+        if (exactHosts.size != hosts.size()) throw TrustedMetadataException("Duplicate policy host")
+
+        val operationElements = policyObject.requiredArray("operations")
+        if (operationElements.size() !in 1..MAX_POLICY_OPERATIONS) {
+            throw TrustedMetadataException("Invalid policy operation count")
+        }
+        val operations = operationElements.associate { element ->
+            val operation = runCatching { element.asJsonObject }
+                .getOrElse { throw TrustedMetadataException("Invalid network operation", it) }
+            operation.requireExactKeys(
+                setOf("name", "methods", "pathPrefixes", "credentialed"),
+                "network operation",
+            )
+            val name = operation.requiredString("name")
+            if (name != NetworkOperations.SOURCE_READ) throw TrustedMetadataException("Unknown network operation")
+            val methodElements = operation.requiredArray("methods")
+            if (methodElements.size() !in 1..MAX_POLICY_METHODS) {
+                throw TrustedMetadataException("Invalid network method count")
+            }
+            val methods = methodElements.mapTo(linkedSetOf()) { method ->
+                method.requiredStringValue("network method").uppercase(Locale.ROOT).also {
+                    if (it !in setOf("GET", "HEAD")) throw TrustedMetadataException("Forbidden network method")
+                }
+            }
+            if (methods.size != methodElements.size()) throw TrustedMetadataException("Duplicate network method")
+            val prefixElements = operation.requiredArray("pathPrefixes")
+            if (prefixElements.size() !in 1..MAX_POLICY_PREFIXES) {
+                throw TrustedMetadataException("Invalid path prefix count")
+            }
+            val prefixes = prefixElements.mapTo(linkedSetOf()) { prefixElement ->
+                prefixElement.requiredStringValue("path prefix").also { prefix ->
+                    if (prefix.length > 256 || !prefix.startsWith('/') ||
+                        prefix.any { it.code < 0x20 || it.code == 0x7f }
+                    ) throw TrustedMetadataException("Invalid path prefix")
+                }
+            }
+            if (prefixes.size != prefixElements.size()) throw TrustedMetadataException("Duplicate path prefix")
+            val credentialed = operation.get("credentialed")?.takeIf {
+                it.isJsonPrimitive && it.asJsonPrimitive.isBoolean
+            }?.asBoolean ?: throw TrustedMetadataException("Invalid credentialed policy")
+            name to NetworkOperationPolicy(name, methods, prefixes, credentialed)
+        }
+        if (operations.size != operationElements.size()) throw TrustedMetadataException("Duplicate network operation")
+
+        val capabilityElements = policyObject.requiredArray("namedCapabilities")
+        if (capabilityElements.size() > MAX_POLICY_CAPABILITIES) {
+            throw TrustedMetadataException("Invalid named capability count")
+        }
+        val capabilities = capabilityElements.mapTo(linkedSetOf()) { element ->
+            element.requiredStringValue("named capability").also {
+                if (it !in KNOWN_CAPABILITIES) throw TrustedMetadataException("Unknown named capability")
+            }
+        }
+        if (capabilities.size != capabilityElements.size()) {
+            throw TrustedMetadataException("Duplicate named capability")
+        }
+        return SourceNetworkPolicy(exactHosts, operations, capabilities)
+    }
+
+    private fun canonicalSourceBaseHost(value: String): String {
+        val uri = runCatching { URI(value) }
+            .getOrElse { throw TrustedMetadataException("Invalid Source base URL", it) }
+        if (uri.scheme != "https" || uri.host.isNullOrBlank() || uri.rawUserInfo != null ||
+            uri.rawQuery != null || uri.rawFragment != null || (uri.port != -1 && uri.port != 443)
+        ) throw TrustedMetadataException("Source base URL must use HTTPS")
+        return canonicalExactHost(uri.host)
+    }
+
+    private fun canonicalExactHost(value: String): String {
+        val raw = value.trim().trimEnd('.')
+        if (raw.isEmpty() || '*' in raw || ':' in raw || raw.length > 253 || isIpv4Literal(raw)) {
+            throw TrustedMetadataException("Policy requires an exact DNS host")
+        }
+        val ascii = runCatching { IDN.toASCII(raw, IDN.USE_STD3_ASCII_RULES) }
+            .getOrElse { throw TrustedMetadataException("Invalid policy host", it) }
+            .lowercase(Locale.ROOT)
+        if (ascii.isEmpty() || ascii.length > 253 || ascii.split('.').any {
+                it.isEmpty() || it.length > 63 || it.startsWith('-') || it.endsWith('-')
+            }
+        ) throw TrustedMetadataException("Invalid policy host")
+        return ascii
+    }
+
+    private fun isIpv4Literal(value: String): Boolean {
+        val parts = value.split('.')
+        return parts.size == 4 && parts.all { part ->
+            part.isNotEmpty() && part.all(Char::isDigit) && part.toIntOrNull() in 0..255
+        }
     }
 
     private fun verifyArchiveIdentity(
@@ -461,14 +626,23 @@ internal class TrustedRepositoryClient(
 
     private companion object {
         const val OFFICIAL_WEB = "https://github.com/komicaviewer/extensions"
-        const val OFFICIAL_BASE = "https://raw.githubusercontent.com/komicaviewer/extensions/main"
-        const val OFFICIAL_HOST = "raw.githubusercontent.com"
         const val MAX_ROOT_ROTATIONS_PER_REFRESH = 32
         const val MAX_TARGETS = 64
+        const val MAX_POLICY_HOSTS = 32
+        const val MAX_POLICY_OPERATIONS = 8
+        const val MAX_POLICY_METHODS = 2
+        const val MAX_POLICY_PREFIXES = 16
+        const val MAX_POLICY_CAPABILITIES = 16
         const val MAX_METADATA_BYTES = 4L * 1024 * 1024
         const val MAX_APK_BYTES = 64L * 1024 * 1024
         val PACKAGE_PATTERN = Regex("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+")
         val SHA256_PATTERN = Regex("[a-f0-9]{64}")
+        val KNOWN_CAPABILITIES = setOf(
+            NamedHostCapabilities.RESOURCE_READ,
+            NamedHostCapabilities.EXTERNAL_LINK,
+            NamedHostCapabilities.PTT_ADULT_CONSENT_STATUS,
+            NamedHostCapabilities.EYNY_CHALLENGE_PROOF,
+        )
     }
 }
 
@@ -513,3 +687,7 @@ internal fun minimumExpiryEpochMillis(vararg expiries: Long): Long {
 
 private fun JsonObject.optionalString(name: String): String? = get(name)?.takeUnless { it.isJsonNull }
     ?.asJsonPrimitive?.takeIf { it.isString }?.asString?.trim()?.takeIf(String::isNotEmpty)
+
+private fun JsonObject.requireExactKeys(expected: Set<String>, label: String) {
+    if (keySet() != expected) throw TrustedMetadataException("$label has unknown or missing fields")
+}

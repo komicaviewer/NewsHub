@@ -31,7 +31,7 @@ internal fun migrateLegacySourcesToCanonicalIdentities(database: SupportSQLiteDa
         }
     }
     sourceIds.sorted().forEach { sourceId ->
-        val identity = CanonicalSourceIdentities.fromLegacySourceId(sourceId)
+        val identity = CanonicalSourceIdentities.fromLegacySourceIdForVersion8(sourceId)
         database.execSQL(
             "INSERT INTO `source_identities` " +
                 "(`sourceKey`, `packageName`, `signerSha256`, `sourceId`, `resolution`) VALUES (?, ?, ?, ?, ?)",
@@ -54,6 +54,82 @@ internal fun migrateLegacySourcesToCanonicalIdentities(database: SupportSQLiteDa
     migrateSavedPosts(database)
     migratePostReadStates(database)
     database.execSQL("DROP TABLE `legacy_source_map`")
+}
+
+/**
+ * Assigns every previously resolved identity to the built-in repository trust domain and rotates
+ * its canonical key. Unresolved rows deliberately retain both their isolated key and a null domain.
+ * The migration runs inside Room's transaction; inserting the new parent before updating all child
+ * rows keeps foreign-key checks valid throughout the key rotation.
+ */
+internal fun migrateCanonicalIdentitiesToRepositoryDomains(database: SupportSQLiteDatabase) {
+    database.execSQL("ALTER TABLE `source_identities` ADD COLUMN `repositoryDomainId` TEXT")
+    database.execSQL("DROP INDEX `index_source_identities_packageName_signerSha256_sourceId`")
+
+    data class LegacyTrustedIdentity(
+        val sourceKey: String,
+        val packageName: String,
+        val signerSha256: String,
+        val sourceId: String,
+    )
+
+    val trustedIdentities = buildList {
+        database.query(
+            "SELECT `sourceKey`, `packageName`, `signerSha256`, `sourceId` " +
+                "FROM `source_identities` WHERE `resolution` = 'OFFICIAL' ORDER BY `sourceKey`",
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                add(
+                    LegacyTrustedIdentity(
+                        sourceKey = cursor.getString(0),
+                        packageName = cursor.getString(1),
+                        signerSha256 = cursor.getString(2),
+                        sourceId = cursor.getString(3),
+                    ),
+                )
+            }
+        }
+    }
+
+    trustedIdentities.forEach { legacy ->
+        val canonical = CanonicalSourceIdentities.fromRuntimeIdentity(
+            tw.kevinzhang.extension_api.SourceIdentity(
+                packageName = legacy.packageName,
+                signerSha256 = legacy.signerSha256,
+                sourceId = legacy.sourceId,
+                repositoryDomainId = tw.kevinzhang.extension_api.BUILTIN_REPOSITORY_DOMAIN_ID,
+            ),
+        )
+        database.execSQL(
+            "INSERT INTO `source_identities` " +
+                "(`sourceKey`, `packageName`, `signerSha256`, `sourceId`, `resolution`, `repositoryDomainId`) " +
+                "VALUES (?, ?, ?, ?, ?, ?)",
+            arrayOf(
+                canonical.sourceKey,
+                canonical.packageName,
+                canonical.signerSha256,
+                canonical.sourceId,
+                canonical.resolution.name,
+                canonical.repositoryDomainId,
+            ),
+        )
+        listOf("board_subscriptions", "reading_history", "saved_posts", "post_read_states").forEach { table ->
+            database.execSQL(
+                "UPDATE `$table` SET `sourceKey` = ? WHERE `sourceKey` = ?",
+                arrayOf(canonical.sourceKey, legacy.sourceKey),
+            )
+        }
+        database.execSQL(
+            "DELETE FROM `source_identities` WHERE `sourceKey` = ?",
+            arrayOf(legacy.sourceKey),
+        )
+    }
+
+    database.execSQL(
+        "CREATE UNIQUE INDEX " +
+            "`index_source_identities_repositoryDomainId_packageName_signerSha256_sourceId` " +
+            "ON `source_identities` (`repositoryDomainId`, `packageName`, `signerSha256`, `sourceId`)",
+    )
 }
 
 private fun migrateBoardSubscriptions(database: SupportSQLiteDatabase) {

@@ -23,6 +23,8 @@ import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.BoardPageRequest
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.extension_loader.ExtensionManager
+import tw.kevinzhang.extension_loader.ExtensionTrustPolicyProvider
+import tw.kevinzhang.extension_loader.RepositoryTrustDomainState
 import tw.kevinzhang.newshub.auth.SourceSessionManager
 import javax.inject.Inject
 
@@ -32,6 +34,7 @@ data class SourceWithBoards(val source: Source, val boards: List<Board>)
 class BoardsViewModel @Inject constructor(
     private val extensionLoader: ExtensionLoader,
     extensionManager: ExtensionManager,
+    trustPolicyProvider: ExtensionTrustPolicyProvider,
     private val collectionRepo: CollectionRepository,
     private val sourceIdentityRepository: SourceIdentityRepository,
     private val sessionManager: SourceSessionManager,
@@ -52,6 +55,15 @@ class BoardsViewModel @Inject constructor(
             SharingStarted.WhileSubscribed(5_000),
             extensionManager.quarantinedExtensions.value.size,
         )
+
+    val repositoryDomainStates: StateFlow<Map<String, RepositoryTrustDomainState>> =
+        trustPolicyProvider.changes
+            .map { trustPolicyProvider.domainStates() }
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5_000),
+                trustPolicyProvider.domainStates(),
+            )
 
     val collections = collectionRepo.observeCollections()
 

@@ -363,8 +363,15 @@ internal fun validateExternalLink(url: String, policy: SourceNetworkPolicy): Htt
     return parsed
 }
 
-private fun SourceIdentity.storageKey(): String {
-    val canonical = listOf(packageName, signerSha256.lowercase(Locale.ROOT), sourceId)
+private fun SourceIdentity.storageKey(): String = sourceStorageKey(this)
+
+internal fun sourceStorageKey(identity: SourceIdentity): String {
+    val canonical = listOf(
+        identity.repositoryDomainId,
+        identity.packageName,
+        identity.signerSha256.lowercase(Locale.ROOT),
+        identity.sourceId,
+    )
         .joinToString(separator = "\u0000", prefix = "newshub-source\u0000")
     return MessageDigest.getInstance("SHA-256")
         .digest(canonical.toByteArray(StandardCharsets.UTF_8))

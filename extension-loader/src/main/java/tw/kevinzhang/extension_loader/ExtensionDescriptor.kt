@@ -2,10 +2,6 @@ package tw.kevinzhang.extension_loader
 
 import android.content.pm.ServiceInfo
 import tw.kevinzhang.extension_api.ExtensionProtocol
-import tw.kevinzhang.extension_api.NetworkOperationPolicy
-import tw.kevinzhang.extension_api.NamedHostCapabilities
-import tw.kevinzhang.extension_api.NetworkOperations
-import tw.kevinzhang.extension_api.SourceNetworkPolicy
 
 /** Host-owned metadata for one isolated Source service. */
 data class ExtensionDescriptor(
@@ -80,61 +76,4 @@ internal object ExtensionDescriptorValidator {
             loginHosts = loginHosts,
         )
     }
-}
-
-internal data class OfficialSourcePolicy(
-    val packageName: String,
-    val sourceId: String,
-    val exactHosts: Set<String>,
-) {
-    fun networkPolicy() = SourceNetworkPolicy(
-        exactHosts = exactHosts,
-        operations = setOf(NetworkOperations.SOURCE_READ).associateWith { operation ->
-            NetworkOperationPolicy(
-                name = operation,
-                methods = setOf("GET", "HEAD"),
-                pathPrefixes = setOf("/"),
-                // Extensions never receive cookies; the Host may attach only this Source identity's jar.
-                credentialed = true,
-            )
-        },
-        namedCapabilities = buildSet {
-            add(NamedHostCapabilities.RESOURCE_READ)
-            add(NamedHostCapabilities.EXTERNAL_LINK)
-            if (packageName == "tw.kevinzhang.newshub.extension.ptt" &&
-                sourceId == "tw.kevinzhang.newshub.extension.ptt"
-            ) {
-                add(NamedHostCapabilities.PTT_ADULT_CONSENT_STATUS)
-            }
-            if (packageName == "tw.kevinzhang.newshub.extension.eyny" &&
-                sourceId == "tw.kevinzhang.eyny"
-            ) {
-                add(NamedHostCapabilities.EYNY_CHALLENGE_PROOF)
-            }
-        },
-    )
-}
-
-/** Host-owned capability policy; repository metadata authorizes exact package/signers and hashes it. */
-internal object OfficialExtensionCatalog {
-    private val entries = listOf(
-        OfficialSourcePolicy("tw.kevinzhang.newshub.extension.eyny", "tw.kevinzhang.eyny", setOf("eyny.com", "www.eyny.com")),
-        OfficialSourcePolicy("tw.kevinzhang.newshub.extension.gamer", "tw.kevinzhang.newshub.extension.gamer", setOf("forum.gamer.com.tw")),
-        OfficialSourcePolicy("tw.kevinzhang.newshub.extension.hackernews", "tw.kevinzhang.newshub.extension.hackernews", setOf("news.ycombinator.com")),
-        OfficialSourcePolicy("tw.kevinzhang.newshub.extension.komica", "tw.kevinzhang.komica.twocat", setOf("2cat.org")),
-        OfficialSourcePolicy("tw.kevinzhang.newshub.extension.komica", "tw.kevinzhang.komica.sora", setOf("komica1.org")),
-        OfficialSourcePolicy("tw.kevinzhang.newshub.extension.komica", "tw.kevinzhang.akraft", setOf("www.akraft.net")),
-        OfficialSourcePolicy("tw.kevinzhang.newshub.extension.komica", "tw.kevinzhang.nagatoyuki", setOf("eclair.nagatoyuki.org")),
-        OfficialSourcePolicy("tw.kevinzhang.newshub.extension.komica", "tw.kevinzhang.wtako", setOf("kemono.wtako.net")),
-        OfficialSourcePolicy("tw.kevinzhang.newshub.extension.komica2", "tw.kevinzhang.komica2.twocat", setOf("2cat.org")),
-        OfficialSourcePolicy("tw.kevinzhang.newshub.extension.komica2", "tw.kevinzhang.komica2.sora", setOf("komica1.org")),
-        OfficialSourcePolicy("tw.kevinzhang.newshub.extension.komica2", "tw.kevinzhang.komica2.zawarudo", setOf("majeur.zawarudo.org")),
-        OfficialSourcePolicy("tw.kevinzhang.newshub.extension.mobile01", "tw.kevinzhang.mobile01", setOf("www.mobile01.com")),
-        OfficialSourcePolicy("tw.kevinzhang.newshub.extension.ptt", "tw.kevinzhang.newshub.extension.ptt", setOf("www.ptt.cc")),
-    )
-
-    fun policyFor(packageName: String, sourceId: String): OfficialSourcePolicy? =
-        entries.singleOrNull { it.packageName == packageName && it.sourceId == sourceId }
-
-    fun isOfficialPackage(packageName: String): Boolean = entries.any { it.packageName == packageName }
 }

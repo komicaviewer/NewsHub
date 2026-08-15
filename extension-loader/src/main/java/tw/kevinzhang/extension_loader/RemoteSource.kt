@@ -29,6 +29,7 @@ import tw.kevinzhang.extension_api.ISourceService
 import tw.kevinzhang.extension_api.PipePayload
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.SourceIdentity
+import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.ThreadPageRequest
 import tw.kevinzhang.extension_api.ThreadSummariesRequest
 import tw.kevinzhang.extension_api.WebUrlRequest
@@ -103,13 +104,13 @@ internal class RemoteSourceConnection(
 internal open class RemoteSource(
     protected val descriptor: ExtensionDescriptor,
     final override val sourceIdentity: SourceIdentity,
-    private val policy: OfficialSourcePolicy,
+    private val policy: SourceNetworkPolicy,
     private val connection: RemoteSourceConnection,
     brokerProvider: HostBrokerProvider,
     private val resourceProvider: HostResourceProvider,
 ) : Source {
     private val requestIds = AtomicLong()
-    private val networkPolicy = policy.networkPolicy()
+    private val networkPolicy = policy
     private val broker: IHostBroker = brokerProvider.brokerFor(sourceIdentity, networkPolicy)
 
     final override val id: String = descriptor.sourceId
@@ -261,7 +262,7 @@ internal open class RemoteSource(
 internal class RemoteAuthenticatedSource(
     descriptor: ExtensionDescriptor,
     sourceIdentity: SourceIdentity,
-    policy: OfficialSourcePolicy,
+    policy: SourceNetworkPolicy,
     connection: RemoteSourceConnection,
     brokerProvider: HostBrokerProvider,
     resourceProvider: HostResourceProvider,

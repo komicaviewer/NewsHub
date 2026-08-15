@@ -8,6 +8,8 @@ import tw.kevinzhang.extension_api.SourceIdentity
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.Locale
+import java.util.UUID
+import tw.kevinzhang.extension_api.BUILTIN_REPOSITORY_DOMAIN_ID
 
 enum class SourceResolution {
     OFFICIAL,
@@ -26,7 +28,7 @@ class SourceResolutionConverter {
     tableName = "source_identities",
     indices = [
         Index(value = ["sourceId"]),
-        Index(value = ["packageName", "signerSha256", "sourceId"], unique = true),
+        Index(value = ["repositoryDomainId", "packageName", "signerSha256", "sourceId"], unique = true),
     ],
 )
 data class SourceIdentityEntity(
@@ -34,6 +36,8 @@ data class SourceIdentityEntity(
     val packageName: String?,
     /** Stable signing-lineage anchor. This is deliberately not the APK's current signer. */
     val signerSha256: String?,
+    /** Null only for unresolved legacy rows that remain permanently isolated. */
+    val repositoryDomainId: String?,
     val sourceId: String,
     val resolution: SourceResolution,
 ) {
@@ -43,11 +47,16 @@ data class SourceIdentityEntity(
                 require(sourceKey.matches(Regex("[a-f0-9]{64}")))
                 require(!packageName.isNullOrBlank())
                 require(signerSha256?.matches(Regex("[a-f0-9]{64}")) == true)
+                require(
+                    runCatching {
+                        UUID.fromString(repositoryDomainId).toString() == repositoryDomainId
+                    }.getOrDefault(false),
+                )
                 require(sourceId.isNotBlank())
             }
             SourceResolution.UNRESOLVED -> {
                 require(sourceKey.matches(Regex("unresolved:[a-f0-9]{64}")))
-                require(packageName == null && signerSha256 == null)
+                require(packageName == null && signerSha256 == null && repositoryDomainId == null)
                 require(sourceId.isNotBlank())
             }
         }
@@ -61,8 +70,10 @@ data class SourceIdentityEntity(
  * Canonical identity storage policy.
  *
  * Legacy rows contain only sourceId, so only a sourceId with exactly one historical official
- * owner can be resolved. Runtime identities have already been verified by the Host loader; this
- * layer persists their stable lineage anchor and never includes the current signer in sourceKey.
+ * owner can be resolved. Runtime identities have already been verified by a repository trust
+ * domain and the Host loader; this layer persists that domain and the stable lineage anchor, and
+ * never includes the current signer in sourceKey. `OFFICIAL` is retained as a storage-compatible
+ * enum name, but means a domain-scoped trusted identity rather than global official ownership.
  */
 object CanonicalSourceIdentities {
     private const val LEGACY_RELEASE_LINEAGE_ROOT_SHA256 =
@@ -131,20 +142,51 @@ object CanonicalSourceIdentities {
     fun fromLegacySourceId(sourceId: String): SourceIdentityEntity {
         val bundle = uniqueLegacyOfficialBundle(sourceId)
             ?: return unresolved(sourceId, "legacy\u0000$sourceId")
-        return official(bundle.packageName, bundle.lineageRootSha256, sourceId)
+        return trusted(BUILTIN_REPOSITORY_DOMAIN_ID, bundle.packageName, bundle.lineageRootSha256, sourceId)
+    }
+
+    /** Historical v8 representation used only while traversing the released 7→8 schema. */
+    internal fun fromLegacySourceIdForVersion8(sourceId: String): Version8SourceIdentity {
+        val bundle = uniqueLegacyOfficialBundle(sourceId)
+            ?: return Version8SourceIdentity(
+                sourceKey = "unresolved:${sha256("newshub-unresolved\u0000legacy\u0000$sourceId")}",
+                packageName = null,
+                signerSha256 = null,
+                sourceId = sourceId,
+                resolution = SourceResolution.UNRESOLVED,
+            )
+        val lineageRoot = bundle.lineageRootSha256.lowercase(Locale.ROOT)
+        val canonical = listOf(bundle.packageName, lineageRoot, sourceId)
+            .joinToString(separator = "\u0000", prefix = "newshub-source\u0000")
+        return Version8SourceIdentity(
+            sourceKey = sha256(canonical),
+            packageName = bundle.packageName,
+            signerSha256 = lineageRoot,
+            sourceId = sourceId,
+            resolution = SourceResolution.OFFICIAL,
+        )
     }
 
     fun fromRuntimeIdentity(identity: SourceIdentity): SourceIdentityEntity =
-        official(identity.packageName, identity.signerSha256, identity.sourceId)
+        trusted(identity.repositoryDomainId, identity.packageName, identity.signerSha256, identity.sourceId)
 
-    private fun official(packageName: String, lineageRootSha256: String, sourceId: String): SourceIdentityEntity {
+    private fun trusted(
+        repositoryDomainId: String,
+        packageName: String,
+        lineageRootSha256: String,
+        sourceId: String,
+    ): SourceIdentityEntity {
+        require(UUID.fromString(repositoryDomainId).toString() == repositoryDomainId) {
+            "Repository domain id must be a canonical UUID"
+        }
         val normalizedLineageRoot = lineageRootSha256.lowercase(Locale.ROOT)
-        val canonical = listOf(packageName, normalizedLineageRoot, sourceId)
+        val canonical = listOf(repositoryDomainId, packageName, normalizedLineageRoot, sourceId)
             .joinToString(separator = "\u0000", prefix = "newshub-source\u0000")
         return SourceIdentityEntity(
             sourceKey = sha256(canonical),
             packageName = packageName,
             signerSha256 = normalizedLineageRoot,
+            repositoryDomainId = repositoryDomainId,
             sourceId = sourceId,
             resolution = SourceResolution.OFFICIAL,
         )
@@ -154,6 +196,7 @@ object CanonicalSourceIdentities {
         sourceKey = "unresolved:${sha256("newshub-unresolved\u0000$canonical")}",
         packageName = null,
         signerSha256 = null,
+        repositoryDomainId = null,
         sourceId = sourceId,
         resolution = SourceResolution.UNRESOLVED,
     )
@@ -162,3 +205,11 @@ object CanonicalSourceIdentities {
         .digest(value.toByteArray(StandardCharsets.UTF_8))
         .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
 }
+
+internal data class Version8SourceIdentity(
+    val sourceKey: String,
+    val packageName: String?,
+    val signerSha256: String?,
+    val sourceId: String,
+    val resolution: SourceResolution,
+)

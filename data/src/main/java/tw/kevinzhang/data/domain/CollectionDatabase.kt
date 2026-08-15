@@ -15,7 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PostReadEntity::class,
         SourceIdentityEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 @TypeConverters(ParagraphListConverter::class, SourceResolutionConverter::class)
@@ -188,6 +188,12 @@ abstract class CollectionDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                migrateCanonicalIdentitiesToRepositoryDomains(database)
+            }
+        }
+
         val ALL_MIGRATIONS = arrayOf(
             MIGRATION_1_2,
             MIGRATION_2_4,
@@ -195,6 +201,7 @@ abstract class CollectionDatabase : RoomDatabase() {
             MIGRATION_5_6,
             MIGRATION_6_7,
             MIGRATION_7_8,
+            MIGRATION_8_9,
         )
     }
 }

@@ -1,5 +1,8 @@
 package tw.kevinzhang.marketplace.data
 
+import tw.kevinzhang.extension_api.SourceNetworkPolicy
+import tw.kevinzhang.marketplace.RepositoryTrustDomains
+
 data class RepoMetadata(
     val name: String,
     val description: String,
@@ -25,6 +28,7 @@ data class ExtensionInfo(
     val signerPins: Set<String>,
     /** Sources bundled in this extension. */
     val sources: List<AvailableSource> = emptyList(),
+    val repositoryDomainId: String = RepositoryTrustDomains.OFFICIAL_ID,
 )
 
 /** Metadata for a single Source inside an extension, as declared in index.min.json. */
@@ -36,6 +40,8 @@ data class AvailableSource(
     val serviceClass: String,
     val protocol: Int,
     val policyHash: String,
+    /** Full threshold-signed capability policy, present for verified TUF targets. */
+    val networkPolicy: SourceNetworkPolicy? = null,
 )
 
 // index.min.json root

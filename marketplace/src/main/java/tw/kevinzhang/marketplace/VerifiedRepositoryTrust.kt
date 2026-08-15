@@ -1,5 +1,7 @@
 package tw.kevinzhang.marketplace
 
+import tw.kevinzhang.extension_api.SourceNetworkPolicy
+
 data class RepositorySigningPolicy(
     val packageName: String,
     val expectedVersionCode: Long,
@@ -8,6 +10,7 @@ data class RepositorySigningPolicy(
     val lineageAnchorsSha256: Set<String>,
     val approvedCurrentSignersSha256: Set<String>,
     val sources: Map<String, RepositorySourceService>,
+    val repositoryDomainId: String = RepositoryTrustDomains.OFFICIAL_ID,
 )
 
 data class RepositorySourceService(
@@ -17,6 +20,7 @@ data class RepositorySourceService(
     val baseUrl: String,
     val protocol: Int,
     val policyHash: String,
+    val networkPolicy: SourceNetworkPolicy? = null,
 )
 
 data class VerifiedRepositoryTrustSnapshot(
@@ -24,8 +28,15 @@ data class VerifiedRepositoryTrustSnapshot(
     val targetsVersion: Long,
     val expiresAtEpochMillis: Long,
     val policies: List<RepositorySigningPolicy>,
+    val repositoryDomainId: String = RepositoryTrustDomains.OFFICIAL_ID,
 )
 
 fun interface VerifiedRepositoryTrustConsumer {
     fun install(snapshot: VerifiedRepositoryTrustSnapshot)
+
+    /**
+     * Host integration overrides this to revoke capabilities and rescan installed APKs. Keeping a
+     * default preserves source compatibility for non-host consumers and focused repository tests.
+     */
+    fun setDomainState(repositoryDomainId: String, state: RepositoryDomainState) = Unit
 }

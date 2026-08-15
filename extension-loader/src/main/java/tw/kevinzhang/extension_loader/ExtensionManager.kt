@@ -20,6 +20,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -63,6 +64,12 @@ class ExtensionManager @Inject constructor(
     init {
         refreshAllExtensions()
         registerPackageReceiver()
+        scope.launch {
+            trustPolicyProvider.changes.drop(1).collect {
+                // Suspending/revoking a domain first revokes every active capability, then rescans.
+                refreshAllExtensions()
+            }
+        }
     }
 
     private fun registerPackageReceiver() {
@@ -149,7 +156,7 @@ class ExtensionManager @Inject constructor(
 
     @Suppress("DEPRECATION")
     fun uninstallExtension(packageName: String) {
-        if (!isPackageInstalled(packageName) || !OfficialExtensionCatalog.isOfficialPackage(packageName)) return
+        if (!isPackageInstalled(packageName)) return
         context.startActivity(Intent(Intent.ACTION_UNINSTALL_PACKAGE).apply {
             data = "package:$packageName".toUri()
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -183,10 +190,10 @@ class ExtensionManager @Inject constructor(
                         "Source is absent from signed target"
                     }
                     verifyServiceDescriptor(descriptor, expectedService)
-                    val policy = requireNotNull(
-                        OfficialExtensionCatalog.policyFor(descriptor.packageName, descriptor.sourceId),
-                    ) { "Package/Source is not in the official trust root" }
-                    verifyExpectedNetworkPolicyHash(expectedService.policyHash, policy.networkPolicy())
+                    val policy = requireNotNull(expectedService.networkPolicy) {
+                        "Signed target does not contain a full Source network policy"
+                    }
+                    verifyExpectedNetworkPolicyHash(expectedService.policyHash, policy)
                     Candidate(descriptor, policy, signingPolicy, signingIdentity, packageMarker)
                 }
             }.onFailure { error ->
@@ -226,10 +233,11 @@ class ExtensionManager @Inject constructor(
                 var bindFailure: String? = null
                 for (candidate in packageCandidates) {
                     val identity = SourceIdentity(
-                        packageName,
-                        candidate.signingIdentity.lineageAnchorSha256,
-                        candidate.descriptor.sourceId,
-                        candidate.signingIdentity.currentSignerSha256,
+                        packageName = packageName,
+                        signerSha256 = candidate.signingIdentity.lineageAnchorSha256,
+                        sourceId = candidate.descriptor.sourceId,
+                        currentSignerSha256 = candidate.signingIdentity.currentSignerSha256,
+                        repositoryDomainId = candidate.signingPolicy.repositoryDomainId,
                     )
                     val connection = RemoteSourceConnection(context, candidate.descriptor) {
                         resourceProvider.revoke(identity)
@@ -298,20 +306,37 @@ class ExtensionManager @Inject constructor(
                                 resourceProvider,
                             )
                         }
-                        packageName to source
+                        packageName to LoadedSource(source, candidate)
                     }
                 }
             }.groupBy({ it.first }, { it.second })
 
-        val installed = sourcesByPackage.map { (packageName, sources) ->
+        val installed = sourcesByPackage.map { (packageName, loadedSources) ->
             val info = packageInfo(packageName)
+            val packageCandidate = loadedSources.first().candidate
             InstalledExtension(
                 pkgName = packageName,
                 name = packageName,
                 versionName = info.versionName.orEmpty(),
                 versionCode = PackageInfoCompat.getLongVersionCode(info),
-                lang = sources.map { it.language }.distinct().singleOrNull().orEmpty(),
-                sources = sources,
+                lang = loadedSources.map { it.source.language }.distinct().singleOrNull().orEmpty(),
+                sources = loadedSources.map(LoadedSource::source),
+                provenance = InstalledExtensionProvenance(
+                    repositoryDomainId = packageCandidate.signingPolicy.repositoryDomainId,
+                    packageName = packageName,
+                    targetSha256 = packageCandidate.signingPolicy.targetSha256,
+                    targetLength = packageCandidate.signingPolicy.targetLength,
+                    lineageAnchorSha256 = packageCandidate.signingIdentity.lineageAnchorSha256,
+                    currentSignerSha256 = packageCandidate.signingIdentity.currentSignerSha256,
+                    sources = loadedSources.map { loaded ->
+                        InstalledSourceProvenance(
+                            sourceId = loaded.candidate.descriptor.sourceId,
+                            policyHash = loaded.candidate.signingPolicy.sources
+                                .getValue(loaded.candidate.descriptor.sourceId)
+                                .policyHash,
+                        )
+                    },
+                ),
             )
         }
         return ScanResult(installed, quarantined, connections, identities)
@@ -343,7 +368,6 @@ class ExtensionManager @Inject constructor(
         info: PackageInfo,
         trustPolicy: ExtensionSigningPolicy,
     ): VerifiedSigningIdentity {
-        require(OfficialExtensionCatalog.isOfficialPackage(packageName)) { "Unknown extension package" }
         require(info.packageName == packageName) { "PackageInfo belongs to a different package" }
         val signingInfo = requireNotNull(info.signingInfo) { "Package has no signing information" }
         require(!signingInfo.hasMultipleSigners()) { "Multi-signer extension packages are not supported" }
@@ -416,10 +440,15 @@ class ExtensionManager @Inject constructor(
 
     private data class Candidate(
         val descriptor: ExtensionDescriptor,
-        val policy: OfficialSourcePolicy,
+        val policy: tw.kevinzhang.extension_api.SourceNetworkPolicy,
         val signingPolicy: ExtensionSigningPolicy,
         val signingIdentity: VerifiedSigningIdentity,
         val packageMarker: InstalledPackageMarker,
+    )
+
+    private data class LoadedSource(
+        val source: tw.kevinzhang.extension_api.Source,
+        val candidate: Candidate,
     )
 
     private data class BoundCandidate(

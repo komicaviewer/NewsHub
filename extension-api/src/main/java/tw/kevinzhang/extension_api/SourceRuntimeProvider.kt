@@ -2,6 +2,10 @@ package tw.kevinzhang.extension_api
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.util.UUID
+
+/** Stable trust-domain UUID used by the repository bundled with NewsHub. */
+const val BUILTIN_REPOSITORY_DOMAIN_ID = "00000000-0000-0000-0000-000000000001"
 
 data class SourceIdentity(
     val packageName: String,
@@ -10,7 +14,15 @@ data class SourceIdentity(
     val sourceId: String,
     /** Certificate currently signing the installed APK; authorization verifies it belongs to the lineage. */
     val currentSignerSha256: String = signerSha256,
-)
+    /** Canonical UUID of the independently trusted repository that authorized this Source. */
+    val repositoryDomainId: String = BUILTIN_REPOSITORY_DOMAIN_ID,
+) {
+    init {
+        require(runCatching { UUID.fromString(repositoryDomainId).toString() == repositoryDomainId }.getOrDefault(false)) {
+            "Repository domain id must be a canonical UUID"
+        }
+    }
+}
 
 data class NetworkOperationPolicy(
     val name: String,

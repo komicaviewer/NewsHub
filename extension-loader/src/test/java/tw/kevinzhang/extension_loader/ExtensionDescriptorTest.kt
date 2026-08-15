@@ -3,12 +3,16 @@ package tw.kevinzhang.extension_loader
 import android.content.pm.ServiceInfo
 import android.os.Bundle
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import tw.kevinzhang.extension_api.ExtensionProtocol
+import tw.kevinzhang.extension_api.NamedHostCapabilities
+import tw.kevinzhang.extension_api.NetworkOperationPolicy
+import tw.kevinzhang.extension_api.NetworkOperations
+import tw.kevinzhang.extension_api.SourceNetworkPolicy
+import tw.kevinzhang.extension_api.sha256
 
 @RunWith(RobolectricTestRunner::class)
 class ExtensionDescriptorTest {
@@ -65,22 +69,25 @@ class ExtensionDescriptorTest {
     }
 
     @Test
-    fun `unknown package and package-source mismatch are outside bootstrap trust root`() {
-        assertNull(OfficialExtensionCatalog.policyFor("attacker.package", "tw.kevinzhang.newshub.extension.hackernews"))
-        assertNull(OfficialExtensionCatalog.policyFor("tw.kevinzhang.newshub.extension.ptt", "tw.kevinzhang.newshub.extension.hackernews"))
-    }
-
-    @Test
     fun `signed policy hash mismatch fails closed`() {
-        val policy = requireNotNull(
-            OfficialExtensionCatalog.policyFor(
-                "tw.kevinzhang.newshub.extension.hackernews",
-                "tw.kevinzhang.newshub.extension.hackernews",
+        val policy = SourceNetworkPolicy(
+            exactHosts = setOf("news.ycombinator.com"),
+            operations = mapOf(
+                NetworkOperations.SOURCE_READ to NetworkOperationPolicy(
+                    name = NetworkOperations.SOURCE_READ,
+                    methods = setOf("GET", "HEAD"),
+                    pathPrefixes = setOf("/"),
+                    credentialed = true,
+                ),
             ),
-        ).networkPolicy()
+            namedCapabilities = setOf(
+                NamedHostCapabilities.RESOURCE_READ,
+                NamedHostCapabilities.EXTERNAL_LINK,
+            ),
+        )
 
         verifyExpectedNetworkPolicyHash(
-            "7916aa87fa766710f2cd0b56e41bfa36a7f2c61ef0f92891e2956aff64ef3fa5",
+            policy.sha256(),
             policy,
         )
         assertInvalidDescriptor {

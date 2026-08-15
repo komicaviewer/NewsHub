@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import tw.kevinzhang.extension_api.BUILTIN_REPOSITORY_DOMAIN_ID
 import tw.kevinzhang.extension_api.SourceIdentity
 
 class CanonicalSourceIdentityTest {
@@ -20,9 +21,10 @@ class CanonicalSourceIdentityTest {
             identity.signerSha256,
         )
         assertEquals(
-            "b0d69f518b45ae87b9fe943743ec7a1cc468c52a646e36e34e8c625bb6a3458b",
+            "ef25ad434d63bd66ad885e1d6f9ff82840ee9a3cd67834c2ee78477e71e77425",
             identity.sourceKey,
         )
+        assertEquals(BUILTIN_REPOSITORY_DOMAIN_ID, identity.repositoryDomainId)
     }
 
     @Test
@@ -33,6 +35,7 @@ class CanonicalSourceIdentityTest {
         assertEquals("attacker.source", identity.sourceId)
         assertNull(identity.packageName)
         assertNull(identity.signerSha256)
+        assertNull(identity.repositoryDomainId)
         assertEquals("unresolved:", identity.sourceKey.take(11))
     }
 
@@ -74,6 +77,29 @@ class CanonicalSourceIdentityTest {
         )
 
         assertEquals(before, after)
+    }
+
+    @Test
+    fun `same package lineage and source in different repository domains have distinct identities`() {
+        val first = CanonicalSourceIdentities.fromRuntimeIdentity(
+            SourceIdentity(
+                packageName = "shared.package",
+                signerSha256 = "1".repeat(64),
+                sourceId = "shared.source",
+                repositoryDomainId = "00000000-0000-0000-0000-000000000001",
+            ),
+        )
+        val second = CanonicalSourceIdentities.fromRuntimeIdentity(
+            SourceIdentity(
+                packageName = "shared.package",
+                signerSha256 = "1".repeat(64),
+                sourceId = "shared.source",
+                repositoryDomainId = "00000000-0000-0000-0000-000000000002",
+            ),
+        )
+
+        assertNotEquals(first.sourceKey, second.sourceKey)
+        assertNotEquals(first.repositoryDomainId, second.repositoryDomainId)
     }
 
     @Test

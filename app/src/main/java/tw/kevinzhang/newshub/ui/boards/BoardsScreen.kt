@@ -56,6 +56,7 @@ import tw.kevinzhang.extension_api.AuthState
 import tw.kevinzhang.extension_api.AuthenticatedSource
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Board
+import tw.kevinzhang.extension_loader.RepositoryTrustDomainState
 import tw.kevinzhang.newshub.ui.component.TitleMediumText
 import tw.kevinzhang.newshub.ui.component.appClickable
 import tw.kevinzhang.newshub.ui.component.resourceModelOrNull
@@ -74,6 +75,7 @@ fun BoardsScreen(
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val authStates by viewModel.authStates.collectAsStateWithLifecycle()
     val quarantinedExtensionCount by viewModel.quarantinedExtensionCount.collectAsStateWithLifecycle()
+    val repositoryDomainStates by viewModel.repositoryDomainStates.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -100,7 +102,7 @@ fun BoardsScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(boardsEmptyStateMessage(quarantinedExtensionCount))
+                    Text(boardsEmptyStateMessage(quarantinedExtensionCount, repositoryDomainStates.values))
                     TextButton(onClick = onNavigateToMarketplace) {
                         Text("前往 Marketplace")
                     }
@@ -234,12 +236,16 @@ internal fun buildBoardGroupItems(boards: List<Board>): List<BoardGroupItem> =
     boards.take(5).map(BoardGroupItem::BoardCard) +
         if (boards.size > 5) listOf(BoardGroupItem.More) else emptyList()
 
-internal fun boardsEmptyStateMessage(quarantinedExtensionCount: Int): String =
-    if (quarantinedExtensionCount > 0) {
-        "已安裝的 Extension 無法通過安全驗證"
-    } else {
-        "尚未安裝任何 Extension"
-    }
+internal fun boardsEmptyStateMessage(
+    quarantinedExtensionCount: Int,
+    domainStates: Collection<RepositoryTrustDomainState> = emptyList(),
+): String = when {
+    RepositoryTrustDomainState.REVOKED in domainStates -> "Extension 來源信任已撤銷"
+    RepositoryTrustDomainState.SUSPENDED in domainStates -> "Extension 來源已暫停"
+    RepositoryTrustDomainState.EXPIRED in domainStates -> "Extension 來源中繼資料已過期"
+    quarantinedExtensionCount > 0 -> "已安裝的 Extension 無法通過安全驗證"
+    else -> "尚未安裝任何 Extension"
+}
 
 @Composable
 private fun SourceHeader(

@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tw.kevinzhang.extension_api.model.Board
+import tw.kevinzhang.extension_loader.RepositoryTrustDomainState
 
 class BoardsScreenTest {
     @Test
@@ -39,6 +40,25 @@ class BoardsScreenTest {
         assertEquals(
             "已安裝的 Extension 無法通過安全驗證",
             boardsEmptyStateMessage(13),
+        )
+    }
+
+    @Test
+    fun `empty state distinguishes repository trust failures`() {
+        assertEquals(
+            "Extension 來源中繼資料已過期",
+            boardsEmptyStateMessage(1, listOf(RepositoryTrustDomainState.EXPIRED)),
+        )
+        assertEquals(
+            "Extension 來源已暫停",
+            boardsEmptyStateMessage(1, listOf(RepositoryTrustDomainState.SUSPENDED)),
+        )
+        assertEquals(
+            "Extension 來源信任已撤銷",
+            boardsEmptyStateMessage(
+                1,
+                listOf(RepositoryTrustDomainState.SUSPENDED, RepositoryTrustDomainState.REVOKED),
+            ),
         )
     }
 

@@ -12,6 +12,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,7 +33,7 @@ class CollectionDatabaseMigrationTest {
     }
 
     @Test
-    fun version1MigratesTo8WithoutLosingCollections() {
+    fun version1MigratesTo9WithoutLosingCollections() {
         createLegacyDatabase(1) { db ->
             createVersion1Tables(db)
             db.execSQL("INSERT INTO collections VALUES ('collection', 'News', 3)")
@@ -62,7 +63,7 @@ class CollectionDatabaseMigrationTest {
     }
 
     @Test
-    fun version4MigratesTo8WithoutInterpretingAbsoluteScreenshotPaths() {
+    fun version4MigratesTo9WithoutInterpretingAbsoluteScreenshotPaths() {
         createLegacyDatabase(4) { db ->
             createVersion1Tables(db)
             addVersion2Columns(db)
@@ -98,7 +99,7 @@ class CollectionDatabaseMigrationTest {
     }
 
     @Test
-    fun versions2_5And6AllReachVersion8WithoutDestructiveFallback() {
+    fun versions2_5And6AllReachVersion9WithoutDestructiveFallback() {
         listOf(2, 5, 6).forEach { version ->
             database?.close()
             database = null
@@ -114,7 +115,7 @@ class CollectionDatabaseMigrationTest {
             val migrated = openCurrentDatabase()
             migrated.openHelper.readableDatabase.query("PRAGMA user_version").use { cursor ->
                 cursor.moveToFirst()
-                assertEquals(8, cursor.getInt(0))
+                assertEquals(9, cursor.getInt(0))
             }
             migrated.openHelper.readableDatabase.query("SELECT COUNT(*) FROM collections").use { cursor ->
                 cursor.moveToFirst()
@@ -173,25 +174,78 @@ class CollectionDatabaseMigrationTest {
             }
         }
         migrated.query(
-            "SELECT resolution, packageName FROM source_identities WHERE sourceId = ?",
+            "SELECT resolution, packageName, repositoryDomainId FROM source_identities WHERE sourceId = ?",
             arrayOf(official),
         ).use { cursor ->
             cursor.moveToFirst()
             assertEquals("OFFICIAL", cursor.getString(0))
             assertEquals("tw.kevinzhang.newshub.extension.hackernews", cursor.getString(1))
+            assertEquals("00000000-0000-0000-0000-000000000001", cursor.getString(2))
         }
         migrated.query(
-            "SELECT resolution, packageName FROM source_identities WHERE sourceId = 'unknown.source'",
+            "SELECT resolution, packageName, repositoryDomainId " +
+                "FROM source_identities WHERE sourceId = 'unknown.source'",
         ).use { cursor ->
             cursor.moveToFirst()
             assertEquals("UNRESOLVED", cursor.getString(0))
             assertEquals(null, cursor.getString(1))
+            assertEquals(null, cursor.getString(2))
         }
         migrated.query("SELECT screenshotAssetRefs FROM saved_posts ORDER BY threadId").use { cursor ->
             cursor.moveToFirst()
             assertEquals("[\"${"a".repeat(64)}/post_0.png\"]", cursor.getString(0))
             cursor.moveToNext()
             assertEquals("[\"${"b".repeat(64)}/post_0.png\"]", cursor.getString(0))
+        }
+        migrated.query("PRAGMA foreign_key_check").use { cursor -> assertEquals(0, cursor.count) }
+    }
+
+    @Test
+    fun version8MigrationScopesTrustedKeysToBuiltinDomainAndUpdatesEveryForeignKey() {
+        createVersion8DatabaseWithCanonicalRows()
+        var previousTrustedKey = ""
+        var previousUnresolvedKey = ""
+        openVersion8Database().use { helper ->
+            helper.readableDatabase.query(
+                "SELECT sourceKey, resolution FROM source_identities ORDER BY resolution",
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(1) == "OFFICIAL") previousTrustedKey = cursor.getString(0)
+                    if (cursor.getString(1) == "UNRESOLVED") previousUnresolvedKey = cursor.getString(0)
+                }
+            }
+        }
+
+        val migrated = openCurrentDatabase().openHelper.readableDatabase
+        val expectedTrusted = CanonicalSourceIdentities.fromLegacySourceId(
+            "tw.kevinzhang.newshub.extension.hackernews",
+        )
+        assertNotEquals(previousTrustedKey, expectedTrusted.sourceKey)
+        migrated.query(
+            "SELECT sourceKey, repositoryDomainId FROM source_identities WHERE resolution = 'OFFICIAL'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(expectedTrusted.sourceKey, cursor.getString(0))
+            assertEquals("00000000-0000-0000-0000-000000000001", cursor.getString(1))
+        }
+        migrated.query(
+            "SELECT sourceKey, repositoryDomainId FROM source_identities WHERE resolution = 'UNRESOLVED'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(previousUnresolvedKey, cursor.getString(0))
+            assertEquals(null, cursor.getString(1))
+        }
+        listOf("board_subscriptions", "reading_history", "saved_posts", "post_read_states").forEach { table ->
+            migrated.query(
+                "SELECT sourceKey, COUNT(*) FROM `$table` GROUP BY sourceKey ORDER BY sourceKey",
+            ).use { cursor ->
+                val keys = mutableSetOf<String>()
+                while (cursor.moveToNext()) {
+                    keys += cursor.getString(0)
+                    assertEquals(1, cursor.getInt(1))
+                }
+                assertEquals(setOf(expectedTrusted.sourceKey, previousUnresolvedKey), keys)
+            }
         }
         migrated.query("PRAGMA foreign_key_check").use { cursor -> assertEquals(0, cursor.count) }
     }
@@ -289,6 +343,58 @@ class CollectionDatabaseMigrationTest {
                 database = it
                 it.openHelper.writableDatabase
             }
+
+    private fun createVersion8DatabaseWithCanonicalRows() {
+        val official = "tw.kevinzhang.newshub.extension.hackernews"
+        createLegacyDatabase(7) { db ->
+            createVersion1Tables(db)
+            addVersion2Columns(db)
+            createVersion4Tables(db)
+            createVersion5Table(db)
+            addVersion6Columns(db)
+            migrateSavedPostsToVersion7(db)
+            db.execSQL("INSERT INTO collections VALUES ('collection', 'News', 0, '', '📰')")
+            listOf(official, "unknown.source").forEachIndexed { index, sourceId ->
+                db.execSQL(
+                    "INSERT INTO board_subscriptions VALUES (?, 'collection', ?, ?, ?, ?)",
+                    arrayOf<Any>("subscription-$index", sourceId, "board-$index", "Board $index", index),
+                )
+                db.execSQL(
+                    "INSERT INTO reading_history " +
+                        "(sourceId, threadId, boardUrl, title, previewContent, readAt) " +
+                        "VALUES (?, ?, ?, ?, '[]', ?)",
+                    arrayOf<Any>(sourceId, "thread-$index", "board-$index", "Title $index", index + 1),
+                )
+                db.execSQL(
+                    "INSERT INTO saved_posts " +
+                        "(sourceId, threadId, boardUrl, title, previewContent, savedAt, screenshotAssetRefs) " +
+                        "VALUES (?, ?, ?, ?, '[]', ?, '[]')",
+                    arrayOf<Any>(sourceId, "thread-$index", "board-$index", "Title $index", index + 1),
+                )
+                db.execSQL(
+                    "INSERT INTO post_read_states VALUES (?, ?, ?, ?)",
+                    arrayOf<Any>(sourceId, "thread-$index", "post-$index", index + 1),
+                )
+            }
+        }
+        openVersion8Database().close()
+    }
+
+    private fun openVersion8Database(): SupportSQLiteOpenHelper =
+        FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(TEST_DB)
+                .callback(
+                    object : SupportSQLiteOpenHelper.Callback(8) {
+                        override fun onCreate(db: SupportSQLiteDatabase) = Unit
+
+                        override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
+                            CollectionDatabase.MIGRATION_7_8.migrate(db)
+                        }
+                    },
+                )
+                .build(),
+        ).also { it.writableDatabase }
 
     private fun createLegacyDatabase(version: Int, create: (SQLiteDatabase) -> Unit) {
         context.deleteDatabase(TEST_DB)
