@@ -4,6 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.SourceFailure
+import tw.kevinzhang.extension_api.SourceFailureCode
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.BoardPage
 import tw.kevinzhang.extension_api.model.BoardPageRequest
@@ -32,7 +34,7 @@ class BoardPickerViewModelTest {
             listOf(successful, failing),
             listOf(
                 SourceBoardLoadResult(successful, boards = listOf(board("success", "a", "A"))),
-                SourceBoardLoadResult(failing, failure = BoardLoadFailure(failing, IllegalStateException("offline"))),
+                SourceBoardLoadResult(failing, failure = failure(failing)),
             ),
         ) as BoardPickerUiState.Content
         assertEquals(1, content.sources.single { it.source.id == "success" }.boards.size)
@@ -40,14 +42,14 @@ class BoardPickerViewModelTest {
 
         val allFailed = boardPickerUiState(
             listOf(failing),
-            listOf(SourceBoardLoadResult(failing, failure = BoardLoadFailure(failing, IllegalStateException("offline")))),
+            listOf(SourceBoardLoadResult(failing, failure = failure(failing))),
         )
         assertTrue(allFailed is BoardPickerUiState.AllSourcesFailed)
 
         val failedSearch = boardPickerUiState(
             sources = listOf(failing),
             results = listOf(
-                SourceBoardLoadResult(failing, failure = BoardLoadFailure(failing, IllegalStateException("offline"))),
+                SourceBoardLoadResult(failing, failure = failure(failing)),
             ),
             query = "遊戲",
             allowEmptyContent = true,
@@ -65,7 +67,7 @@ class BoardPickerViewModelTest {
                     source = offline,
                     boards = listOf(board("offline", "cached", "Cached")),
                     isFromCache = true,
-                    failure = BoardLoadFailure(offline, IllegalStateException("offline")),
+                    failure = failure(offline),
                 ),
             ),
         ) as BoardPickerUiState.Content
@@ -89,4 +91,9 @@ class BoardPickerViewModelTest {
     }
 
     private fun board(sourceId: String, url: String, name: String) = Board(sourceId, url, name)
+
+    private fun failure(source: Source) = BoardLoadFailure(
+        source,
+        SourceFailure(SourceFailureCode.SITE_UNAVAILABLE, operation = "board_page", retryable = true),
+    )
 }

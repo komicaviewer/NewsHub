@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -18,6 +19,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 import tw.kevinzhang.extension_api.AuthSpec
 import tw.kevinzhang.extension_api.AuthenticatedSource
+import tw.kevinzhang.extension_api.BoardWebUrlRequest
 import tw.kevinzhang.extension_api.CommentPageRequest
 import tw.kevinzhang.extension_api.ExtensionProtocol
 import tw.kevinzhang.extension_api.ExtensionWireJson
@@ -28,6 +30,10 @@ import tw.kevinzhang.extension_api.ISourceCallback
 import tw.kevinzhang.extension_api.ISourceService
 import tw.kevinzhang.extension_api.PipePayload
 import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.SourceFailure
+import tw.kevinzhang.extension_api.SourceFailureCode
+import tw.kevinzhang.extension_api.SourceFailureException
+import tw.kevinzhang.extension_api.SourceFailureWire
 import tw.kevinzhang.extension_api.SourceIdentity
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.ThreadPageRequest
@@ -44,7 +50,6 @@ import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadPage
 import tw.kevinzhang.extension_api.model.ThreadSummary
-import java.io.IOException
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -158,6 +163,10 @@ internal open class RemoteSource(
         call<WebUrlRequest, String?>(ExtensionProtocol.OP_WEB_URL, WebUrlRequest(summary))
             ?.let(::linkModel)
 
+    override suspend fun getBoardWebUrl(board: Board): String? =
+        call<BoardWebUrlRequest, String?>(ExtensionProtocol.OP_BOARD_WEB_URL, BoardWebUrlRequest(board))
+            ?.let(::linkModel)
+
     protected suspend inline fun <reified Request, reified Response> call(
         operation: Int,
         request: Request,
@@ -170,8 +179,9 @@ internal open class RemoteSource(
         }
         val pipe = PipePayload.writeUtf8(requestJson)
         return try {
-            withTimeout(ExtensionProtocol.REQUEST_TIMEOUT_MS) {
-                suspendCancellableCoroutine { continuation ->
+            try {
+                withTimeout(ExtensionProtocol.REQUEST_TIMEOUT_MS) {
+                    suspendCancellableCoroutine { continuation ->
                     val callback = object : ISourceCallback.Stub() {
                         override fun onResult(id: Long, status: Int, payload: ParcelFileDescriptor) {
                             if (id != requestId || !continuation.isActive) {
@@ -183,9 +193,19 @@ internal open class RemoteSource(
                                     val result = PipePayload.readUtf8(payload, ExtensionProtocol.MAX_RESULT_BYTES)
                                     when (status) {
                                         ExtensionProtocol.STATUS_OK -> ExtensionWireJson.decode<Response>(result)
-                                        ExtensionProtocol.STATUS_PAYLOAD_TOO_LARGE -> throw IOException("Extension result exceeded limit")
-                                        ExtensionProtocol.STATUS_CANCELLED -> throw kotlinx.coroutines.CancellationException(result)
-                                        else -> throw IOException("Extension request failed: $result")
+                                        ExtensionProtocol.STATUS_SOURCE_FAILURE ->
+                                            throw SourceFailureException(SourceFailureWire.decode(result))
+                                        ExtensionProtocol.STATUS_PAYLOAD_TOO_LARGE -> throw SourceFailureException(
+                                            SourceFailure(SourceFailureCode.PAYLOAD_TOO_LARGE),
+                                        )
+                                        ExtensionProtocol.STATUS_CANCELLED ->
+                                            throw kotlinx.coroutines.CancellationException("cancelled")
+                                        ExtensionProtocol.STATUS_INVALID_REQUEST -> throw SourceFailureException(
+                                            SourceFailure(SourceFailureCode.INVALID_REQUEST),
+                                        )
+                                        else -> throw SourceFailureException(
+                                            SourceFailure(SourceFailureCode.EXTENSION_RUNTIME),
+                                        )
                                     }
                                 }.onSuccess(continuation::resume)
                                     .onFailure(continuation::resumeWithException)
@@ -195,7 +215,16 @@ internal open class RemoteSource(
                     continuation.invokeOnCancellation { runCatching { service.cancel(requestId) } }
                     runCatching { service.execute(requestId, operation, pipe, callback, broker) }
                         .onFailure(continuation::resumeWithException)
+                    }
                 }
+            } catch (_: TimeoutCancellationException) {
+                throw SourceFailureException(
+                    SourceFailure(
+                        SourceFailureCode.TIMED_OUT,
+                        operation = remoteOperationName(operation),
+                        retryable = true,
+                    ),
+                )
             }
         } finally {
             runCatching { pipe.close() }
@@ -257,6 +286,19 @@ internal open class RemoteSource(
     private fun linkModel(untrustedUrl: String): String = runCatching {
         resourceProvider.issueExternalLink(sourceIdentity, networkPolicy, untrustedUrl).asModel()
     }.getOrDefault("newshub-blocked://link")
+}
+
+private fun remoteOperationName(operation: Int): String = when (operation) {
+    ExtensionProtocol.OP_BOARD_CATEGORIES -> "board_categories"
+    ExtensionProtocol.OP_BOARD_PAGE -> "board_page"
+    ExtensionProtocol.OP_THREAD_SUMMARIES -> "thread_summaries"
+    ExtensionProtocol.OP_THREAD -> "thread"
+    ExtensionProtocol.OP_THREAD_PAGE -> "thread_page"
+    ExtensionProtocol.OP_COMMENTS -> "comments"
+    ExtensionProtocol.OP_WEB_URL -> "web_url"
+    ExtensionProtocol.OP_VALIDATE_SESSION -> "validate_session"
+    ExtensionProtocol.OP_BOARD_WEB_URL -> "board_web_url"
+    else -> "unknown"
 }
 
 internal class RemoteAuthenticatedSource(

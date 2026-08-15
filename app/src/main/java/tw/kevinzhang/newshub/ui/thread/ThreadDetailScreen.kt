@@ -68,6 +68,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -93,6 +94,7 @@ import tw.kevinzhang.newshub.ui.component.Small
 import tw.kevinzhang.newshub.ui.component.View
 import tw.kevinzhang.newshub.ui.component.appClickable
 import tw.kevinzhang.newshub.ui.component.resourceModelOrNull
+import tw.kevinzhang.newshub.ui.component.openExternalLink
 import tw.kevinzhang.newshub.ui.component.gallery.PostGallery
 import tw.kevinzhang.newshub.ui.component.swipeToGoBack
 
@@ -108,11 +110,9 @@ private data class GalleryRequest(
 fun ThreadDetailScreen(
     onNavigateUp: () -> Unit,
     onNavigateToBoards: () -> Unit,
-    onOpenWebClick: (url: String) -> Unit,
     viewModel: ThreadDetailViewModel = hiltViewModel(),
 ) {
     val thread by viewModel.thread.collectAsStateWithLifecycle()
-    val threadUrl by viewModel.threadUrl.collectAsStateWithLifecycle()
     val previewPost by viewModel.previewPost.collectAsStateWithLifecycle()
     val commentStates by viewModel.commentStates.collectAsStateWithLifecycle()
     val alwaysUseRawImage by viewModel.alwaysUseRawImage.collectAsStateWithLifecycle()
@@ -129,6 +129,7 @@ fun ThreadDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     var repliesDialogForPostId by remember { mutableStateOf<String?>(null) }
@@ -291,8 +292,28 @@ fun ThreadDetailScreen(
                             }
                         }
                         IconButton(
-                            onClick = { threadUrl?.let { onOpenWebClick(it) } },
-                            enabled = threadUrl != null,
+                            onClick = {
+                                viewModel.requestThreadWebLink(
+                                    onReady = { handle ->
+                                        val opened = openExternalLink(
+                                            handle,
+                                            viewModel.resourceProvider::consumeExternalLink,
+                                            uriHandler::openUri,
+                                        )
+                                        if (!opened) {
+                                            coroutineScope.launch {
+                                                snackbarHostState.showSnackbar(EXTERNAL_LINK_REJECTED_MESSAGE)
+                                            }
+                                        }
+                                    },
+                                    onRejected = {
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar(EXTERNAL_LINK_REJECTED_MESSAGE)
+                                        }
+                                    },
+                                )
+                            },
+                            enabled = thread != null && !isLoading,
                         ) {
                             Icon(
                                 imageVector = Icons.Default.OpenInBrowser,
@@ -543,6 +564,8 @@ fun ThreadDetailScreen(
         }
     }
 }
+
+private const val EXTERNAL_LINK_REJECTED_MESSAGE = "網站連結被安全政策阻擋或已失效"
 
 @Composable
 private fun ThreadPagingFooter(

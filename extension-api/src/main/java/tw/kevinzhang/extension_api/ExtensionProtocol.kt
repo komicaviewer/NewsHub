@@ -18,6 +18,7 @@ import com.google.gson.JsonSerializationContext
 import com.google.gson.JsonSerializer
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -69,12 +70,14 @@ object ExtensionProtocol {
     const val OP_COMMENTS = 6
     const val OP_WEB_URL = 7
     const val OP_VALIDATE_SESSION = 8
+    const val OP_BOARD_WEB_URL = 9
 
     const val STATUS_OK = 0
     const val STATUS_INVALID_REQUEST = 1
     const val STATUS_FAILED = 2
     const val STATUS_CANCELLED = 3
     const val STATUS_PAYLOAD_TOO_LARGE = 4
+    const val STATUS_SOURCE_FAILURE = 5
 
     const val COOKIE_OP_PTT_ADULT_CONSENT_STATUS = 1
     const val COOKIE_OP_EYNY_CHALLENGE_PROOF = 2
@@ -141,6 +144,7 @@ data class ThreadSummariesRequest(val board: Board, val page: Int)
 data class ThreadPageRequest(val summary: ThreadSummary, val pageToken: String?)
 data class CommentPageRequest(val post: Post, val page: Int)
 data class WebUrlRequest(val summary: ThreadSummary)
+data class BoardWebUrlRequest(val board: Board)
 
 /**
  * Base class used directly by extension APK services. Every concrete service supplies exactly
@@ -179,14 +183,26 @@ abstract class IsolatedSourceService : Service() {
                         }
                         sendResult(requestId, ExtensionProtocol.STATUS_OK, result, callback)
                     }
+                } catch (_: TimeoutCancellationException) {
+                    sendFailure(
+                        requestId,
+                        SourceFailure(SourceFailureCode.TIMED_OUT, operationName(operation)),
+                        callback,
+                    )
                 } catch (_: CancellationException) {
                     sendResult(requestId, ExtensionProtocol.STATUS_CANCELLED, "cancelled", callback)
                 } catch (_: PayloadTooLargeException) {
                     sendResult(requestId, ExtensionProtocol.STATUS_PAYLOAD_TOO_LARGE, "payload too large", callback)
-                } catch (error: IllegalArgumentException) {
-                    sendResult(requestId, ExtensionProtocol.STATUS_INVALID_REQUEST, error.message.orEmpty(), callback)
+                } catch (error: SourceFailureException) {
+                    sendFailure(requestId, error.failure, callback)
+                } catch (_: IllegalArgumentException) {
+                    sendFailure(
+                        requestId,
+                        SourceFailure(SourceFailureCode.PARSER_CONTRACT, operationName(operation)),
+                        callback,
+                    )
                 } catch (error: Exception) {
-                    sendResult(requestId, ExtensionProtocol.STATUS_FAILED, error.message.orEmpty(), callback)
+                    sendFailure(requestId, SourceFailures.fromThrowable(error, operationName(operation)), callback)
                 } finally {
                     jobs.remove(requestId)
                     request.closeQuietly()
@@ -236,6 +252,9 @@ private suspend fun executeSourceOperation(source: Source, operation: Int, reque
         ExtensionProtocol.OP_WEB_URL -> ExtensionWireJson.encode(
             source.getWebUrl(ExtensionWireJson.decode<WebUrlRequest>(request).summary),
         )
+        ExtensionProtocol.OP_BOARD_WEB_URL -> ExtensionWireJson.encode(
+            source.getBoardWebUrl(ExtensionWireJson.decode<BoardWebUrlRequest>(request).board),
+        )
         ExtensionProtocol.OP_VALIDATE_SESSION -> {
             require(source is AuthenticatedSource) { "Source does not support authentication" }
             ExtensionWireJson.encode(source.validateSession())
@@ -281,7 +300,15 @@ private class BinderNamedCookieCapability(private val broker: IHostBroker) : Nam
                             CoroutineScope(Dispatchers.IO).launch {
                                 runCatching {
                                     val json = PipePayload.readUtf8(response, ExtensionProtocol.MAX_CONTROL_BYTES)
-                                    if (status != ExtensionProtocol.STATUS_OK) throw IOException(json)
+                                    when (status) {
+                                        ExtensionProtocol.STATUS_OK -> Unit
+                                        ExtensionProtocol.STATUS_SOURCE_FAILURE ->
+                                            throw SourceFailureException(SourceFailureWire.decode(json))
+                                        ExtensionProtocol.STATUS_CANCELLED -> throw CancellationException("cancelled")
+                                        else -> throw SourceFailureException(
+                                            SourceFailure(SourceFailureCode.EXTENSION_RUNTIME),
+                                        )
+                                    }
                                     ExtensionWireJson.decode<Result>(json)
                                 }.onSuccess(continuation::resume)
                                     .onFailure(continuation::resumeWithException)
@@ -325,8 +352,17 @@ private class BinderSourceNetwork(private val broker: IHostBroker) : SourceNetwo
                                         payload,
                                         ExtensionProtocol.MAX_NETWORK_RESPONSE_BYTES,
                                     )
-                                    if (status != ExtensionProtocol.STATUS_OK) {
-                                        throw IOException(response)
+                                    when (status) {
+                                        ExtensionProtocol.STATUS_OK -> Unit
+                                        ExtensionProtocol.STATUS_SOURCE_FAILURE ->
+                                            throw SourceFailureException(SourceFailureWire.decode(response))
+                                        ExtensionProtocol.STATUS_CANCELLED -> throw CancellationException("cancelled")
+                                        ExtensionProtocol.STATUS_PAYLOAD_TOO_LARGE -> throw SourceFailureException(
+                                            SourceFailure(SourceFailureCode.PAYLOAD_TOO_LARGE),
+                                        )
+                                        else -> throw SourceFailureException(
+                                            SourceFailure(SourceFailureCode.EXTENSION_RUNTIME),
+                                        )
                                     }
                                     ExtensionWireJson.decode<SourceNetworkResponse>(response)
                                 }.onSuccess(continuation::resume)
@@ -403,4 +439,21 @@ private fun sendResult(requestId: Long, status: Int, value: String, callback: IS
     val pipe = PipePayload.writeUtf8(bounded)
     runCatching { callback.onResult(requestId, finalStatus, pipe) }
     pipe.closeQuietly()
+}
+
+private fun sendFailure(requestId: Long, failure: SourceFailure, callback: ISourceCallback) {
+    sendResult(requestId, ExtensionProtocol.STATUS_SOURCE_FAILURE, SourceFailureWire.encode(failure), callback)
+}
+
+internal fun operationName(operation: Int): String = when (operation) {
+    ExtensionProtocol.OP_BOARD_CATEGORIES -> "board_categories"
+    ExtensionProtocol.OP_BOARD_PAGE -> "board_page"
+    ExtensionProtocol.OP_THREAD_SUMMARIES -> "thread_summaries"
+    ExtensionProtocol.OP_THREAD -> "thread"
+    ExtensionProtocol.OP_THREAD_PAGE -> "thread_page"
+    ExtensionProtocol.OP_COMMENTS -> "comments"
+    ExtensionProtocol.OP_WEB_URL -> "web_url"
+    ExtensionProtocol.OP_VALIDATE_SESSION -> "validate_session"
+    ExtensionProtocol.OP_BOARD_WEB_URL -> "board_web_url"
+    else -> "unknown"
 }

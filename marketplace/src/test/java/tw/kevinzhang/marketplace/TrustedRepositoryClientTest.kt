@@ -10,6 +10,7 @@ import org.junit.Test
 import tw.kevinzhang.extension_api.NamedHostCapabilities
 import tw.kevinzhang.extension_api.NetworkOperationPolicy
 import tw.kevinzhang.extension_api.NetworkOperations
+import tw.kevinzhang.extension_api.NetworkRequestRule
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.sha256
 import java.io.File
@@ -48,12 +49,15 @@ class TrustedRepositoryClientTest {
     @Test
     fun `wildcard POST unknown capability and hash mismatch fail closed`() {
         val wildcard = policyObject(validPolicy()).also {
-            it.add("exactHosts", JsonArray().apply { add("*.example.test") })
+            it.getAsJsonObject("request").getAsJsonArray("rules")[0].asJsonObject.add(
+                "exactHosts", JsonArray().apply { add("*.example.test") },
+            )
         }
         assertPolicyRejected(wildcard, validPolicy().sha256())
 
         val post = policyObject(validPolicy()).also {
-            it.getAsJsonArray("operations")[0].asJsonObject.add(
+            it.getAsJsonObject("request").getAsJsonArray("rules")[0].asJsonObject
+                .getAsJsonObject("operation").add(
                 "methods", JsonArray().apply { add("POST") },
             )
         }
@@ -65,11 +69,30 @@ class TrustedRepositoryClientTest {
         assertPolicyRejected(unknownCapability, validPolicy().sha256())
 
         val unknownOperation = policyObject(validPolicy()).also {
-            it.getAsJsonArray("operations")[0].asJsonObject.addProperty("name", "raw_socket")
+            it.getAsJsonObject("request").getAsJsonArray("rules")[0].asJsonObject
+                .getAsJsonObject("operation").addProperty("name", "raw_socket")
         }
         assertPolicyRejected(unknownOperation, validPolicy().sha256())
 
         assertPolicyRejected(policyObject(validPolicy()), "0".repeat(64))
+    }
+
+    @Test
+    fun `version one full policy remains readable without weakening version two`() {
+        val legacy = SourceNetworkPolicy(
+            exactHosts = setOf("api.example.test"),
+            operations = mapOf(
+                NetworkOperations.SOURCE_READ to NetworkOperationPolicy(
+                    NetworkOperations.SOURCE_READ,
+                    setOf("GET", "HEAD"),
+                    setOf("/"),
+                    credentialed = true,
+                ),
+            ),
+            namedCapabilities = setOf(NamedHostCapabilities.RESOURCE_READ),
+        )
+        val result = client.parseTargets(domain.baseUrl, targets(legacy), 3, 7, 99_000)
+        assertEquals(1, result.trust.policies.single().sources.getValue("source.test").networkPolicy?.policyVersion)
     }
 
     @Test
@@ -116,15 +139,23 @@ class TrustedRepositoryClientTest {
 
     private fun validPolicy() = SourceNetworkPolicy(
         exactHosts = setOf("api.example.test"),
-        operations = mapOf(
-            NetworkOperations.SOURCE_READ to NetworkOperationPolicy(
-                name = NetworkOperations.SOURCE_READ,
-                methods = setOf("GET", "HEAD"),
-                pathPrefixes = setOf("/"),
-                credentialed = true,
+        operations = emptyMap(),
+        requestRules = listOf(
+            NetworkRequestRule(
+                exactHosts = setOf("api.example.test"),
+                operation = NetworkOperationPolicy(
+                    name = NetworkOperations.SOURCE_READ,
+                    methods = setOf("GET", "HEAD"),
+                    pathPrefixes = setOf("/"),
+                    credentialed = true,
+                ),
             ),
         ),
         namedCapabilities = setOf(NamedHostCapabilities.RESOURCE_READ),
+        policyVersion = 2,
+        resourceExactHosts = setOf("cdn.example.test"),
+        externalExactHosts = setOf("www.example.test"),
+        authExactHosts = emptySet(),
     )
 
     private fun targets(policy: SourceNetworkPolicy) = targets(policyObject(policy), policy.sha256())
@@ -166,17 +197,48 @@ class TrustedRepositoryClientTest {
     }
 
     private fun policyObject(policy: SourceNetworkPolicy) = JsonObject().apply {
-        add("exactHosts", JsonArray().apply { policy.exactHosts.sorted().forEach(::add) })
-        add("operations", JsonArray().apply {
-            policy.operations.values.sortedBy { it.name }.forEach { operation ->
-                add(JsonObject().apply {
-                    addProperty("name", operation.name)
-                    add("methods", JsonArray().apply { operation.methods.sorted().forEach(::add) })
-                    add("pathPrefixes", JsonArray().apply { operation.pathPrefixes.sorted().forEach(::add) })
-                    addProperty("credentialed", operation.credentialed)
-                })
+        fun operations() = JsonArray().apply {
+                policy.operations.values.sortedBy { it.name }.forEach { operation ->
+                    add(JsonObject().apply {
+                        addProperty("name", operation.name)
+                        add("methods", JsonArray().apply { operation.methods.sorted().forEach(::add) })
+                        add("pathPrefixes", JsonArray().apply { operation.pathPrefixes.sorted().forEach(::add) })
+                        addProperty("credentialed", operation.credentialed)
+                    })
+                }
             }
-        })
+        fun scope(hosts: Set<String>) = JsonObject().apply {
+            add("exactHosts", JsonArray().apply { hosts.sorted().forEach(::add) })
+        }
+        if (policy.policyVersion == 1) {
+            add("exactHosts", JsonArray().apply { policy.exactHosts.sorted().forEach(::add) })
+            add("operations", operations())
+        } else {
+            addProperty("schemaVersion", 2)
+            add("request", JsonObject().apply {
+                add("rules", JsonArray().apply {
+                    policy.requestRules.forEach { rule ->
+                        add(scope(rule.exactHosts).apply {
+                            add("operation", JsonObject().apply {
+                                addProperty("name", rule.operation.name)
+                                add(
+                                    "methods",
+                                    JsonArray().apply { rule.operation.methods.sorted().forEach(::add) },
+                                )
+                                add(
+                                    "pathPrefixes",
+                                    JsonArray().apply { rule.operation.pathPrefixes.sorted().forEach(::add) },
+                                )
+                                addProperty("credentialed", rule.operation.credentialed)
+                            })
+                        })
+                    }
+                })
+            })
+            add("resource", scope(policy.resourceExactHosts))
+            add("external", scope(policy.externalExactHosts))
+            add("auth", scope(policy.authExactHosts))
+        }
         add("namedCapabilities", JsonArray().apply { policy.namedCapabilities.sorted().forEach(::add) })
     }
 

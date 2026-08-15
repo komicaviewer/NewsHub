@@ -13,13 +13,17 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import tw.kevinzhang.data.CollectionRepository
 import tw.kevinzhang.data.SourceIdentityRepository
 import tw.kevinzhang.extension_api.AuthState
 import tw.kevinzhang.extension_api.AuthenticatedSource
+import tw.kevinzhang.extension_api.HostResourceProvider
 import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.SourceFailure
+import tw.kevinzhang.extension_api.SourceFailures
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.BoardPageRequest
 import tw.kevinzhang.extension_loader.ExtensionLoader
@@ -29,7 +33,27 @@ import tw.kevinzhang.extension_loader.RepositoryTrustDomainState
 import tw.kevinzhang.newshub.auth.SourceSessionManager
 import javax.inject.Inject
 
-data class SourceWithBoards(val source: Source, val boards: List<Board>)
+sealed interface SourceBoardState {
+    data object Loading : SourceBoardState
+    data class Ready(val count: Int) : SourceBoardState
+    data object EmptySuccessfully : SourceBoardState
+    data class Failed(val failure: SourceFailure) : SourceBoardState
+}
+
+data class SourceWithBoards(
+    val source: Source,
+    val boards: List<Board>,
+    val loadState: SourceBoardState = if (boards.isEmpty()) {
+        SourceBoardState.EmptySuccessfully
+    } else {
+        SourceBoardState.Ready(boards.size)
+    },
+)
+
+internal data class SourceBoardLoad(
+    val boards: List<Board>,
+    val state: SourceBoardState,
+)
 
 @HiltViewModel
 class BoardsViewModel @Inject constructor(
@@ -39,6 +63,7 @@ class BoardsViewModel @Inject constructor(
     private val collectionRepo: CollectionRepository,
     private val sourceIdentityRepository: SourceIdentityRepository,
     private val sessionManager: SourceSessionManager,
+    internal val resourceProvider: HostResourceProvider,
 ) : ViewModel() {
 
     val authStates: StateFlow<Map<String, AuthState>> = sessionManager.states
@@ -48,6 +73,7 @@ class BoardsViewModel @Inject constructor(
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
+    private val retryJobs = mutableMapOf<String, Job>()
 
     val quarantinedExtensionCount: StateFlow<Int> = extensionManager.quarantinedExtensions
         .map { it.size }
@@ -82,10 +108,8 @@ class BoardsViewModel @Inject constructor(
                                     sessionManager.markExpired(source.id)
                                 }
                             }
-                            SourceWithBoards(
-                                source = source,
-                                boards = loadBoardsOrEmpty(source),
-                            )
+                            val load = loadBoards(source)
+                            SourceWithBoards(source = source, boards = load.boards, loadState = load.state)
                         }
                     }.awaitAll()
                 }
@@ -108,6 +132,28 @@ class BoardsViewModel @Inject constructor(
             }
         }
     }
+
+    fun retrySource(sourceId: String) {
+        val current = _sources.value.firstOrNull { it.source.id == sourceId } ?: return
+        retryJobs.remove(sourceId)?.cancel()
+        _sources.value = _sources.value.map {
+            if (it.source.id == sourceId) it.copy(loadState = SourceBoardState.Loading) else it
+        }
+        retryJobs[sourceId] = viewModelScope.launch {
+            try {
+                val load = loadBoards(current.source)
+                _sources.value = _sources.value.map {
+                    if (it.source === current.source) {
+                        it.copy(boards = load.boards, loadState = load.state)
+                    } else {
+                        it
+                    }
+                }
+            } finally {
+                retryJobs.remove(sourceId)
+            }
+        }
+    }
 }
 
 internal suspend fun validateSessionOrFalse(source: AuthenticatedSource): Boolean = try {
@@ -118,13 +164,20 @@ internal suspend fun validateSessionOrFalse(source: AuthenticatedSource): Boolea
     false
 }
 
-internal suspend fun loadBoardsOrEmpty(source: Source): List<Board> = try {
-    source.getBoardPage(BoardPageRequest()).boards.distinctBy { it.url }
+internal suspend fun loadBoards(source: Source): SourceBoardLoad = try {
+    val boards = source.getBoardPage(BoardPageRequest()).boards.distinctBy { it.url }
+    SourceBoardLoad(
+        boards = boards,
+        state = if (boards.isEmpty()) SourceBoardState.EmptySuccessfully else SourceBoardState.Ready(boards.size),
+    )
 } catch (error: CancellationException) {
     // collectLatest uses cancellation to discard work for a trust domain that was suspended or
     // revoked. Swallowing this exception would let the obsolete Source list overwrite the new
     // empty list after ExtensionManager has already quarantined the package.
     throw error
-} catch (_: Throwable) {
-    emptyList()
+} catch (error: Throwable) {
+    SourceBoardLoad(
+        boards = emptyList(),
+        state = SourceBoardState.Failed(SourceFailures.fromThrowable(error, "board_page")),
+    )
 }

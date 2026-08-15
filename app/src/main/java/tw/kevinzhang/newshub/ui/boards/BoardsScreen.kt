@@ -34,6 +34,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,22 +45,29 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import tw.kevinzhang.data.domain.CollectionEntity
 import tw.kevinzhang.extension_api.AuthState
 import tw.kevinzhang.extension_api.AuthenticatedSource
 import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.SourceFailure
+import tw.kevinzhang.extension_api.SourceFailureCode
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_loader.RepositoryTrustDomainState
 import tw.kevinzhang.newshub.ui.component.TitleMediumText
 import tw.kevinzhang.newshub.ui.component.appClickable
+import tw.kevinzhang.newshub.ui.component.openExternalLink
 import tw.kevinzhang.newshub.ui.component.resourceModelOrNull
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -76,8 +85,29 @@ fun BoardsScreen(
     val authStates by viewModel.authStates.collectAsStateWithLifecycle()
     val quarantinedExtensionCount by viewModel.quarantinedExtensionCount.collectAsStateWithLifecycle()
     val repositoryDomainStates by viewModel.repositoryDomainStates.collectAsStateWithLifecycle()
+    val uriHandler = LocalUriHandler.current
+    val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val openBoardWebsite: (Source, Board) -> Unit = { source, board ->
+        coroutineScope.launch {
+            try {
+                val handle = source.getBoardWebUrl(board)
+                val opened = handle != null && openExternalLink(
+                    handle,
+                    viewModel.resourceProvider::consumeExternalLink,
+                    uriHandler::openUri,
+                )
+                if (!opened) snackbarHostState.showSnackbar(EXTERNAL_LINK_REJECTED_MESSAGE)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                snackbarHostState.showSnackbar(EXTERNAL_LINK_REJECTED_MESSAGE)
+            }
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Boards") },
@@ -94,7 +124,7 @@ fun BoardsScreen(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center,
             ) { CircularProgressIndicator() }
-            sources.isEmpty() -> Box(
+            shouldShowNoExtensions(isLoading, sources) -> Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center,
             ) {
@@ -119,19 +149,47 @@ fun BoardsScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    sources.forEach { (source, boards) ->
+                    sources.forEach { group ->
+                        val source = group.source
+                        val boards = group.boards
                         item(
                             key = "header:${source.id}",
                             span = { GridItemSpan(maxLineSpan) },
                         ) {
                             SourceHeader(
                                 source = source,
-                                boardCount = boards.size,
+                                boardCount = sourceBoardCountForDisplay(group.loadState),
                                 authState = authStates[source.id] ?: AuthState.Unknown,
                                 onViewAll = { onNavigateToGroupDetail(source.id) },
                                 onLoginClick = onLoginClick,
                                 onLogoutClick = onLogoutClick,
                             )
+                        }
+                        when (val loadState = group.loadState) {
+                            SourceBoardState.Loading -> item(
+                                key = "loading:${source.id}",
+                                span = { GridItemSpan(maxLineSpan) },
+                            ) {
+                                SourceBoardLoading()
+                            }
+                            SourceBoardState.EmptySuccessfully -> item(
+                                key = "empty:${source.id}",
+                                span = { GridItemSpan(maxLineSpan) },
+                            ) {
+                                SourceBoardEmpty()
+                            }
+                            is SourceBoardState.Failed -> item(
+                                key = "failure:${source.id}",
+                                span = { GridItemSpan(maxLineSpan) },
+                            ) {
+                                SourceBoardFailureCard(
+                                    source = source,
+                                    failure = loadState.failure,
+                                    onRetry = { viewModel.retrySource(source.id) },
+                                    onLogin = { onLoginClick(source.id) },
+                                )
+                            }
+                            is SourceBoardState.Ready -> Unit
                         }
                         items(
                             items = buildBoardGroupItems(boards),
@@ -144,8 +202,10 @@ fun BoardsScreen(
                         ) { item ->
                             when (item) {
                                 is BoardGroupItem.BoardCard -> BoardGridCard(
+                                    source = source,
                                     board = item.board,
                                     collections = collections,
+                                    onOpenWebsite = openBoardWebsite,
                                     onAddToCollections = { collectionIds ->
                                         viewModel.addBoardToCollections(collectionIds, item.board, source)
                                     },
@@ -177,8 +237,29 @@ fun BoardGroupDetailScreen(
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val authStates by viewModel.authStates.collectAsStateWithLifecycle()
     val group = sources.firstOrNull { it.source.id == sourceId }
+    val uriHandler = LocalUriHandler.current
+    val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val openBoardWebsite: (Source, Board) -> Unit = { source, board ->
+        coroutineScope.launch {
+            try {
+                val handle = source.getBoardWebUrl(board)
+                val opened = handle != null && openExternalLink(
+                    handle,
+                    viewModel.resourceProvider::consumeExternalLink,
+                    uriHandler::openUri,
+                )
+                if (!opened) snackbarHostState.showSnackbar(EXTERNAL_LINK_REJECTED_MESSAGE)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                snackbarHostState.showSnackbar(EXTERNAL_LINK_REJECTED_MESSAGE)
+            }
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(group?.source?.name.orEmpty()) },
@@ -209,14 +290,35 @@ fun BoardGroupDetailScreen(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center,
             ) { Text("找不到此 group") }
+            group.loadState is SourceBoardState.Failed -> Box(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                SourceBoardFailureCard(
+                    source = group.source,
+                    failure = group.loadState.failure,
+                    onRetry = { viewModel.retrySource(group.source.id) },
+                    onLogin = { onLoginClick(group.source.id) },
+                )
+            }
+            group.loadState == SourceBoardState.Loading -> Box(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center,
+            ) { CircularProgressIndicator() }
+            group.loadState == SourceBoardState.EmptySuccessfully -> Box(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center,
+            ) { Text("此來源目前沒有看板") }
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(vertical = 4.dp),
             ) {
                 items(group.boards, key = { "${group.source.id}:${it.url}" }) { board ->
                     BoardRow(
+                        source = group.source,
                         board = board,
                         collections = collections,
+                        onOpenWebsite = openBoardWebsite,
                         onAddToCollections = { collectionIds ->
                             viewModel.addBoardToCollections(collectionIds, board, group.source)
                         },
@@ -247,10 +349,21 @@ internal fun boardsEmptyStateMessage(
     else -> "尚未安裝任何 Extension"
 }
 
+internal fun shouldShowNoExtensions(
+    isLoading: Boolean,
+    sources: List<SourceWithBoards>,
+): Boolean = !isLoading && sources.isEmpty()
+
+internal fun sourceBoardCountForDisplay(state: SourceBoardState): Int? = when (state) {
+    SourceBoardState.EmptySuccessfully -> 0
+    is SourceBoardState.Ready -> state.count.takeIf { it > 0 }
+    is SourceBoardState.Failed, SourceBoardState.Loading -> null
+}
+
 @Composable
 private fun SourceHeader(
     source: Source,
-    boardCount: Int,
+    boardCount: Int?,
     authState: AuthState,
     onViewAll: () -> Unit,
     onLoginClick: (String) -> Unit,
@@ -280,18 +393,104 @@ private fun SourceHeader(
                 }
                 TitleMediumText(text = source.name)
             }
-            TextButton(onClick = onViewAll) {
-                Text("查看全部 $boardCount 個")
-                Icon(
-                    Icons.AutoMirrored.Outlined.ArrowForward,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
+            if (boardCount != null) {
+                TextButton(onClick = onViewAll) {
+                    Text("查看全部 $boardCount 個")
+                    Icon(
+                        Icons.AutoMirrored.Outlined.ArrowForward,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
         if (source is AuthenticatedSource) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 SourceAuthAction(source, authState, onLoginClick, onLogoutClick)
+            }
+        }
+    }
+}
+
+internal enum class SourceBoardFailureAction { RETRY, LOGIN }
+
+internal fun sourceBoardFailureMessage(code: SourceFailureCode): String = when (code) {
+    SourceFailureCode.HOST_POLICY -> "網站權限設定不完整"
+    SourceFailureCode.AUTH_REQUIRED -> "需要登入才能載入看板"
+    SourceFailureCode.AUTH_EXPIRED -> "登入已過期，請重新登入"
+    SourceFailureCode.RATE_LIMITED -> "網站請求過於頻繁，請稍後重試"
+    SourceFailureCode.SITE_UNAVAILABLE -> "目前無法連線網站"
+    SourceFailureCode.PARSER_CONTRACT -> "網站內容格式已變更"
+    SourceFailureCode.EXTENSION_RUNTIME -> "Extension 執行失敗"
+    SourceFailureCode.TIMED_OUT -> "網站回應逾時"
+    SourceFailureCode.TRUST_INACTIVE -> "Extension 來源目前未啟用"
+    SourceFailureCode.INVALID_REQUEST -> "Extension 請求格式錯誤"
+    SourceFailureCode.PAYLOAD_TOO_LARGE -> "Extension 回傳資料過大"
+    SourceFailureCode.BACKPRESSURE -> "Extension 正忙碌，請稍後重試"
+}
+
+internal fun sourceBoardFailureAction(
+    code: SourceFailureCode,
+    supportsLogin: Boolean,
+): SourceBoardFailureAction = if (
+    supportsLogin && code in setOf(SourceFailureCode.AUTH_REQUIRED, SourceFailureCode.AUTH_EXPIRED)
+) {
+    SourceBoardFailureAction.LOGIN
+} else {
+    SourceBoardFailureAction.RETRY
+}
+
+@Composable
+private fun SourceBoardLoading() {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+        Text("正在重新載入看板…", modifier = Modifier.padding(start = 8.dp))
+    }
+}
+
+@Composable
+private fun SourceBoardEmpty() {
+    Text(
+        text = "此來源目前沒有看板",
+        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun SourceBoardFailureCard(
+    source: Source,
+    failure: SourceFailure,
+    onRetry: () -> Unit,
+    onLogin: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(sourceBoardFailureMessage(failure.code), style = MaterialTheme.typography.titleSmall)
+                if (failure.code == SourceFailureCode.HOST_POLICY && failure.observedHost != null) {
+                    Text(
+                        text = "未授權網域：${failure.observedHost}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            when (sourceBoardFailureAction(failure.code, source is AuthenticatedSource)) {
+                SourceBoardFailureAction.LOGIN -> TextButton(onClick = onLogin) { Text("前往登入") }
+                SourceBoardFailureAction.RETRY -> TextButton(onClick = onRetry) { Text("重試") }
             }
         }
     }
@@ -346,23 +545,29 @@ private fun MoreBoardsCard(remainingCount: Int, onClick: () -> Unit) {
 
 @Composable
 private fun BoardGridCard(
+    source: Source,
     board: Board,
     collections: List<CollectionEntity>,
+    onOpenWebsite: (Source, Board) -> Unit,
     onAddToCollections: (List<String>) -> Unit,
 ) {
-    BoardItem(board, collections, onAddToCollections, compact = true)
+    BoardItem(source, board, collections, onOpenWebsite, onAddToCollections, compact = true)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BoardRow(
+    source: Source,
     board: Board,
     collections: List<CollectionEntity>,
+    onOpenWebsite: (Source, Board) -> Unit,
     onAddToCollections: (List<String>) -> Unit,
 ) {
     BoardItem(
+        source = source,
         board = board,
         collections = collections,
+        onOpenWebsite = onOpenWebsite,
         onAddToCollections = onAddToCollections,
         compact = false,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
@@ -372,8 +577,10 @@ private fun BoardRow(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BoardItem(
+    source: Source,
     board: Board,
     collections: List<CollectionEntity>,
+    onOpenWebsite: (Source, Board) -> Unit,
     onAddToCollections: (List<String>) -> Unit,
     compact: Boolean,
     modifier: Modifier = Modifier,
@@ -387,8 +594,6 @@ private fun BoardItem(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         tonalElevation = 1.dp,
-        // A raw URL from an extension is data, not executable navigation authority.
-        onClick = {},
     ) {
         if (compact) {
             Column(modifier = Modifier.fillMaxSize().padding(start = 16.dp, top = 16.dp, end = 8.dp, bottom = 6.dp)) {
@@ -405,8 +610,7 @@ private fun BoardItem(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     TextButton(
-                        onClick = {},
-                        enabled = false,
+                        onClick = { onOpenWebsite(source, board) },
                         contentPadding = PaddingValues(horizontal = 8.dp),
                     ) {
                         Icon(
@@ -444,7 +648,7 @@ private fun BoardItem(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    TextButton(onClick = {}, enabled = false) {
+                    TextButton(onClick = { onOpenWebsite(source, board) }) {
                         Icon(
                             Icons.Outlined.Language,
                             contentDescription = null,
@@ -536,3 +740,5 @@ private fun BoardItem(
         }
     }
 }
+
+private const val EXTERNAL_LINK_REJECTED_MESSAGE = "網站連結被安全政策阻擋或已失效"

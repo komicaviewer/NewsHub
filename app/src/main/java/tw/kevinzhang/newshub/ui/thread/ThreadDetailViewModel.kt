@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -91,9 +92,6 @@ class ThreadDetailViewModel @Inject constructor(
                 .joinToString(" · ")
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
-
-    /** Raw extension URLs are not executable host links; only broker-issued handles may be opened. */
-    val threadUrl: StateFlow<String?> = MutableStateFlow(null)
 
     val previewPost = MutableStateFlow<Post?>(null)
 
@@ -196,6 +194,24 @@ class ThreadDetailViewModel @Inject constructor(
             _sourceName.value = source.name
             _alwaysUseRawImage.value = source.alwaysUseRawImage
             loadThreadInForeground(source)
+        }
+    }
+
+    /** Issues a fresh, single-use Host capability only in response to a foreground user action. */
+    fun requestThreadWebLink(onReady: (String) -> Unit, onRejected: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                val source = cachedSource ?: resolveTrustedSource()
+                if (source == null) {
+                    onRejected()
+                    return@launch
+                }
+                source.getWebUrl(historySummary ?: threadSummary())?.let(onReady) ?: onRejected()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                onRejected()
+            }
         }
     }
 
@@ -544,7 +560,9 @@ class ThreadDetailViewModel @Inject constructor(
             rawImage = firstImage?.raw,
             previewContent = converter.toJson(firstPost?.content?.take(3) ?: emptyList()),
             sourceIconUrl = cachedSource?.iconUrl,
-            threadUrl = thread.url,
+            // External-link handles are deliberately single-use and generation-bound. Persisting
+            // one would create a guaranteed stale capability in Saved Posts.
+            threadUrl = null,
             savedAt = System.currentTimeMillis(),
             screenshotAssetRefs = savedPostAssetStore.encodeReferences(screenshotAssetRefs),
         )

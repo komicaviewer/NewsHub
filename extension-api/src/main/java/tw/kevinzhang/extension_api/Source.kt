@@ -83,6 +83,9 @@ interface Source {
      */
     suspend fun getComments(post: Post, page: Int): CommentPage = CommentPage(emptyList(), false)
 
+    /** Returns the public website URL for [board]. The Host turns it into a scoped opaque handle. */
+    suspend fun getBoardWebUrl(board: Board): String? = board.url
+
     /** Returns the publicly accessible web URL for this thread, or null if login is required. */
     suspend fun getWebUrl(summary: ThreadSummary): String? = null
 

@@ -6,9 +6,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import tw.kevinzhang.extension_api.NetworkOperationPolicy
+import tw.kevinzhang.extension_api.NetworkOperations
+import tw.kevinzhang.extension_api.NetworkRequestRule
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.SourceNetworkRequest
 import tw.kevinzhang.extension_api.SourceIdentity
+import tw.kevinzhang.extension_api.SourceFailureCode
+import tw.kevinzhang.extension_api.SourceFailureException
 import tw.kevinzhang.extension_api.NamedHostCapabilities
 import tw.kevinzhang.extension_api.ExtensionProtocol
 import tw.kevinzhang.extension_api.ExtensionWireJson
@@ -20,34 +24,42 @@ import okhttp3.HttpUrl
 class SourceNetworkBrokerTest {
     private val policy = SourceNetworkPolicy(
         exactHosts = setOf("news.example"),
-        operations = mapOf(
-            "thread" to NetworkOperationPolicy(
-                name = "thread",
-                methods = setOf("GET"),
-                pathPrefixes = setOf("/threads/"),
-                credentialed = true,
+        operations = emptyMap(),
+        policyVersion = 2,
+        resourceExactHosts = emptySet(),
+        externalExactHosts = emptySet(),
+        authExactHosts = emptySet(),
+        requestRules = listOf(
+            NetworkRequestRule(
+                exactHosts = setOf("news.example"),
+                operation = NetworkOperationPolicy(
+                    name = NetworkOperations.SOURCE_READ,
+                    methods = setOf("GET"),
+                    pathPrefixes = setOf("/threads/"),
+                    credentialed = true,
+                ),
             ),
         ),
     )
 
     @Test fun `accepts exact authorized read operation`() {
         val url = validateSourceNetworkRequest(
-            SourceNetworkRequest("thread", "GET", "https://news.example/threads/123"),
+            SourceNetworkRequest(NetworkOperations.SOURCE_READ, "GET", "https://news.example/threads/123"),
             policy,
         )
         assertEquals("news.example", url.host)
     }
 
     @Test fun `rejects same-host mutation confused deputy`() {
-        assertRejected(SourceNetworkRequest("thread", "DELETE", "https://news.example/threads/123"))
+        assertRejected(SourceNetworkRequest(NetworkOperations.SOURCE_READ, "DELETE", "https://news.example/threads/123"))
     }
 
     @Test fun `rejects private or untrusted destinations and credential headers`() {
-        assertRejected(SourceNetworkRequest("thread", "GET", "https://127.0.0.1/threads/123"))
-        assertRejected(SourceNetworkRequest("thread", "GET", "https://metadata.google.internal/threads/123"))
+        assertRejected(SourceNetworkRequest(NetworkOperations.SOURCE_READ, "GET", "https://127.0.0.1/threads/123"))
+        assertRejected(SourceNetworkRequest(NetworkOperations.SOURCE_READ, "GET", "https://metadata.google.internal/threads/123"))
         assertRejected(
             SourceNetworkRequest(
-                "thread",
+                NetworkOperations.SOURCE_READ,
                 "GET",
                 "https://news.example/threads/123",
                 headers = mapOf("Cookie" to "session=stolen"),
@@ -56,7 +68,23 @@ class SourceNetworkBrokerTest {
     }
 
     @Test fun `rejects same host route outside operation policy`() {
-        assertRejected(SourceNetworkRequest("thread", "GET", "https://news.example/delete-account"))
+        assertRejected(SourceNetworkRequest(NetworkOperations.SOURCE_READ, "GET", "https://news.example/delete-account"))
+    }
+
+    @Test fun `host policy failure exposes only bounded host evidence`() {
+        val error = runCatching {
+            validateSourceNetworkRequest(
+                SourceNetworkRequest(NetworkOperations.SOURCE_READ, "GET", "https://evil.example/private?token=secret"),
+                policy,
+            )
+        }.exceptionOrNull() as SourceFailureException
+
+        assertEquals(SourceFailureCode.HOST_POLICY, error.failure.code)
+        assertEquals(NetworkOperations.SOURCE_READ, error.failure.operation)
+        assertEquals("evil.example", error.failure.observedHost)
+        assertEquals(listOf("news.example"), error.failure.allowedHosts)
+        assertFalse(error.toString().contains("private"))
+        assertFalse(error.toString().contains("secret"))
     }
 
     @Test fun `PTT capability reveals only the fixed consent predicate`() {
@@ -137,9 +165,117 @@ class SourceNetworkBrokerTest {
             "https://news.example:444/thread/1",
             "https://user:pass@news.example/thread/1",
             "https://127.0.0.1/thread/1",
+            "https://[2001:db8::1]/thread/1",
         ).forEach { candidate ->
             assertTrue(runCatching { validateExternalLink(candidate, linkPolicy) }.isFailure)
         }
+    }
+
+    @Test fun `version two host scopes cannot borrow each others authority`() {
+        val scoped = SourceNetworkPolicy(
+            exactHosts = setOf("api.example.test"),
+            operations = emptyMap(),
+            namedCapabilities = setOf(
+                NamedHostCapabilities.RESOURCE_READ,
+                NamedHostCapabilities.EXTERNAL_LINK,
+            ),
+            policyVersion = 2,
+            resourceExactHosts = setOf("images.example.test"),
+            externalExactHosts = setOf("www.example.test"),
+            authExactHosts = setOf("login.example.test"),
+            requestRules = listOf(
+                NetworkRequestRule(
+                    setOf("api.example.test"),
+                    NetworkOperationPolicy(NetworkOperations.SOURCE_READ, setOf("GET"), setOf("/v1/")),
+                ),
+            ),
+        )
+
+        assertEquals("images.example.test", validateResourceUrl("https://images.example.test/a.png", scoped).host)
+        assertEquals("www.example.test", validateExternalLink("https://www.example.test/post/1", scoped).host)
+        assertEquals("login.example.test", validateAuthUrl("https://login.example.test/session", scoped).host)
+        listOf("images.example.test", "www.example.test", "login.example.test").forEach { host ->
+            assertTrue(runCatching {
+                validateSourceNetworkRequest(
+                    SourceNetworkRequest(NetworkOperations.SOURCE_READ, "GET", "https://$host/v1/items"),
+                    scoped,
+                )
+            }.isFailure)
+        }
+        assertTrue(runCatching { validateResourceUrl("https://www.example.test/a.png", scoped) }.isFailure)
+        assertTrue(runCatching { validateResourceUrl("https://login.example.test/a.png", scoped) }.isFailure)
+        assertTrue(runCatching { validateExternalLink("https://images.example.test/post/1", scoped) }.isFailure)
+        assertTrue(runCatching { validateAuthUrl("https://api.example.test/session", scoped) }.isFailure)
+        assertTrue(runCatching { validateAuthUrl("https://www.example.test/session", scoped) }.isFailure)
+    }
+
+    @Test fun `Gamer board API is public while forum rule is credentialed`() {
+        val gamer = SourceNetworkPolicy(
+            exactHosts = setOf("api.gamer.com.tw", "forum.gamer.com.tw"),
+            operations = emptyMap(),
+            policyVersion = 2,
+            resourceExactHosts = emptySet(),
+            externalExactHosts = emptySet(),
+            authExactHosts = setOf("forum.gamer.com.tw"),
+            requestRules = listOf(
+                NetworkRequestRule(
+                    setOf("api.gamer.com.tw"),
+                    NetworkOperationPolicy(
+                        NetworkOperations.SOURCE_READ,
+                        setOf("GET"),
+                        setOf("/community/v1/", "/mobile_app/forum/v3/"),
+                        credentialed = false,
+                    ),
+                ),
+                NetworkRequestRule(
+                    setOf("forum.gamer.com.tw"),
+                    NetworkOperationPolicy(
+                        NetworkOperations.SOURCE_READ,
+                        setOf("GET"),
+                        setOf("/B.php", "/C.php", "/ajax/"),
+                        credentialed = true,
+                    ),
+                ),
+            ),
+        )
+        val api = authorizeSourceNetworkRequest(
+            SourceNetworkRequest(
+                NetworkOperations.SOURCE_READ,
+                "GET",
+                "https://api.gamer.com.tw/mobile_app/forum/v3/bboards.php",
+            ),
+            gamer,
+        )
+        val forum = authorizeSourceNetworkRequest(
+            SourceNetworkRequest(
+                NetworkOperations.SOURCE_READ,
+                "GET",
+                "https://forum.gamer.com.tw/B.php?bsn=1",
+            ),
+            gamer,
+        )
+        assertFalse(api.rule.operation.credentialed)
+        assertTrue(forum.rule.operation.credentialed)
+    }
+
+    @Test fun `overlapping request rules fail closed instead of choosing credentials`() {
+        val overlapping = policy.copy(
+            requestRules = policy.requestRules + policy.requestRules.single().copy(
+                operation = policy.requestRules.single().operation.copy(credentialed = false),
+            ),
+        )
+        assertTrue(
+            runCatching {
+                authorizeSourceNetworkRequest(
+                    SourceNetworkRequest(
+                        NetworkOperations.SOURCE_READ,
+                        "GET",
+                        "https://news.example/threads/123",
+                    ),
+                    overlapping,
+                )
+            }.isFailure,
+        )
     }
 
     @Test fun `EYNY capability blindly writes only fixed proof cookies`() {
@@ -213,7 +349,7 @@ class SourceNetworkBrokerTest {
         try {
             validateSourceNetworkRequest(request, policy)
             fail("Expected request to be rejected")
-        } catch (_: IllegalArgumentException) {
+        } catch (_: SourceFailureException) {
             // expected
         }
     }

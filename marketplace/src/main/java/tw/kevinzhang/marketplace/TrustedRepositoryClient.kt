@@ -20,8 +20,10 @@ import tw.kevinzhang.marketplace.data.RepoMetadata
 import tw.kevinzhang.extension_api.ExtensionProtocol
 import tw.kevinzhang.extension_api.NamedHostCapabilities
 import tw.kevinzhang.extension_api.NetworkOperationPolicy
+import tw.kevinzhang.extension_api.NetworkRequestRule
 import tw.kevinzhang.extension_api.NetworkOperations
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
+import tw.kevinzhang.extension_api.canonicalJson
 import tw.kevinzhang.extension_api.sha256
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -313,7 +315,7 @@ internal class TrustedRepositoryClient(
                 }
                 val sourceBaseUrl = source.requiredString("baseUrl")
                 val sourceHost = canonicalSourceBaseHost(sourceBaseUrl)
-                if (sourceHost !in networkPolicy.exactHosts) {
+                if (sourceHost !in networkPolicy.allExactHosts) {
                     throw TrustedMetadataException("Source base URL is outside its network policy")
                 }
                 AvailableSource(
@@ -457,57 +459,140 @@ internal class TrustedRepositoryClient(
     }
 
     private fun parseNetworkPolicy(policyObject: JsonObject): SourceNetworkPolicy {
-        policyObject.requireExactKeys(setOf("exactHosts", "operations", "namedCapabilities"), "networkPolicy")
-        val hosts = policyObject.requiredArray("exactHosts")
-        if (hosts.size() !in 1..MAX_POLICY_HOSTS) throw TrustedMetadataException("Invalid policy host count")
+        return if (!policyObject.has("schemaVersion")) {
+            policyObject.requireExactKeys(
+                setOf("exactHosts", "operations", "namedCapabilities"),
+                "networkPolicy",
+            )
+            SourceNetworkPolicy(
+                exactHosts = parsePolicyHosts(policyObject, "exactHosts", allowEmpty = false),
+                operations = parseNetworkOperations(policyObject),
+                namedCapabilities = parseNamedCapabilities(policyObject),
+            )
+        } else {
+            policyObject.requireExactKeys(
+                setOf("schemaVersion", "request", "resource", "external", "auth", "namedCapabilities"),
+                "networkPolicy",
+            )
+            val version = policyObject.get("schemaVersion")?.takeIf {
+                it.isJsonPrimitive && it.asJsonPrimitive.isNumber
+            }?.asInt ?: throw TrustedMetadataException("Invalid network policy version")
+            if (version != 2) throw TrustedMetadataException("Unsupported network policy version")
+            val request = policyObject.requiredObject("request").also {
+                it.requireExactKeys(setOf("rules"), "networkPolicy.request")
+            }
+            val resource = policyObject.requiredObject("resource").also {
+                it.requireExactKeys(setOf("exactHosts"), "networkPolicy.resource")
+            }
+            val external = policyObject.requiredObject("external").also {
+                it.requireExactKeys(setOf("exactHosts"), "networkPolicy.external")
+            }
+            val auth = policyObject.requiredObject("auth").also {
+                it.requireExactKeys(setOf("exactHosts"), "networkPolicy.auth")
+            }
+            val requestRules = parseNetworkRequestRules(request)
+            SourceNetworkPolicy(
+                exactHosts = requestRules.flatMapTo(linkedSetOf(), NetworkRequestRule::exactHosts),
+                operations = emptyMap(),
+                namedCapabilities = parseNamedCapabilities(policyObject),
+                policyVersion = 2,
+                resourceExactHosts = parsePolicyHosts(resource, "exactHosts", allowEmpty = true),
+                externalExactHosts = parsePolicyHosts(external, "exactHosts", allowEmpty = true),
+                authExactHosts = parsePolicyHosts(auth, "exactHosts", allowEmpty = true),
+                requestRules = requestRules,
+            )
+        }.also { policy ->
+            runCatching { policy.canonicalJson() }
+                .getOrElse { throw TrustedMetadataException("Invalid canonical network policy", it) }
+        }
+    }
+
+    private fun parsePolicyHosts(owner: JsonObject, key: String, allowEmpty: Boolean): Set<String> {
+        val hosts = owner.requiredArray(key)
+        val minimum = if (allowEmpty) 0 else 1
+        if (hosts.size() !in minimum..MAX_POLICY_HOSTS) {
+            throw TrustedMetadataException("Invalid policy host count")
+        }
         val exactHosts = hosts.mapTo(linkedSetOf()) { element ->
             canonicalExactHost(element.requiredStringValue("network policy host"))
         }
         if (exactHosts.size != hosts.size()) throw TrustedMetadataException("Duplicate policy host")
+        return exactHosts
+    }
 
-        val operationElements = policyObject.requiredArray("operations")
+    private fun parseNetworkOperations(owner: JsonObject): Map<String, NetworkOperationPolicy> {
+        val operationElements = owner.requiredArray("operations")
         if (operationElements.size() !in 1..MAX_POLICY_OPERATIONS) {
             throw TrustedMetadataException("Invalid policy operation count")
         }
         val operations = operationElements.associate { element ->
-            val operation = runCatching { element.asJsonObject }
-                .getOrElse { throw TrustedMetadataException("Invalid network operation", it) }
-            operation.requireExactKeys(
-                setOf("name", "methods", "pathPrefixes", "credentialed"),
-                "network operation",
+            val parsed = parseNetworkOperation(
+                runCatching { element.asJsonObject }
+                    .getOrElse { throw TrustedMetadataException("Invalid network operation", it) },
             )
-            val name = operation.requiredString("name")
-            if (name != NetworkOperations.SOURCE_READ) throw TrustedMetadataException("Unknown network operation")
-            val methodElements = operation.requiredArray("methods")
-            if (methodElements.size() !in 1..MAX_POLICY_METHODS) {
-                throw TrustedMetadataException("Invalid network method count")
-            }
-            val methods = methodElements.mapTo(linkedSetOf()) { method ->
-                method.requiredStringValue("network method").uppercase(Locale.ROOT).also {
-                    if (it !in setOf("GET", "HEAD")) throw TrustedMetadataException("Forbidden network method")
-                }
-            }
-            if (methods.size != methodElements.size()) throw TrustedMetadataException("Duplicate network method")
-            val prefixElements = operation.requiredArray("pathPrefixes")
-            if (prefixElements.size() !in 1..MAX_POLICY_PREFIXES) {
-                throw TrustedMetadataException("Invalid path prefix count")
-            }
-            val prefixes = prefixElements.mapTo(linkedSetOf()) { prefixElement ->
-                prefixElement.requiredStringValue("path prefix").also { prefix ->
-                    if (prefix.length > 256 || !prefix.startsWith('/') ||
-                        prefix.any { it.code < 0x20 || it.code == 0x7f }
-                    ) throw TrustedMetadataException("Invalid path prefix")
-                }
-            }
-            if (prefixes.size != prefixElements.size()) throw TrustedMetadataException("Duplicate path prefix")
-            val credentialed = operation.get("credentialed")?.takeIf {
-                it.isJsonPrimitive && it.asJsonPrimitive.isBoolean
-            }?.asBoolean ?: throw TrustedMetadataException("Invalid credentialed policy")
-            name to NetworkOperationPolicy(name, methods, prefixes, credentialed)
+            parsed.name to parsed
         }
         if (operations.size != operationElements.size()) throw TrustedMetadataException("Duplicate network operation")
+        return operations
+    }
 
-        val capabilityElements = policyObject.requiredArray("namedCapabilities")
+    private fun parseNetworkRequestRules(owner: JsonObject): List<NetworkRequestRule> {
+        val elements = owner.requiredArray("rules")
+        if (elements.size() !in 1..MAX_POLICY_OPERATIONS) {
+            throw TrustedMetadataException("Invalid request rule count")
+        }
+        val rules = elements.map { element ->
+            val rule = runCatching { element.asJsonObject }
+                .getOrElse { throw TrustedMetadataException("Invalid request rule", it) }
+            rule.requireExactKeys(setOf("exactHosts", "operation"), "network request rule")
+            NetworkRequestRule(
+                exactHosts = parsePolicyHosts(rule, "exactHosts", allowEmpty = false),
+                operation = parseNetworkOperation(rule.requiredObject("operation")),
+            )
+        }
+        if (rules.distinct().size != rules.size) throw TrustedMetadataException("Duplicate request rule")
+        return rules
+    }
+
+    private fun parseNetworkOperation(operation: JsonObject): NetworkOperationPolicy {
+        operation.requireExactKeys(
+            setOf("name", "methods", "pathPrefixes", "credentialed"),
+            "network operation",
+        )
+        val name = operation.requiredString("name")
+        if (name != NetworkOperations.SOURCE_READ) throw TrustedMetadataException("Unknown network operation")
+        val methodElements = operation.requiredArray("methods")
+        if (methodElements.size() !in 1..MAX_POLICY_METHODS) {
+            throw TrustedMetadataException("Invalid network method count")
+        }
+        val methods = methodElements.mapTo(linkedSetOf()) { method ->
+            method.requiredStringValue("network method").uppercase(Locale.ROOT).also {
+                if (it !in setOf("GET", "HEAD")) throw TrustedMetadataException("Forbidden network method")
+            }
+        }
+        if (methods.size != methodElements.size()) throw TrustedMetadataException("Duplicate network method")
+        val prefixElements = operation.requiredArray("pathPrefixes")
+        if (prefixElements.size() !in 1..MAX_POLICY_PREFIXES) {
+            throw TrustedMetadataException("Invalid path prefix count")
+        }
+        val prefixes = prefixElements.mapTo(linkedSetOf()) { prefixElement ->
+            prefixElement.requiredStringValue("path prefix").also { prefix ->
+                if (prefix.length > 256 || !prefix.startsWith('/') ||
+                    prefix.any { it.code < 0x20 || it.code == 0x7f }
+                ) {
+                    throw TrustedMetadataException("Invalid path prefix")
+                }
+            }
+        }
+        if (prefixes.size != prefixElements.size()) throw TrustedMetadataException("Duplicate path prefix")
+        val credentialed = operation.get("credentialed")?.takeIf {
+            it.isJsonPrimitive && it.asJsonPrimitive.isBoolean
+        }?.asBoolean ?: throw TrustedMetadataException("Invalid credentialed policy")
+        return NetworkOperationPolicy(name, methods, prefixes, credentialed)
+    }
+
+    private fun parseNamedCapabilities(owner: JsonObject): Set<String> {
+        val capabilityElements = owner.requiredArray("namedCapabilities")
         if (capabilityElements.size() > MAX_POLICY_CAPABILITIES) {
             throw TrustedMetadataException("Invalid named capability count")
         }
@@ -519,7 +604,7 @@ internal class TrustedRepositoryClient(
         if (capabilities.size != capabilityElements.size()) {
             throw TrustedMetadataException("Duplicate named capability")
         }
-        return SourceNetworkPolicy(exactHosts, operations, capabilities)
+        return capabilities
     }
 
     private fun canonicalSourceBaseHost(value: String): String {

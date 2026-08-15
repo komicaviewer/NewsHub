@@ -13,6 +13,9 @@ import tw.kevinzhang.extension_api.SourceIdentity
 import tw.kevinzhang.extension_api.AuthSpec
 import tw.kevinzhang.extension_api.AuthenticatedSource
 import tw.kevinzhang.extension_api.SourceRuntime
+import tw.kevinzhang.extension_api.SourceFailure
+import tw.kevinzhang.extension_api.SourceFailureCode
+import tw.kevinzhang.extension_api.SourceFailureException
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.BoardPage
 import tw.kevinzhang.extension_api.model.BoardPageRequest
@@ -116,6 +119,48 @@ class ExtensionHealthRunnerTest {
         assertEquals(listOf("example.com"), failure.allowedHosts)
         assertFalse(json.contains("pixmicat.php"))
         assertFalse(json.contains("secret=query"))
+    }
+
+    @Test
+    fun typedBrokerHostPolicyFailureKeepsSafeOperationAndEvidence() = runBlocking {
+        val source = FakeSource(
+            boardFailure = SourceFailureException(
+                SourceFailure(
+                    code = SourceFailureCode.HOST_POLICY,
+                    operation = "gamer_board_directory",
+                    observedHost = "api.gamer.com.tw",
+                    allowedHosts = listOf("forum.gamer.com.tw"),
+                ),
+            ),
+        )
+
+        val report = ExtensionHealthRunner().run(loadProfile(), listOf(source))
+        val failure = report.results.single().steps.single()
+        val json = ExtensionHealthJson.encodeReport(report)
+
+        assertEquals(HealthStatus.FAIL, report.status)
+        assertEquals(HealthFailureClass.HOST_POLICY, failure.failureClass)
+        assertEquals("gamer_board_directory", failure.operation)
+        assertEquals("api.gamer.com.tw", failure.observedHost)
+        assertEquals(listOf("forum.gamer.com.tw"), failure.allowedHosts)
+        assertFalse(json.contains("http"))
+        assertFalse(json.contains("Exception"))
+    }
+
+    @Test
+    fun typedAuthenticationFailureIsPendingAndNeverPasses() = runBlocking {
+        val source = FakeSource(
+            boardFailure = SourceFailureException(
+                SourceFailure(SourceFailureCode.AUTH_REQUIRED, operation = "board_page"),
+            ),
+        )
+
+        val report = ExtensionHealthRunner().run(loadProfile(), listOf(source))
+
+        assertEquals(HealthStatus.PARTIAL_AUTH_PENDING, report.status)
+        assertEquals(HealthStatus.AUTH_PENDING, report.results.single().status)
+        assertEquals(HealthStatus.AUTH_PENDING, report.results.single().steps.single().status)
+        assertEquals(HealthFailureClass.AUTH_REQUIRED, report.results.single().steps.single().failureClass)
     }
 
     @Test

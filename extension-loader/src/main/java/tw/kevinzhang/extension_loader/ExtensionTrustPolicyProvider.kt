@@ -46,7 +46,7 @@ data class ExpectedSourceService(
         require(isSha256(policyHash))
         networkPolicy?.let { policy ->
             validateSignedNetworkPolicy(policy)
-            require(baseUri.host.lowercase(Locale.ROOT) in policy.exactHosts) {
+            require(baseUri.host.lowercase(Locale.ROOT) in policy.allExactHosts) {
                 "Signed policy must authorize the Source base host"
             }
             require(policy.sha256().equals(policyHash, ignoreCase = true)) {
@@ -321,24 +321,61 @@ private fun validateSignedNetworkPolicy(policy: SourceNetworkPolicy) {
         NamedHostCapabilities.PTT_ADULT_CONSENT_STATUS,
         NamedHostCapabilities.EYNY_CHALLENGE_PROOF,
     )
-    require(policy.exactHosts.isNotEmpty() && policy.exactHosts.size <= MAX_EXACT_HOSTS)
-    require(policy.exactHosts.all { host ->
+    require(policy.policyVersion == 1 || policy.policyVersion == 2) {
+        "Signed policy has an unsupported version"
+    }
+    val scopedHosts = listOf(
+        policy.exactHosts,
+        policy.resourceExactHosts,
+        policy.externalExactHosts,
+        policy.authExactHosts,
+    )
+    require(policy.exactHosts.isNotEmpty() && scopedHosts.all { it.size <= MAX_EXACT_HOSTS })
+    require(policy.allExactHosts.size <= MAX_EXACT_HOSTS) {
+        "Signed policy exceeds the combined Host limit"
+    }
+    require(scopedHosts.flatten().all { host ->
         host == host.lowercase(Locale.ROOT) &&
-            !host.startsWith('.') && !host.endsWith('.') && ".." !in host && '*' !in host &&
-            host.length <= 253 && host.split('.').all { label ->
+            !host.startsWith('.') && !host.endsWith('.') && ".." !in host && '*' !in host && ':' !in host &&
+            host.length <= 253 && host.split('.').size >= 2 && host.split('.').all { label ->
                 label.isNotEmpty() && label.length <= 63 &&
                     label.first().isLetterOrDigit() && label.last().isLetterOrDigit() &&
                     label.all { it.isLetterOrDigit() || it == '-' }
+            } && !host.split('.').let { labels ->
+                labels.size == 4 && labels.all { it.all(Char::isDigit) && it.toIntOrNull() in 0..255 }
             }
     }) { "Signed policy contains a non-canonical or wildcard host" }
-    require(policy.operations.keys == setOf(NetworkOperations.SOURCE_READ)) {
-        "Signed policy contains an unknown network operation"
+    if (policy.policyVersion == 1) {
+        require(
+            policy.resourceExactHosts == policy.exactHosts &&
+                policy.externalExactHosts == policy.exactHosts &&
+                policy.authExactHosts == policy.exactHosts,
+        ) { "Version 1 policy cannot express scoped hosts" }
     }
-    require(policy.operations.values.all { operation ->
-        operation.name == NetworkOperations.SOURCE_READ &&
-            operation.methods.isNotEmpty() && operation.methods.all { it == "GET" || it == "HEAD" } &&
-            operation.pathPrefixes.isNotEmpty() && operation.pathPrefixes.size <= MAX_PATH_PREFIXES
-    }) { "Signed policy exceeds Host network operation limits" }
+    if (policy.policyVersion == 1) {
+        require(policy.operations.keys == setOf(NetworkOperations.SOURCE_READ)) {
+            "Signed policy contains an unknown network operation"
+        }
+    } else {
+        require(policy.operations.isEmpty()) { "Version 2 policy must use request rules" }
+    }
+    require(policy.requestRules.isNotEmpty() && policy.requestRules.size <= MAX_REQUEST_RULES)
+    require(policy.requestRules.all { rule ->
+        rule.exactHosts.isNotEmpty() && rule.exactHosts.all { it in policy.exactHosts } &&
+            rule.operation.name == NetworkOperations.SOURCE_READ &&
+            rule.operation.methods.isNotEmpty() &&
+            rule.operation.methods.all { it == "GET" || it == "HEAD" } &&
+            rule.operation.pathPrefixes.isNotEmpty() &&
+            rule.operation.pathPrefixes.size <= MAX_PATH_PREFIXES
+    }) { "Signed policy exceeds Host request-rule limits" }
+    require(policy.requestRules.distinct().size == policy.requestRules.size) {
+        "Signed policy contains duplicate request rules"
+    }
+    if (policy.policyVersion == 2) {
+        require(policy.requestRules.flatMapTo(linkedSetOf()) { it.exactHosts } == policy.exactHosts) {
+            "Version 2 request hosts do not match the rule host union"
+        }
+    }
     require(policy.namedCapabilities.all { it in knownCapabilities }) {
         "Signed policy contains an unknown named capability"
     }
@@ -357,3 +394,4 @@ private fun isSha256(value: String): Boolean = value.matches(Regex("[a-fA-F0-9]{
 private const val MAX_EXTENSION_APK_BYTES = 64L * 1024 * 1024
 private const val MAX_EXACT_HOSTS = 32
 private const val MAX_PATH_PREFIXES = 32
+private const val MAX_REQUEST_RULES = 32

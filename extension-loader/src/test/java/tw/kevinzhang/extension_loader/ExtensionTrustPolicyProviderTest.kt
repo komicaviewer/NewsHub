@@ -8,6 +8,7 @@ import org.junit.Test
 import tw.kevinzhang.extension_api.NamedHostCapabilities
 import tw.kevinzhang.extension_api.NetworkOperationPolicy
 import tw.kevinzhang.extension_api.NetworkOperations
+import tw.kevinzhang.extension_api.NetworkRequestRule
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.sha256
 
@@ -158,6 +159,34 @@ class ExtensionTrustPolicyProviderTest {
             runCatching {
                 expectedService(domainA, "example.source", valid, hash = "f".repeat(64))
             }.isFailure,
+        )
+    }
+
+    @Test fun `version two keeps request authority separate while accepting base host in another scope`() {
+        val policy = networkPolicy("api.example.com").copy(
+            operations = emptyMap(),
+            policyVersion = 2,
+            resourceExactHosts = setOf("cdn.example.com"),
+            externalExactHosts = setOf("example.com"),
+            authExactHosts = setOf("login.example.com"),
+            requestRules = listOf(
+                NetworkRequestRule(
+                    setOf("api.example.com"),
+                    NetworkOperationPolicy(
+                        NetworkOperations.SOURCE_READ,
+                        setOf("GET", "HEAD"),
+                        setOf("/"),
+                        credentialed = true,
+                    ),
+                ),
+            ),
+        )
+
+        val service = expectedService(domainA, "example.source", policy)
+        assertEquals(setOf("api.example.com"), service.networkPolicy?.exactHosts)
+        assertEquals(
+            setOf("api.example.com", "cdn.example.com", "example.com", "login.example.com"),
+            service.networkPolicy?.allExactHosts,
         )
     }
 

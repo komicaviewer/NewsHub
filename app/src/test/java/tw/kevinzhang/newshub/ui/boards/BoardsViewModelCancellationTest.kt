@@ -5,6 +5,8 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.fail
 import org.junit.Test
 import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.SourceFailureCode
+import tw.kevinzhang.extension_api.SourceFailureException
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.BoardPage
 import tw.kevinzhang.extension_api.model.BoardPageRequest
@@ -34,10 +36,37 @@ class BoardsViewModelCancellationTest {
         }
 
         try {
-            loadBoardsOrEmpty(source)
+            loadBoards(source)
             fail("CancellationException must propagate to collectLatest")
         } catch (_: CancellationException) {
             // Expected: a revoked domain must cancel and discard the obsolete Source result.
         }
+    }
+
+    @Test
+    fun `failure is retained as typed state instead of becoming a successful empty catalog`() = runTest {
+        val source = sourceThrowing(IllegalStateException("secret URL https://example.test/private?token=secret"))
+
+        val result = loadBoards(source)
+
+        val failed = result.state as SourceBoardState.Failed
+        org.junit.Assert.assertEquals(SourceFailureCode.EXTENSION_RUNTIME, failed.failure.code)
+        org.junit.Assert.assertEquals("board_page", failed.failure.operation)
+        org.junit.Assert.assertTrue(result.boards.isEmpty())
+        org.junit.Assert.assertFalse(failed.failure.toString().contains("secret"))
+    }
+
+    private fun sourceThrowing(error: Throwable): Source = object : Source {
+        override val id = "test.failure"
+        override val name = "Failure"
+        override val language = "en"
+        override val version = 1
+        override val iconUrl: String? = null
+        override val supportsCommentPagination = false
+        override val alwaysUseRawImage = false
+        override val needsLogin = false
+        override suspend fun getBoardPage(request: BoardPageRequest): BoardPage = throw error
+        override suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary> = emptyList()
+        override suspend fun getThread(summary: ThreadSummary): Thread = error("Not used")
     }
 }

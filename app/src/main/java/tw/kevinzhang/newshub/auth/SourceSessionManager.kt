@@ -29,7 +29,6 @@ import tw.kevinzhang.extension_api.ResourcePayload
 import tw.kevinzhang.extension_api.ResourceRange
 import tw.kevinzhang.extension_api.ExternalLinkHandle
 import tw.kevinzhang.extension_api.NamedHostCapabilities
-import tw.kevinzhang.extension_api.NetworkOperations
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -57,6 +56,7 @@ class SourceSessionManager @Inject constructor(
     private val sourceIdentities = mutableMapOf<String, String>()
     private val resourceGenerations = mutableMapOf<String, Long>()
     private val resourceBrokers = mutableMapOf<String, SourceNetworkBroker>()
+    private val sourcePolicies = mutableMapOf<String, SourceNetworkPolicy>()
     private val resources = mutableMapOf<String, ResourceBinding>()
     private val externalLinks = mutableMapOf<String, ExternalLinkBinding>()
     private val mutableStates = MutableStateFlow<Map<String, AuthState>>(emptyMap())
@@ -79,6 +79,7 @@ class SourceSessionManager @Inject constructor(
             val generation = (resourceGenerations[storageKey] ?: 0L) + 1L
             resourceGenerations[storageKey] = generation
             resourceBrokers[storageKey] = broker
+            sourcePolicies[storageKey] = policy
             resources.entries.removeAll { it.value.storageKey == storageKey }
             externalLinks.entries.removeAll { it.value.storageKey == storageKey }
         }
@@ -93,15 +94,7 @@ class SourceSessionManager @Inject constructor(
         require(NamedHostCapabilities.RESOURCE_READ in policy.namedCapabilities) {
             "Resource capability is not authorized"
         }
-        // Reuse the exact network authorization boundary before issuing an opaque UI capability.
-        validateSourceNetworkRequest(
-            tw.kevinzhang.extension_api.SourceNetworkRequest(
-                NetworkOperations.SOURCE_READ,
-                "GET",
-                untrustedUrl,
-            ),
-            policy,
-        )
+        validateResourceUrl(untrustedUrl, policy)
         val storageKey = identity.storageKey()
         return synchronized(resources) {
             val generation = requireNotNull(resourceGenerations[storageKey]) { "Source session is not active" }
@@ -178,6 +171,7 @@ class SourceSessionManager @Inject constructor(
         val storageKey = identity.storageKey()
         synchronized(resources) {
             resourceBrokers.remove(storageKey)?.revoke()
+            sourcePolicies.remove(storageKey)
             rotateHandles(storageKey)
         }
     }
@@ -246,11 +240,14 @@ class SourceSessionManager @Inject constructor(
      * pairs, so those cookies remain host-only and are never widened to a parent domain.
      */
     fun importWebViewCookies(sourceId: String, spec: AuthSpec.WebCookie) {
+        val policy = activePolicyForSource(sourceId)
         val jar = session(sourceId).jar
         val cookieManager = CookieManager.getInstance()
         cookieManager.flush()
+        val origins = spec.validCookieOrigins(policy)
+        require(origins.isNotEmpty()) { "Source has no authorized authentication origin" }
         val originHeaders = buildList {
-            spec.validCookieOrigins().forEach { url ->
+            origins.forEach { url ->
                 val raw = cookieManager.getCookie(url.toString()) ?: return@forEach
                 add(url to raw)
             }
@@ -262,9 +259,12 @@ class SourceSessionManager @Inject constructor(
 
     /** Clears only one source's OkHttp and WebView cookies. */
     fun logout(sourceId: String, spec: AuthSpec.WebCookie) {
+        val policy = activePolicyForSource(sourceId)
         val jar = session(sourceId).jar
         val cookieManager = CookieManager.getInstance()
-        spec.validCookieOrigins().forEach { url ->
+        val origins = spec.validCookieOrigins(policy)
+        require(origins.isNotEmpty()) { "Source has no authorized authentication origin" }
+        origins.forEach { url ->
             val cookieNames = buildSet {
                 addAll(jar.cookiesFor(url).map { it.name })
                 cookieManager.getCookie(url.toString())
@@ -289,6 +289,15 @@ class SourceSessionManager @Inject constructor(
     private fun session(sourceId: String): SourceSession = synchronized(sessions) {
         val storageKey = sourceIdentities[sourceId] ?: sourceId
         sessions.getOrPut(storageKey) { SourceSession(sourceId, storageKey) }
+    }
+
+    private fun activePolicyForSource(sourceId: String): SourceNetworkPolicy {
+        val storageKey = synchronized(sessions) {
+            requireNotNull(sourceIdentities[sourceId]) { "Source identity is not active" }
+        }
+        return synchronized(resources) {
+            requireNotNull(sourcePolicies[storageKey]) { "Source authentication policy is not active" }
+        }
     }
 
     private inner class SourceSession(private val sourceId: String, storageKey: String) {
@@ -358,8 +367,24 @@ internal fun validateExternalLink(url: String, policy: SourceNetworkPolicy): Htt
     val parsed = url.toHttpsUrlOrNull() ?: throw IllegalArgumentException("External link must be HTTPS")
     require(parsed.port == 443) { "External link uses a non-default port" }
     require(parsed.username.isEmpty() && parsed.password.isEmpty()) { "External link userinfo is forbidden" }
-    require(parsed.host.lowercase(Locale.ROOT) in policy.exactHosts) { "External link host is not authorized" }
+    require(parsed.host.lowercase(Locale.ROOT) in policy.externalExactHosts) {
+        "External link host is not authorized"
+    }
     require(!parsed.host.matches(Regex("[0-9.]+")) && ':' !in parsed.host) { "External link IP is forbidden" }
+    return parsed
+}
+
+internal fun validateResourceUrl(url: String, policy: SourceNetworkPolicy): HttpUrl {
+    require(NamedHostCapabilities.RESOURCE_READ in policy.namedCapabilities) {
+        "Resource capability is not authorized"
+    }
+    val parsed = url.toHttpsUrlOrNull() ?: throw IllegalArgumentException("Resource URL must be HTTPS")
+    require(parsed.port == 443) { "Resource URL uses a non-default port" }
+    require(parsed.username.isEmpty() && parsed.password.isEmpty()) { "Resource URL userinfo is forbidden" }
+    require(parsed.host.lowercase(Locale.ROOT) in policy.resourceExactHosts) {
+        "Resource host is not authorized"
+    }
+    require(!parsed.host.matches(Regex("[0-9.]+")) && ':' !in parsed.host) { "Resource IP is forbidden" }
     return parsed
 }
 
@@ -382,7 +407,7 @@ private fun String.toHttpsUrlOrNull(): HttpUrl? = runCatching {
     toHttpUrl().takeIf { it.isHttps }
 }.getOrNull()
 
-private fun AuthSpec.WebCookie.validCookieOrigins(): Set<HttpUrl> {
+private fun AuthSpec.WebCookie.validCookieOrigins(policy: SourceNetworkPolicy): Set<HttpUrl> {
     val normalizedAllowedHosts = allowedHosts.asSequence()
         .map { it.lowercase(Locale.ROOT) }
         .toHashSet()
@@ -390,7 +415,19 @@ private fun AuthSpec.WebCookie.validCookieOrigins(): Set<HttpUrl> {
     return cookieOrigins.mapNotNullTo(linkedSetOf()) { origin ->
         val url = origin.toHttpsUrlOrNull() ?: return@mapNotNullTo null
         url.takeIf { it.host.lowercase(Locale.ROOT) in normalizedAllowedHosts }
+            ?.let { runCatching { validateAuthUrl(it.toString(), policy) }.getOrNull() }
     }
+}
+
+internal fun validateAuthUrl(url: String, policy: SourceNetworkPolicy): HttpUrl {
+    val parsed = url.toHttpsUrlOrNull() ?: throw IllegalArgumentException("Authentication URL must be HTTPS")
+    require(parsed.port == 443) { "Authentication URL uses a non-default port" }
+    require(parsed.username.isEmpty() && parsed.password.isEmpty()) { "Authentication URL userinfo is forbidden" }
+    require(parsed.host.lowercase(Locale.ROOT) in policy.authExactHosts) {
+        "Authentication host is not authorized"
+    }
+    require(!parsed.host.matches(Regex("[0-9.]+")) && ':' !in parsed.host) { "Authentication IP is forbidden" }
+    return parsed
 }
 
 /**

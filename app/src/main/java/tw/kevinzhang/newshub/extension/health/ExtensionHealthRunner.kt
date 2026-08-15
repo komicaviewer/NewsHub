@@ -7,6 +7,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import tw.kevinzhang.extension_api.AuthenticatedSource
 import tw.kevinzhang.extension_api.AuthenticationRequiredException
 import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.SourceFailureCode
+import tw.kevinzhang.extension_api.SourceFailureException
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.BoardPageRequest
 import tw.kevinzhang.extension_api.model.BoardQuery
@@ -253,8 +255,12 @@ private fun failedStep(
     failureClass: HealthFailureClass,
     durationMs: Long,
     error: Throwable? = null,
-) = HealthStepResult(
-    operation = operation,
+) : HealthStepResult {
+    val typedFailure = (error as? SourceFailureException)?.failure?.sanitized()
+    val effectiveOperation = typedFailure?.operation ?: operation
+    val hostPolicyViolation = error as? HostPolicyViolationException
+    return HealthStepResult(
+    operation = effectiveOperation,
     status = if (failureClass == HealthFailureClass.AUTH_REQUIRED) {
         HealthStatus.AUTH_PENDING
     } else {
@@ -264,13 +270,21 @@ private fun failedStep(
     failureClass = failureClass,
     failureFingerprint = failureFingerprint(
         sourceId = profile.sourceId,
-        operation = operation,
+        operation = effectiveOperation,
         failureClass = failureClass,
         packageName = profile.packageName,
     ),
-    observedHost = (error as? HostPolicyViolationException)?.observedHost,
-    allowedHosts = (error as? HostPolicyViolationException)?.allowedHosts?.sorted(),
-)
+    observedHost = typedFailure
+        ?.takeIf { it.code == SourceFailureCode.HOST_POLICY }
+        ?.observedHost
+        ?: hostPolicyViolation?.observedHost,
+    allowedHosts = typedFailure
+        ?.takeIf { it.code == SourceFailureCode.HOST_POLICY }
+        ?.allowedHosts
+        ?.takeIf(List<String>::isNotEmpty)
+        ?: hostPolicyViolation?.allowedHosts?.sorted(),
+    )
+}
 
 private fun pendingStep(
     profile: SourceHealthProfile,
@@ -284,6 +298,25 @@ internal fun classifyFailure(error: Throwable): HealthFailureClass {
         return HealthFailureClass.TIMEOUT
     }
     if (error is AuthenticationRequiredException) return HealthFailureClass.AUTH_REQUIRED
+    if (error is SourceFailureException) {
+        return when (error.failure.code) {
+            SourceFailureCode.HOST_POLICY -> HealthFailureClass.HOST_POLICY
+            SourceFailureCode.AUTH_REQUIRED,
+            SourceFailureCode.AUTH_EXPIRED,
+            -> HealthFailureClass.AUTH_REQUIRED
+            SourceFailureCode.RATE_LIMITED,
+            SourceFailureCode.BACKPRESSURE,
+            -> HealthFailureClass.RATE_LIMITED
+            SourceFailureCode.SITE_UNAVAILABLE -> HealthFailureClass.SITE_UNAVAILABLE
+            SourceFailureCode.PARSER_CONTRACT -> HealthFailureClass.PARSER_CONTRACT
+            SourceFailureCode.TIMED_OUT -> HealthFailureClass.TIMEOUT
+            SourceFailureCode.EXTENSION_RUNTIME,
+            SourceFailureCode.TRUST_INACTIVE,
+            SourceFailureCode.INVALID_REQUEST,
+            SourceFailureCode.PAYLOAD_TOO_LARGE,
+            -> HealthFailureClass.HOST_RUNTIME
+        }
+    }
     if (error is HostPolicyViolationException) return HealthFailureClass.HOST_POLICY
     if (error is DeadObjectException || error is SecurityException) return HealthFailureClass.HOST_RUNTIME
 

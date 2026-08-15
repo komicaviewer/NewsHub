@@ -242,7 +242,6 @@ private fun NavGraphBuilder.threadDetailDestination(
         ThreadDetailScreen(
             onNavigateUp = onNavigateUp,
             onNavigateToBoards = onNavigateToBoards,
-            onOpenWebClick = {},
         )
     }
 }
@@ -624,7 +623,6 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             BottomBarPaddedContent(bottomOverlayHeight) {
                                 SavedPostDetailScreen(
                                     onNavigateUp = { navController.navigateUp() },
-                                    onOpenWebClick = {},
                                 )
                             }
                         }

@@ -53,6 +53,118 @@ class NamedCapabilityTest {
         assertEquals("7916aa87fa766710f2cd0b56e41bfa36a7f2c61ef0f92891e2956aff64ef3fa5", policy.sha256())
     }
 
+    @Test fun `version two policy hashes four independent exact host scopes`() {
+        val policy = SourceNetworkPolicy(
+            exactHosts = setOf("api.example.com"),
+            operations = mapOf(
+                NetworkOperations.SOURCE_READ to NetworkOperationPolicy(
+                    name = NetworkOperations.SOURCE_READ,
+                    methods = setOf("GET"),
+                    pathPrefixes = setOf("/v1/"),
+                    credentialed = false,
+                ),
+            ),
+            namedCapabilities = setOf(
+                NamedHostCapabilities.EXTERNAL_LINK,
+                NamedHostCapabilities.RESOURCE_READ,
+            ),
+            policyVersion = 2,
+            resourceExactHosts = setOf("images.example.com"),
+            externalExactHosts = setOf("www.example.com"),
+            authExactHosts = setOf("login.example.com"),
+        )
+
+        assertEquals(
+            "{\"auth\":{\"exactHosts\":[\"login.example.com\"]}," +
+                "\"external\":{\"exactHosts\":[\"www.example.com\"]}," +
+                "\"namedCapabilities\":[\"external_link\",\"resource_read\"]," +
+                "\"request\":{\"rules\":[{\"exactHosts\":[\"api.example.com\"]," +
+                "\"operation\":{\"credentialed\":false,\"methods\":[\"GET\"]," +
+                "\"name\":\"source_read\",\"pathPrefixes\":[\"/v1/\"]}}]}," +
+                "\"resource\":{\"exactHosts\":[\"images.example.com\"]},\"schemaVersion\":2}",
+            policy.canonicalJson(),
+        )
+        assertEquals(
+            setOf("api.example.com", "images.example.com", "www.example.com", "login.example.com"),
+            policy.allExactHosts,
+        )
+    }
+
+    @Test fun `Gamer reviewed request rules match producer policy hash`() {
+        val policy = SourceNetworkPolicy(
+            exactHosts = setOf("api.gamer.com.tw", "forum.gamer.com.tw"),
+            operations = emptyMap(),
+            namedCapabilities = setOf(
+                NamedHostCapabilities.EXTERNAL_LINK,
+                NamedHostCapabilities.RESOURCE_READ,
+            ),
+            policyVersion = 2,
+            resourceExactHosts = setOf("i2.bahamut.com.tw"),
+            externalExactHosts = setOf("forum.gamer.com.tw"),
+            authExactHosts = setOf("forum.gamer.com.tw", "user.gamer.com.tw", "www.gamer.com.tw"),
+            requestRules = listOf(
+                NetworkRequestRule(
+                    setOf("api.gamer.com.tw"),
+                    NetworkOperationPolicy(
+                        NetworkOperations.SOURCE_READ,
+                        setOf("GET"),
+                        setOf("/community/v1/", "/mobile_app/forum/v3/"),
+                        credentialed = false,
+                    ),
+                ),
+                NetworkRequestRule(
+                    setOf("forum.gamer.com.tw"),
+                    NetworkOperationPolicy(
+                        NetworkOperations.SOURCE_READ,
+                        setOf("GET"),
+                        setOf("/B.php", "/C.php", "/ajax/"),
+                        credentialed = true,
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            "d83562d39c756463f9e5d1ed8028cfde5ba53abb821d5f3c2e45ec71bcefc5dc",
+            policy.sha256(),
+        )
+    }
+
+    @Test fun `version two policy rejects cross-scope widening primitives`() {
+        val base = SourceNetworkPolicy(
+            exactHosts = setOf("api.example.com"),
+            operations = mapOf(
+                NetworkOperations.SOURCE_READ to NetworkOperationPolicy(
+                    NetworkOperations.SOURCE_READ,
+                    setOf("GET"),
+                    setOf("/"),
+                ),
+            ),
+            policyVersion = 2,
+            resourceExactHosts = emptySet(),
+            externalExactHosts = emptySet(),
+            authExactHosts = emptySet(),
+        )
+        base.canonicalJson()
+        assertInvalid { base.copy(exactHosts = setOf("*.example.com")).canonicalJson() }
+        assertInvalid {
+            base.copy(
+                requestRules = listOf(
+                    NetworkRequestRule(
+                        exactHosts = setOf("api.example.com"),
+                        operation = NetworkOperationPolicy(
+                        NetworkOperations.SOURCE_READ,
+                        setOf("POST"),
+                        setOf("/"),
+                    ),
+                    ),
+                ),
+            ).canonicalJson()
+        }
+        assertInvalid { base.copy(namedCapabilities = setOf("raw_socket")).canonicalJson() }
+        assertInvalid { base.copy(resourceExactHosts = setOf("http://images.example.com")).canonicalJson() }
+    }
+
     @Test
     fun `EYNY proof accepts only the fixed bounded schema`() {
         val proof = EynyChallengeProof(

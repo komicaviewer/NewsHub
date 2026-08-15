@@ -2,9 +2,11 @@ package tw.kevinzhang.newshub.auth
 
 import android.os.ParcelFileDescriptor
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -24,6 +26,11 @@ import tw.kevinzhang.extension_api.IHostBroker
 import tw.kevinzhang.extension_api.IHostBrokerCallback
 import tw.kevinzhang.extension_api.PipePayload
 import tw.kevinzhang.extension_api.SourceIdentity
+import tw.kevinzhang.extension_api.SourceFailure
+import tw.kevinzhang.extension_api.SourceFailureCode
+import tw.kevinzhang.extension_api.SourceFailureException
+import tw.kevinzhang.extension_api.SourceFailures
+import tw.kevinzhang.extension_api.SourceFailureWire
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.SourceNetworkRequest
 import tw.kevinzhang.extension_api.SourceNetworkResponse
@@ -32,6 +39,7 @@ import tw.kevinzhang.extension_api.ResourceRange
 import tw.kevinzhang.extension_api.EynyChallengeProof
 import tw.kevinzhang.extension_api.NamedHostCapabilities
 import tw.kevinzhang.extension_api.NetworkOperations
+import tw.kevinzhang.extension_api.NetworkRequestRule
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.Inet4Address
@@ -90,13 +98,13 @@ internal class SourceNetworkBroker(
     ) {
         if (!active.get()) {
             request.closeQuietly()
-            respond(requestId, ExtensionProtocol.STATUS_FAILED, "Source capability was revoked", callback)
+            respondFailure(requestId, SourceFailure(SourceFailureCode.TRUST_INACTIVE), callback)
             return
         }
         if (pendingRequests.incrementAndGet() > MAX_PENDING_BROKER_REQUESTS) {
             pendingRequests.decrementAndGet()
             request.closeQuietly()
-            respond(requestId, ExtensionProtocol.STATUS_FAILED, "Source request queue is full", callback)
+            respondFailure(requestId, SourceFailure(SourceFailureCode.BACKPRESSURE, retryable = true), callback)
             return
         }
         if (jobs.containsKey(requestId)) {
@@ -111,8 +119,13 @@ internal class SourceNetworkBroker(
                     withTimeout(ExtensionProtocol.REQUEST_TIMEOUT_MS) {
                         val payload = PipePayload.readUtf8(request, ExtensionProtocol.MAX_NETWORK_REQUEST_BYTES)
                         val networkRequest = ExtensionWireJson.decode<SourceNetworkRequest>(payload)
-                        val validated = validateSourceNetworkRequest(networkRequest, policy)
-                        val response = perform(requestId, networkRequest, validated)
+                        val authorized = authorizeSourceNetworkRequest(networkRequest, policy)
+                        val response = perform(
+                            requestId = requestId,
+                            networkRequest = networkRequest,
+                            url = authorized.url,
+                            credentialed = authorized.rule.operation.credentialed,
+                        )
                         respond(
                             requestId,
                             ExtensionProtocol.STATUS_OK,
@@ -121,8 +134,12 @@ internal class SourceNetworkBroker(
                         )
                     }
                 }
+            } catch (_: TimeoutCancellationException) {
+                respondFailure(requestId, SourceFailure(SourceFailureCode.TIMED_OUT), callback)
+            } catch (_: CancellationException) {
+                respond(requestId, ExtensionProtocol.STATUS_CANCELLED, "cancelled", callback)
             } catch (error: Exception) {
-                respond(requestId, ExtensionProtocol.STATUS_FAILED, error.message.orEmpty(), callback)
+                respondFailure(requestId, SourceFailures.fromThrowable(error), callback)
             } finally {
                 request.closeQuietly()
                 calls.remove(requestId)?.cancel()
@@ -145,13 +162,13 @@ internal class SourceNetworkBroker(
     ) {
         if (!active.get()) {
             request.closeQuietly()
-            respond(requestId, ExtensionProtocol.STATUS_FAILED, "Source capability was revoked", callback)
+            respondFailure(requestId, SourceFailure(SourceFailureCode.TRUST_INACTIVE), callback)
             return
         }
         if (pendingRequests.incrementAndGet() > MAX_PENDING_BROKER_REQUESTS) {
             pendingRequests.decrementAndGet()
             request.closeQuietly()
-            respond(requestId, ExtensionProtocol.STATUS_FAILED, "Source request queue is full", callback)
+            respondFailure(requestId, SourceFailure(SourceFailureCode.BACKPRESSURE, retryable = true), callback)
             return
         }
         if (jobs.containsKey(requestId)) {
@@ -175,8 +192,12 @@ internal class SourceNetworkBroker(
                         respond(requestId, ExtensionProtocol.STATUS_OK, result, callback)
                     }
                 }
+            } catch (_: TimeoutCancellationException) {
+                respondFailure(requestId, SourceFailure(SourceFailureCode.TIMED_OUT), callback)
+            } catch (_: CancellationException) {
+                respond(requestId, ExtensionProtocol.STATUS_CANCELLED, "cancelled", callback)
             } catch (error: Exception) {
-                respond(requestId, ExtensionProtocol.STATUS_FAILED, error.message.orEmpty(), callback)
+                respondFailure(requestId, SourceFailures.fromThrowable(error), callback)
             } finally {
                 request.closeQuietly()
                 jobs.remove(requestId)
@@ -204,8 +225,13 @@ internal class SourceNetworkBroker(
         kotlinx.coroutines.withContext(Dispatchers.IO) {
             concurrency.withPermit {
                 val request = SourceNetworkRequest(NetworkOperations.SOURCE_READ, "GET", url)
-                val validated = validateSourceNetworkRequest(request, policy)
-                val response = perform(resourceRequestIds.incrementAndGet(), request, validated)
+                val validated = validateResourceUrl(url, policy)
+                val response = perform(
+                    requestId = resourceRequestIds.incrementAndGet(),
+                    networkRequest = request,
+                    url = validated,
+                    credentialed = false,
+                )
                 require(response.code in 200..299) { "Resource fetch failed: HTTP ${response.code}" }
                 ResourcePayload(response.body, response.headers.entries
                     .firstOrNull { it.key.equals("content-type", ignoreCase = true) }
@@ -223,11 +249,12 @@ internal class SourceNetworkBroker(
             kotlinx.coroutines.withContext(Dispatchers.IO) {
                 concurrency.withPermit {
                 val request = SourceNetworkRequest(NetworkOperations.SOURCE_READ, "GET", url)
-                val validated = validateSourceNetworkRequest(request, policy)
+                val validated = validateResourceUrl(url, policy)
                 val response = perform(
                     requestId = resourceRequestIds.incrementAndGet(),
                     networkRequest = request,
                     url = validated,
+                    credentialed = false,
                     hostHeaders = mapOf("Range" to "bytes=$offset-${offset + length - 1L}"),
                     responseLimit = length,
                 )
@@ -272,16 +299,16 @@ internal class SourceNetworkBroker(
         requestId: Long,
         networkRequest: SourceNetworkRequest,
         url: HttpUrl,
+        credentialed: Boolean,
         hostHeaders: Map<String, String> = emptyMap(),
         responseLimit: Int = ExtensionProtocol.MAX_NETWORK_RESPONSE_BYTES,
     ): SourceNetworkResponse {
-        val operation = requireNotNull(policy.operations[networkRequest.operation])
         val client = baseClient.newBuilder()
             .followRedirects(false)
             .followSslRedirects(false)
             .proxy(Proxy.NO_PROXY)
             .dns(GlobalOnlyDns)
-            .cookieJar(if (operation.credentialed) cookieJar else CookieJar.NO_COOKIES)
+            .cookieJar(if (credentialed) cookieJar else CookieJar.NO_COOKIES)
             .cache(null)
             .build()
         val request = Request.Builder().url(url).method(networkRequest.method, null).apply {
@@ -323,6 +350,9 @@ internal fun executeNamedCookieOperation(
         require(identity.packageName == PTT_PACKAGE && identity.sourceId == PTT_SOURCE) {
             "PTT consent capability belongs to a different Source"
         }
+        require("www.ptt.cc" in policy.authExactHosts) {
+            "PTT consent host is not authorized for authentication"
+        }
         val consentUrl = requireNotNull("https://www.ptt.cc/".toHttpUrlOrNull())
         ExtensionWireJson.encode(
             cookieJar.loadForRequest(consentUrl).any { cookie ->
@@ -342,6 +372,9 @@ internal fun executeNamedCookieOperation(
             "EYNY challenge capability belongs to a different Source"
         }
         val proof = ExtensionWireJson.decode<EynyChallengeProof>(payload)
+        require(proof.host.lowercase(Locale.ROOT) in policy.authExactHosts) {
+            "EYNY proof host is not authorized for authentication"
+        }
         val origin = requireNotNull("https://${proof.host}/".toHttpUrlOrNull())
         val expiresAt = now + EYNY_PROOF_TTL_MILLIS
         val values = listOf(
@@ -402,29 +435,56 @@ private fun parseContentRange(value: String?): ParsedContentRange? {
 internal fun validateSourceNetworkRequest(
     request: SourceNetworkRequest,
     policy: SourceNetworkPolicy,
-): HttpUrl {
-    require(request.operation.length in 1..64) { "Invalid operation" }
-    val operation = requireNotNull(policy.operations[request.operation]) { "Operation is not authorized" }
+): HttpUrl = authorizeSourceNetworkRequest(request, policy).url
+
+internal data class AuthorizedNetworkRequest(
+    val url: HttpUrl,
+    val rule: NetworkRequestRule,
+)
+
+internal fun authorizeSourceNetworkRequest(
+    request: SourceNetworkRequest,
+    policy: SourceNetworkPolicy,
+): AuthorizedNetworkRequest {
+    fun reject(code: SourceFailureCode, observedHost: String? = null): Nothing =
+        throw SourceFailureException(
+            SourceFailure(
+                code = code,
+                operation = request.operation,
+                observedHost = observedHost,
+                allowedHosts = if (code == SourceFailureCode.HOST_POLICY) policy.exactHosts.toList() else emptyList(),
+            ).sanitized(),
+        )
+
+    if (request.operation.length !in 1..64) reject(SourceFailureCode.INVALID_REQUEST)
     val method = request.method.uppercase(Locale.ROOT)
-    require(method == request.method && method in operation.methods) { "HTTP method is not authorized" }
-    require(request.body == null || method !in setOf("GET", "HEAD")) { "GET/HEAD body is forbidden" }
-    require(request.headers.size <= 24) { "Too many headers" }
+    if (method != request.method || method !in setOf("GET", "HEAD")) reject(SourceFailureCode.HOST_POLICY)
+    if (request.body != null && method in setOf("GET", "HEAD")) reject(SourceFailureCode.INVALID_REQUEST)
+    if (request.headers.size > 24) reject(SourceFailureCode.INVALID_REQUEST)
     request.headers.forEach { (name, value) ->
-        require(name.length in 1..64 && value.length <= 4_096) { "Invalid header" }
-        require(name.lowercase(Locale.ROOT) !in FORBIDDEN_EXTENSION_HEADERS) { "Forbidden header" }
-        require('\r' !in value && '\n' !in value) { "Invalid header value" }
+        if (name.length !in 1..64 || value.length > 4_096) reject(SourceFailureCode.INVALID_REQUEST)
+        if (name.lowercase(Locale.ROOT) in FORBIDDEN_EXTENSION_HEADERS) reject(SourceFailureCode.HOST_POLICY)
+        if ('\r' in value || '\n' in value) reject(SourceFailureCode.INVALID_REQUEST)
     }
 
-    val url = request.url.toHttpUrlOrNull() ?: throw IllegalArgumentException("Malformed URL")
-    require(url.isHttps) { "Only HTTPS is allowed" }
-    require(url.port == 443) { "Non-default ports are forbidden" }
-    require(url.username.isEmpty() && url.password.isEmpty()) { "URL userinfo is forbidden" }
-    require(url.host.lowercase(Locale.ROOT) in policy.exactHosts) { "Host is not authorized" }
-    require(!url.host.isIpLiteral()) { "IP literals are forbidden" }
-    require(operation.pathPrefixes.any { prefix ->
-        prefix.startsWith('/') && url.encodedPath.startsWith(prefix)
-    }) { "Path is not authorized" }
-    return url
+    val url = request.url.toHttpUrlOrNull() ?: reject(SourceFailureCode.INVALID_REQUEST)
+    val observedHost = url.host.lowercase(Locale.ROOT)
+    if (!url.isHttps || url.port != 443 || url.username.isNotEmpty() || url.password.isNotEmpty()) {
+        reject(SourceFailureCode.HOST_POLICY, observedHost)
+    }
+    if (observedHost !in policy.exactHosts || url.host.isIpLiteral()) {
+        reject(SourceFailureCode.HOST_POLICY, observedHost)
+    }
+    val matchingRules = policy.requestRules.filter { rule ->
+        request.operation == rule.operation.name &&
+            observedHost in rule.exactHosts &&
+            method in rule.operation.methods &&
+            rule.operation.pathPrefixes.any { prefix ->
+                prefix.startsWith('/') && url.encodedPath.startsWith(prefix)
+            }
+    }
+    if (matchingRules.size != 1) reject(SourceFailureCode.HOST_POLICY, observedHost)
+    return AuthorizedNetworkRequest(url, matchingRules.single())
 }
 
 private object GlobalOnlyDns : Dns {
@@ -487,6 +547,19 @@ private fun respond(
     val pipe = PipePayload.writeUtf8(message.take(ExtensionProtocol.MAX_NETWORK_RESPONSE_BYTES))
     runCatching { callback.onResult(requestId, status, pipe) }
     pipe.closeQuietly()
+}
+
+private fun respondFailure(
+    requestId: Long,
+    failure: SourceFailure,
+    callback: IHostBrokerCallback,
+) {
+    respond(
+        requestId,
+        ExtensionProtocol.STATUS_SOURCE_FAILURE,
+        SourceFailureWire.encode(failure),
+        callback,
+    )
 }
 
 private fun ParcelFileDescriptor.closeQuietly() {
