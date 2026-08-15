@@ -156,13 +156,43 @@ class ExtensionTrustPolicyProvider @Inject constructor() {
         requireValidDomainId(repositoryDomainId)
         require(newState != RepositoryTrustDomainState.EXPIRED) { "Expiry is derived from verified metadata" }
         val currentState = state.get()
-        val snapshot = requireNotNull(currentState.snapshots[repositoryDomainId]) { "Unknown trust domain" }
+        val snapshot = currentState.snapshots[repositoryDomainId]
+        if (snapshot == null) {
+            val currentInactiveState = currentState.inactiveDomainStates[repositoryDomainId]
+            require(currentInactiveState != RepositoryTrustDomainState.REVOKED || newState == RepositoryTrustDomainState.REVOKED) {
+                "Revoked trust domain cannot be reactivated"
+            }
+            when (newState) {
+                RepositoryTrustDomainState.SUSPENDED,
+                RepositoryTrustDomainState.REVOKED,
+                -> state.set(
+                    currentState.copy(
+                        inactiveDomainStates = currentState.inactiveDomainStates +
+                            (repositoryDomainId to newState),
+                    ),
+                )
+                RepositoryTrustDomainState.ACTIVE -> {
+                    require(currentInactiveState == RepositoryTrustDomainState.SUSPENDED) {
+                        "Unknown trust domain"
+                    }
+                    state.set(
+                        currentState.copy(
+                            inactiveDomainStates = currentState.inactiveDomainStates - repositoryDomainId,
+                        ),
+                    )
+                }
+                RepositoryTrustDomainState.EXPIRED -> error("Expiry is derived from verified metadata")
+            }
+            notifyChanged()
+            return
+        }
         require(snapshot.state != RepositoryTrustDomainState.REVOKED || newState == RepositoryTrustDomainState.REVOKED) {
             "Revoked trust domain cannot be reactivated"
         }
         state.set(
             currentState.copy(
                 snapshots = currentState.snapshots + (repositoryDomainId to snapshot.copy(state = newState)),
+                inactiveDomainStates = currentState.inactiveDomainStates - repositoryDomainId,
             ),
         )
         notifyChanged()
@@ -187,7 +217,10 @@ class ExtensionTrustPolicyProvider @Inject constructor() {
     }
 
     fun domainStates(now: Long = System.currentTimeMillis()): Map<String, RepositoryTrustDomainState> =
-        state.get().snapshots.mapValues { (_, snapshot) -> snapshot.effectiveState(now) }
+        state.get().let { current ->
+            current.inactiveDomainStates +
+                current.snapshots.mapValues { (_, snapshot) -> snapshot.effectiveState(now) }
+        }
 
     fun clear() {
         state.set(ProviderState())
@@ -201,6 +234,7 @@ class ExtensionTrustPolicyProvider @Inject constructor() {
         state.set(
             current.copy(
                 snapshots = current.snapshots - repositoryDomainId,
+                inactiveDomainStates = current.inactiveDomainStates - repositoryDomainId,
                 packageSelections = current.packageSelections.filterValues { it != repositoryDomainId },
                 sourceSelections = current.sourceSelections.filterValues { it != repositoryDomainId },
             ),
@@ -267,6 +301,7 @@ class ExtensionTrustPolicyProvider @Inject constructor() {
 
     private data class ProviderState(
         val snapshots: Map<String, VerifiedExtensionTrustSnapshot> = emptyMap(),
+        val inactiveDomainStates: Map<String, RepositoryTrustDomainState> = emptyMap(),
         val packageSelections: Map<String, String> = emptyMap(),
         val sourceSelections: Map<String, String> = emptyMap(),
     )

@@ -97,6 +97,18 @@ class ExtensionTrustPolicyProviderTest {
         assertNotNull(provider.policyForPackage("second.extension"))
     }
 
+    @Test fun `cold restored inactive domain remains visible without authorizing its package`() {
+        val provider = ExtensionTrustPolicyProvider()
+
+        provider.setDomainState(domainA, RepositoryTrustDomainState.REVOKED)
+
+        assertEquals(RepositoryTrustDomainState.REVOKED, provider.domainStates()[domainA])
+        assertNull(provider.policyForPackage("example.extension"))
+        assertTrue(
+            runCatching { provider.setDomainState(domainA, RepositoryTrustDomainState.ACTIVE) }.isFailure,
+        )
+    }
+
     @Test fun `package conflict blocks every owner until package domain is explicitly selected`() {
         val provider = ExtensionTrustPolicyProvider()
         provider.installVerifiedSnapshot(snapshot(domain = domainA))
