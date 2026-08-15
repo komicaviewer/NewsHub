@@ -2,7 +2,6 @@ package tw.kevinzhang.extension_api
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
@@ -22,12 +21,36 @@ class NamedCapabilityTest {
         )
         assertEquals(
             "{\"exactHosts\":[\"example.com\",\"www.example.com\"]," +
-                "\"operations\":[{\"name\":\"source_read\",\"methods\":[\"GET\",\"HEAD\"]," +
-                "\"pathPrefixes\":[\"/\"],\"credentialed\":true}]," +
-                "\"namedCapabilities\":[\"external_link\",\"resource_read\"]}",
+                "\"namedCapabilities\":[\"external_link\",\"resource_read\"]," +
+                "\"operations\":[{\"credentialed\":true,\"methods\":[\"GET\",\"HEAD\"]," +
+                "\"name\":\"source_read\",\"pathPrefixes\":[\"/\"]}]}",
             policy.canonicalJson(),
         )
-        assertTrue(policy.sha256().matches(Regex("[a-f0-9]{64}")))
+        assertEquals("5ccfec4d87931829e1c45047e39386c4cb2a8dc959ac4a6d90ad49462767db6a", policy.sha256())
+    }
+
+    @Test fun `Hacker News policy hash matches signed repository target`() {
+        val policy = SourceNetworkPolicy(
+            exactHosts = setOf("news.ycombinator.com"),
+            operations = mapOf(
+                NetworkOperations.SOURCE_READ to NetworkOperationPolicy(
+                    name = NetworkOperations.SOURCE_READ,
+                    methods = setOf("GET", "HEAD"),
+                    pathPrefixes = setOf("/"),
+                    credentialed = true,
+                ),
+            ),
+            namedCapabilities = setOf(NamedHostCapabilities.RESOURCE_READ, NamedHostCapabilities.EXTERNAL_LINK),
+        )
+
+        assertEquals(
+            "{\"exactHosts\":[\"news.ycombinator.com\"]," +
+                "\"namedCapabilities\":[\"external_link\",\"resource_read\"]," +
+                "\"operations\":[{\"credentialed\":true,\"methods\":[\"GET\",\"HEAD\"]," +
+                "\"name\":\"source_read\",\"pathPrefixes\":[\"/\"]}]}",
+            policy.canonicalJson(),
+        )
+        assertEquals("7916aa87fa766710f2cd0b56e41bfa36a7f2c61ef0f92891e2956aff64ef3fa5", policy.sha256())
     }
 
     @Test

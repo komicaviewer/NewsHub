@@ -4,6 +4,8 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.security.MessageDigest
+import tw.kevinzhang.extension_api.SourceNetworkPolicy
+import tw.kevinzhang.extension_api.sha256
 
 internal data class InstalledPackageArtifact(
     val versionCode: Long,
@@ -96,6 +98,15 @@ internal fun verifyExpectedServiceSet(
     }
     require(descriptors.mapTo(linkedSetOf(), ExtensionDescriptor::sourceId) == policy.sources.keys) {
         "Installed Source service set does not match signed target"
+    }
+}
+
+internal fun verifyExpectedNetworkPolicyHash(
+    expectedPolicyHash: String,
+    networkPolicy: SourceNetworkPolicy,
+) {
+    require(expectedPolicyHash == networkPolicy.sha256()) {
+        "Signed Source policy hash does not match Host policy"
     }
 }
 

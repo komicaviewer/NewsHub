@@ -27,7 +27,6 @@ import tw.kevinzhang.extension_api.ExtensionProtocol
 import tw.kevinzhang.extension_api.HostBrokerProvider
 import tw.kevinzhang.extension_api.HostResourceProvider
 import tw.kevinzhang.extension_api.SourceIdentity
-import tw.kevinzhang.extension_api.sha256
 import java.io.File
 import java.security.MessageDigest
 import java.nio.file.Paths
@@ -187,9 +186,7 @@ class ExtensionManager @Inject constructor(
                     val policy = requireNotNull(
                         OfficialExtensionCatalog.policyFor(descriptor.packageName, descriptor.sourceId),
                     ) { "Package/Source is not in the official trust root" }
-                    require(expectedService.policyHash == policy.networkPolicy().sha256()) {
-                        "Signed Source policy hash does not match Host policy"
-                    }
+                    verifyExpectedNetworkPolicyHash(expectedService.policyHash, policy.networkPolicy())
                     Candidate(descriptor, policy, signingPolicy, signingIdentity, packageMarker)
                 }
             }.onFailure { error ->

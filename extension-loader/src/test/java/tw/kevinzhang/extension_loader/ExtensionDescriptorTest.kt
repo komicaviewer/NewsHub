@@ -70,6 +70,24 @@ class ExtensionDescriptorTest {
         assertNull(OfficialExtensionCatalog.policyFor("tw.kevinzhang.newshub.extension.ptt", "tw.kevinzhang.newshub.extension.hackernews"))
     }
 
+    @Test
+    fun `signed policy hash mismatch fails closed`() {
+        val policy = requireNotNull(
+            OfficialExtensionCatalog.policyFor(
+                "tw.kevinzhang.newshub.extension.hackernews",
+                "tw.kevinzhang.newshub.extension.hackernews",
+            ),
+        ).networkPolicy()
+
+        verifyExpectedNetworkPolicyHash(
+            "7916aa87fa766710f2cd0b56e41bfa36a7f2c61ef0f92891e2956aff64ef3fa5",
+            policy,
+        )
+        assertInvalidDescriptor {
+            verifyExpectedNetworkPolicyHash("0".repeat(64), policy)
+        }
+    }
+
     private fun validService() = ServiceInfo().apply {
         packageName = "tw.kevinzhang.newshub.extension.hackernews"
         name = "$packageName.HackerNewsService"

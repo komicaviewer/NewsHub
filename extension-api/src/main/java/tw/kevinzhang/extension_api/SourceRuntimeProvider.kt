@@ -61,11 +61,11 @@ fun SourceNetworkPolicy.canonicalJson(): String {
     fun Iterable<String>.jsonArray(): String = sorted().joinToString(",", "[", "]") { it.jsonString() }
 
     val operationJson = operations.values.sortedBy(NetworkOperationPolicy::name).joinToString(",", "[", "]") {
-        "{\"name\":${it.name.jsonString()},\"methods\":${it.methods.jsonArray()}," +
-            "\"pathPrefixes\":${it.pathPrefixes.jsonArray()},\"credentialed\":${it.credentialed}}"
+        "{\"credentialed\":${it.credentialed},\"methods\":${it.methods.jsonArray()}," +
+            "\"name\":${it.name.jsonString()},\"pathPrefixes\":${it.pathPrefixes.jsonArray()}}"
     }
-    return "{\"exactHosts\":${exactHosts.jsonArray()},\"operations\":$operationJson," +
-        "\"namedCapabilities\":${namedCapabilities.jsonArray()}}"
+    return "{\"exactHosts\":${exactHosts.jsonArray()}," +
+        "\"namedCapabilities\":${namedCapabilities.jsonArray()},\"operations\":$operationJson}"
 }
 
 fun SourceNetworkPolicy.sha256(): String = MessageDigest.getInstance("SHA-256")

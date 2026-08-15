@@ -29,6 +29,19 @@ class BoardsScreenTest {
         assertFalse(items.any { it is BoardGroupItem.More })
     }
 
+    @Test
+    fun `empty state distinguishes quarantined extensions from no installed extensions`() {
+        assertEquals("尚未安裝任何 Extension", boardsEmptyStateMessage(0))
+        assertEquals(
+            "已安裝的 Extension 無法通過安全驗證",
+            boardsEmptyStateMessage(1),
+        )
+        assertEquals(
+            "已安裝的 Extension 無法通過安全驗證",
+            boardsEmptyStateMessage(13),
+        )
+    }
+
     private fun board(index: Int) = Board(
         sourceId = "source",
         url = "https://example.com/$index",

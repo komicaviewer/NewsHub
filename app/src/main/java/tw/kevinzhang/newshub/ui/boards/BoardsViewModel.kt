@@ -4,9 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -19,6 +22,7 @@ import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.BoardPageRequest
 import tw.kevinzhang.extension_loader.ExtensionLoader
+import tw.kevinzhang.extension_loader.ExtensionManager
 import tw.kevinzhang.newshub.auth.SourceSessionManager
 import javax.inject.Inject
 
@@ -27,6 +31,7 @@ data class SourceWithBoards(val source: Source, val boards: List<Board>)
 @HiltViewModel
 class BoardsViewModel @Inject constructor(
     private val extensionLoader: ExtensionLoader,
+    extensionManager: ExtensionManager,
     private val collectionRepo: CollectionRepository,
     private val sourceIdentityRepository: SourceIdentityRepository,
     private val sessionManager: SourceSessionManager,
@@ -39,6 +44,14 @@ class BoardsViewModel @Inject constructor(
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
+
+    val quarantinedExtensionCount: StateFlow<Int> = extensionManager.quarantinedExtensions
+        .map { it.size }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            extensionManager.quarantinedExtensions.value.size,
+        )
 
     val collections = collectionRepo.observeCollections()
 
