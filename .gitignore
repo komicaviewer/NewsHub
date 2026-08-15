@@ -17,3 +17,5 @@
 local.properties
 .idea
 .superpowers/
+__pycache__/
+*.py[cod]

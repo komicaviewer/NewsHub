@@ -44,9 +44,10 @@
 
 ### 發佈自動化狀態
 
-本專案不使用 GitHub Actions。推送 `v*.*.*` tag 目前不會自動建置、簽署或建立
-NewsHub app release；app release 需依另行審核的人工流程處理，目前沒有擅自新增替代的
-Cloud Build 發佈管線。
+本專案不使用 GitHub Actions。推送 canonical `vMAJOR.MINOR.PATCH` tag 時，GCP
+Cloud Build 的獨立 app-release trigger 會從該 tag 的精確 commit 建置 APK、以既有
+production keystore 簽署、驗證版本／SHA-256／signer certificate，最後建立 GitHub
+Release。Trigger 預設停用，只有簽章、成本與 IAM preflight 通過後才啟用。
 
 第三方 extension 的定期健康檢查、修復、候選驗證、獨立審核與發佈則由 GCP 上的
 `extension-ops`／Cloud Build 控制面負責，與 NewsHub app tag release 分離。
