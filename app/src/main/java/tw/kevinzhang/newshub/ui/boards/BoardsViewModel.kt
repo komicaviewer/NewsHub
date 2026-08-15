@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import tw.kevinzhang.data.CollectionRepository
@@ -75,7 +76,7 @@ class BoardsViewModel @Inject constructor(
                     sources.map { source ->
                         async {
                             if (source is AuthenticatedSource && sessionManager.stateFor(source.id) == AuthState.Unknown) {
-                                if (runCatching { source.validateSession() }.getOrDefault(false)) {
+                                if (validateSessionOrFalse(source)) {
                                     sessionManager.markSignedIn(source.id)
                                 } else {
                                     sessionManager.markExpired(source.id)
@@ -83,9 +84,7 @@ class BoardsViewModel @Inject constructor(
                             }
                             SourceWithBoards(
                                 source = source,
-                                boards = runCatching {
-                                    source.getBoardPage(BoardPageRequest()).boards
-                                }.getOrDefault(emptyList()).distinctBy { it.url },
+                                boards = loadBoardsOrEmpty(source),
                             )
                         }
                     }.awaitAll()
@@ -109,4 +108,23 @@ class BoardsViewModel @Inject constructor(
             }
         }
     }
+}
+
+internal suspend fun validateSessionOrFalse(source: AuthenticatedSource): Boolean = try {
+    source.validateSession()
+} catch (error: CancellationException) {
+    throw error
+} catch (_: Throwable) {
+    false
+}
+
+internal suspend fun loadBoardsOrEmpty(source: Source): List<Board> = try {
+    source.getBoardPage(BoardPageRequest()).boards.distinctBy { it.url }
+} catch (error: CancellationException) {
+    // collectLatest uses cancellation to discard work for a trust domain that was suspended or
+    // revoked. Swallowing this exception would let the obsolete Source list overwrite the new
+    // empty list after ExtensionManager has already quarantined the package.
+    throw error
+} catch (_: Throwable) {
+    emptyList()
 }
