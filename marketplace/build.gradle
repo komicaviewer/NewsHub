@@ -29,6 +29,9 @@ dependencies {
 
 def productionTrustRoot = layout.projectDirectory.file('src/main/assets/extension-root.json')
 tasks.register('verifyReleaseTrustRoot') {
+    // Run the JVM verifier against the exact production root, rather than only checking that a
+    // non-empty file exists. This catches canonicalization or signature regressions before release.
+    dependsOn 'testDebugUnitTest'
     // The absence of the production root is an intentional release-blocking
     // state. Do not model it as a Gradle input: Gradle validates missing input
     // files before doLast and would hide the actionable security error below.

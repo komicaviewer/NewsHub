@@ -1,6 +1,6 @@
 package tw.kevinzhang.marketplace
 
-import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonNull
@@ -240,7 +240,10 @@ internal class TrustedMetadataVerifier(
 }
 
 internal object CanonicalJson {
-    private val gson = Gson()
+    // TUF metadata is signed by Python's canonical JSON encoder, which leaves HTML-sensitive
+    // characters (including Base64 padding `=`) unescaped. Gson's default HTML escaping would
+    // rewrite those bytes (for example, `=` as `\u003d`) and invalidate otherwise valid signatures.
+    private val gson = GsonBuilder().disableHtmlEscaping().create()
     private val integerPattern = Regex("-?(0|[1-9][0-9]*)")
 
     fun encode(element: JsonElement): ByteArray = buildString {

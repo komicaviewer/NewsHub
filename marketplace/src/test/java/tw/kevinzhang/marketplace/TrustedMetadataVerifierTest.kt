@@ -2,10 +2,13 @@ package tw.kevinzhang.marketplace
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import com.google.gson.JsonParser
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.MessageDigest
@@ -21,6 +24,44 @@ class TrustedMetadataVerifierTest {
     private val snapshot = keyPair()
     private val timestamp = keyPair()
     private val now = Instant.parse("2026-08-10T00:00:00Z")
+
+    @Test
+    fun `production root satisfies its real offline signature threshold`() {
+        val rootBytes = productionRootBytes()
+        val verifier = TrustedMetadataVerifier(rootBytes, now = Instant::now)
+
+        assertEquals(1L, verifier.rootVersion)
+        assertTrue(verifier.rootExpiresAtEpochMillis > Instant.now().toEpochMilli())
+
+        val tampered = JsonParser.parseString(rootBytes.toString(Charsets.UTF_8)).asJsonObject
+        tampered.getAsJsonObject("signed").addProperty("consistentSnapshot", false)
+        val error = assertThrows(TrustedMetadataException::class.java) {
+            TrustedMetadataVerifier(tampered.toString().toByteArray(), now = Instant::now)
+        }
+        assertTrue(error.message.orEmpty().contains("root signature threshold not met: 0/2"))
+    }
+
+    @Test
+    fun `canonical JSON matches Python UTF8 and HTML escaping behavior`() {
+        val input = JsonObject().apply {
+            addProperty("z", "中文<&='")
+            addProperty("a", "base64==")
+            add("array", JsonArray().apply {
+                add("/")
+                add("+")
+            })
+        }
+        val expected = """{"a":"base64==","array":["/","+"],"z":"中文<&='"}"""
+            .toByteArray(Charsets.UTF_8)
+
+        val actual = CanonicalJson.encode(input)
+
+        assertArrayEquals(expected, actual)
+        assertEquals(
+            "eea5bac166827c1b06fa2f5766e3a9774f71fb09de2fe06ff8b55461ba903718",
+            actual.sha256Hex(),
+        )
+    }
 
     @Test
     fun `threshold signed metadata is accepted and tampering is rejected`() {
@@ -220,5 +261,14 @@ class TrustedMetadataVerifierTest {
             if (value.indices.all { this[start + it] == value[it] }) return start
         }
         error("Sequence not found")
+    }
+
+    private fun productionRootBytes(): ByteArray {
+        val candidates = listOf(
+            File("marketplace/src/main/assets/extension-root.json"),
+            File("src/main/assets/extension-root.json"),
+        )
+        return candidates.firstOrNull(File::isFile)?.readBytes()
+            ?: error("Production TUF root fixture is missing")
     }
 }
