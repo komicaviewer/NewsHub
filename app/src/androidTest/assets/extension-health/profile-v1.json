@@ -30,7 +30,7 @@
     {
       "sourceId": "tw.kevinzhang.komica.sora",
       "packageName": "tw.kevinzhang.newshub.extension.komica",
-      "allowedHosts": ["komica1.org"]
+      "allowedHosts": ["komica1.org", "gaia.komica1.org", "gita.komica1.org", "iris.komica1.org"]
     },
     {
       "sourceId": "tw.kevinzhang.akraft",
