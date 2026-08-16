@@ -21,6 +21,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -28,26 +30,31 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import tw.kevinzhang.newshub.ui.component.BodySmallText
-import java.io.File
+import tw.kevinzhang.newshub.ui.component.openExternalLink
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SavedPostDetailScreen(
     onNavigateUp: () -> Unit,
-    onOpenWebClick: (url: String) -> Unit,
     viewModel: SavedPostDetailViewModel = hiltViewModel(),
 ) {
     val entity by viewModel.entity.collectAsStateWithLifecycle()
-    val screenshotPaths by viewModel.screenshotPaths.collectAsStateWithLifecycle()
+    val screenshotFiles by viewModel.screenshotFiles.collectAsStateWithLifecycle()
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     if (showDeleteConfirm) {
         AlertDialog(
@@ -74,9 +81,10 @@ fun SavedPostDetailScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text(entity?.title ?: "") },
+                title = { Text(entity?.savedPost?.title ?: "") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateUp) {
                         Icon(Icons.Outlined.ArrowBack, contentDescription = "Back")
@@ -84,8 +92,28 @@ fun SavedPostDetailScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = { entity?.threadUrl?.let { onOpenWebClick(it) } },
-                        enabled = entity?.threadUrl != null,
+                        onClick = {
+                            viewModel.requestWebLink(
+                                onReady = { handle ->
+                                    val opened = openExternalLink(
+                                        handle,
+                                        viewModel.resourceProvider::consumeExternalLink,
+                                        uriHandler::openUri,
+                                    )
+                                    if (!opened) {
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar(EXTERNAL_LINK_REJECTED_MESSAGE)
+                                        }
+                                    }
+                                },
+                                onRejected = {
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(EXTERNAL_LINK_REJECTED_MESSAGE)
+                                    }
+                                },
+                            )
+                        },
+                        enabled = entity != null,
                     ) {
                         Icon(
                             imageVector = Icons.Default.OpenInBrowser,
@@ -112,13 +140,13 @@ fun SavedPostDetailScreen(
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    itemsIndexed(screenshotPaths) { index, path ->
+                    itemsIndexed(screenshotFiles) { index, file ->
                         AsyncImage(
-                            model = File(path),
+                            model = file,
                             contentDescription = "Post ${index + 1}",
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        if (index < screenshotPaths.lastIndex) {
+                        if (index < screenshotFiles.lastIndex) {
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
@@ -138,3 +166,5 @@ fun SavedPostDetailScreen(
         }
     }
 }
+
+private const val EXTERNAL_LINK_REJECTED_MESSAGE = "網站連結被安全政策阻擋或已失效"

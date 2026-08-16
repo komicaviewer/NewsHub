@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "request": {
+    "rules": [
+      {
+        "exactHosts": ["api.example.com"],
+        "operation": {
+          "name": "source_read",
+          "methods": ["GET", "HEAD"],
+          "pathPrefixes": ["/v1/"],
+          "credentialed": false
+        }
+      }
+    ]
+  },
+  "resource": { "exactHosts": ["cdn.example.com"] },
+  "external": { "exactHosts": ["www.example.com"] },
+  "auth": { "exactHosts": [] },
+  "namedCapabilities": ["resource_read", "external_link"]
+}

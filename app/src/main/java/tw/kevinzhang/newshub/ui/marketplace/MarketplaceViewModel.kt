@@ -97,7 +97,7 @@ class MarketplaceViewModel @Inject constructor(
         viewModelScope.launch {
             setStep(info.id, InstallStep.DOWNLOADING)
             try {
-                val apkFile = marketplaceRepository.downloadApk(info.apkUrl, info.sha256)
+                val apkFile = marketplaceRepository.downloadApk(info)
                 setStep(info.id, InstallStep.INSTALLING)
                 extensionManager.installExtension(apkFile)
                 setStep(info.id, InstallStep.IDLE)

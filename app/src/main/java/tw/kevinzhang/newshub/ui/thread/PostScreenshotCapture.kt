@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import coil.ImageLoader
 import coil.compose.LocalImageLoader
 import coil.request.ImageRequest
+import coil.request.CachePolicy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -23,8 +24,12 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import tw.kevinzhang.data.SavedPostAssetStore
+import tw.kevinzhang.extension_api.HostResourceProvider
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
+import tw.kevinzhang.newshub.auth.ResourceHandleFetcher
+import tw.kevinzhang.newshub.ui.component.resourceModelOrNull
 import tw.kevinzhang.newshub.ui.component.selectImageUrl
 import java.io.File
 import kotlin.coroutines.resume
@@ -32,8 +37,7 @@ import kotlin.coroutines.resume
 /**
  * Renders each post off-screen via a ComposeView with software rendering
  * (LAYER_TYPE_SOFTWARE), captures via view.draw(Canvas), saves to
- * filesDir/saved_posts/{sourceId}_{threadId}/post_{i}.png, and returns
- * the list of absolute file paths.
+ * an opaque directory below filesDir/saved_posts, and returns managed relative references.
  *
  * Software rendering (LAYER_TYPE_SOFTWARE) is used so that view.draw()
  * writes to a CPU-backed Canvas regardless of whether the view is visible
@@ -46,13 +50,20 @@ suspend fun capturePostsAsFiles(
     alwaysUseRawImage: Boolean,
     sourceId: String,
     threadId: String,
+    resourceProvider: HostResourceProvider,
 ): List<String> {
-    val dir = File(activity.filesDir, "saved_posts/${sourceId}_${threadId}").also { it.mkdirs() }
+    val assetStore = SavedPostAssetStore.forAppFilesDirectory(activity.filesDir)
+    val dir = assetStore.threadDirectory(sourceId, threadId)
+    val capturedReferences = mutableListOf<String>()
 
     // One shared software ImageLoader for the entire capture session.
     // Coil's default is HARDWARE bitmaps; software rendering cannot draw them.
     val softwareImageLoader = ImageLoader.Builder(activity)
         .allowHardware(false)
+        .diskCachePolicy(CachePolicy.DISABLED)
+        .components {
+            add(ResourceHandleFetcher.Factory(resourceProvider))
+        }
         .build()
 
     try {
@@ -67,8 +78,11 @@ suspend fun capturePostsAsFiles(
                 file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 bitmap.recycle()
             }
-            file.absolutePath
+            assetStore.referenceFor(file).also(capturedReferences::add)
         }
+    } catch (error: Throwable) {
+        assetStore.deleteReferences(capturedReferences)
+        throw error
     } finally {
         softwareImageLoader.shutdown()
     }
@@ -80,28 +94,19 @@ private suspend fun preLoadImages(
     post: Post,
     alwaysUseRawImage: Boolean
 ) {
-    val urls = mutableListOf<String>()
-    post.sourceIconUrl?.let { urls.add(it) }
-    post.content.forEach { p ->
-        when (p) {
-            is Paragraph.ImageInfo -> urls.add(selectImageUrl(p.raw, p.thumb, alwaysUseRawImage))
-            is Paragraph.VideoInfo -> urls.add(p.url)
-            else -> {}
+    val models = buildList {
+        post.sourceIconUrl?.let(::add)
+        post.content.filterIsInstance<Paragraph.ImageInfo>().forEach { image ->
+            add(selectImageUrl(image.raw, image.thumb, alwaysUseRawImage))
         }
-    }
-
-    if (urls.isEmpty()) return
+    }.mapNotNull(::resourceModelOrNull).distinct()
 
     withContext(Dispatchers.IO) {
-        val requests = urls.distinct().map { url ->
+        models.map { model ->
             async {
-                val request = ImageRequest.Builder(activity)
-                    .data(url)
-                    .build()
-                loader.execute(request)
+                loader.execute(ImageRequest.Builder(activity).data(model).build())
             }
-        }
-        requests.awaitAll()
+        }.awaitAll()
     }
 }
 

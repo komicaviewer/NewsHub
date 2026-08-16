@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "mode": "ephemeral",
+  "repository": {},
+  "paths": {},
+  "versions": {},
+  "expiryDays": {},
+  "roles": {},
+  "extensions": [{ "sources": [{ "protocol": 1 }] }]
+}

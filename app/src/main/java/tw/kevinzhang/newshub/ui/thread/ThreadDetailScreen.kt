@@ -68,6 +68,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -92,6 +93,8 @@ import tw.kevinzhang.newshub.ui.component.LabelSmallText
 import tw.kevinzhang.newshub.ui.component.Small
 import tw.kevinzhang.newshub.ui.component.View
 import tw.kevinzhang.newshub.ui.component.appClickable
+import tw.kevinzhang.newshub.ui.component.resourceModelOrNull
+import tw.kevinzhang.newshub.ui.component.openExternalLink
 import tw.kevinzhang.newshub.ui.component.gallery.PostGallery
 import tw.kevinzhang.newshub.ui.component.swipeToGoBack
 
@@ -107,11 +110,9 @@ private data class GalleryRequest(
 fun ThreadDetailScreen(
     onNavigateUp: () -> Unit,
     onNavigateToBoards: () -> Unit,
-    onOpenWebClick: (url: String) -> Unit,
     viewModel: ThreadDetailViewModel = hiltViewModel(),
 ) {
     val thread by viewModel.thread.collectAsStateWithLifecycle()
-    val threadUrl by viewModel.threadUrl.collectAsStateWithLifecycle()
     val previewPost by viewModel.previewPost.collectAsStateWithLifecycle()
     val commentStates by viewModel.commentStates.collectAsStateWithLifecycle()
     val alwaysUseRawImage by viewModel.alwaysUseRawImage.collectAsStateWithLifecycle()
@@ -128,6 +129,7 @@ fun ThreadDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     var repliesDialogForPostId by remember { mutableStateOf<String?>(null) }
@@ -229,8 +231,9 @@ fun ThreadDetailScreen(
                 activity = activity,
                 posts = posts,
                 alwaysUseRawImage = alwaysUseRawImage,
-                sourceId = viewModel.sourceId,
+                sourceId = viewModel.sourceKey,
                 threadId = viewModel.threadId,
+                resourceProvider = viewModel.resourceProvider,
             )
             viewModel.onScreenshotsCaptured(paths)
         }
@@ -279,7 +282,7 @@ fun ThreadDetailScreen(
                             }
                         } else {
                             IconButton(
-                                onClick = { viewModel.requestToggleSave(context.filesDir) },
+                                onClick = { viewModel.requestToggleSave() },
                                 enabled = !isLoading,
                             ) {
                                 Icon(
@@ -289,8 +292,28 @@ fun ThreadDetailScreen(
                             }
                         }
                         IconButton(
-                            onClick = { threadUrl?.let { onOpenWebClick(it) } },
-                            enabled = threadUrl != null,
+                            onClick = {
+                                viewModel.requestThreadWebLink(
+                                    onReady = { handle ->
+                                        val opened = openExternalLink(
+                                            handle,
+                                            viewModel.resourceProvider::consumeExternalLink,
+                                            uriHandler::openUri,
+                                        )
+                                        if (!opened) {
+                                            coroutineScope.launch {
+                                                snackbarHostState.showSnackbar(EXTERNAL_LINK_REJECTED_MESSAGE)
+                                            }
+                                        }
+                                    },
+                                    onRejected = {
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar(EXTERNAL_LINK_REJECTED_MESSAGE)
+                                        }
+                                    },
+                                )
+                            },
+                            enabled = thread != null && !isLoading,
                         ) {
                             Icon(
                                 imageVector = Icons.Default.OpenInBrowser,
@@ -443,7 +466,7 @@ fun ThreadDetailScreen(
                     startIndex = request.startIndex,
                     isSaved = isSaved,
                     isSaving = isSavingScreenshots,
-                    onToggleSave = { viewModel.requestToggleSave(context.filesDir) },
+                    onToggleSave = { viewModel.requestToggleSave() },
                     onDismissRequest = { galleryRequest = null },
                     onReplyToClick = { targetId ->
                         galleryRequest = null
@@ -515,7 +538,7 @@ fun ThreadDetailScreen(
                                     ) {
                                         reply.sourceIconUrl?.let {
                                             AsyncImage(
-                                                model = it,
+                                                model = resourceModelOrNull(it),
                                                 contentDescription = null,
                                                 modifier = Modifier.size(14.dp),
                                             )
@@ -541,6 +564,8 @@ fun ThreadDetailScreen(
         }
     }
 }
+
+private const val EXTERNAL_LINK_REJECTED_MESSAGE = "網站連結被安全政策阻擋或已失效"
 
 @Composable
 private fun ThreadPagingFooter(
@@ -629,7 +654,7 @@ private fun QuotePreviewContent(post: Post, alwaysUseRawImage: Boolean) {
         )
         mediaModel?.let { model ->
             AsyncImage(
-                model = model,
+                model = resourceModelOrNull(model),
                 contentDescription = "引用貼文媒體預覽",
                 modifier = Modifier
                     .fillMaxWidth()
@@ -814,7 +839,7 @@ internal fun PostCard(
             ) {
                 post.sourceIconUrl?.let {
                     AsyncImage(
-                        model = it,
+                        model = resourceModelOrNull(it),
                         contentDescription = null,
                         modifier = Modifier
                             .size(20.dp)

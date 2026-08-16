@@ -1,102 +1,66 @@
 package tw.kevinzhang.extension_loader
 
-import org.json.JSONObject
-import tw.kevinzhang.extension_api.Source
+import android.content.pm.ServiceInfo
+import tw.kevinzhang.extension_api.ExtensionProtocol
 
-/**
- * The asset contract used by extension bundle APKs.
- *
- * The extension manifest identifies an APK as a NewsHub extension and points at this asset;
- * this document then declares every [Source] the bundle provides. Keeping source metadata in
- * one document allows one APK to supply more than one source without a parallel manifest API.
- */
+/** Host-owned metadata for one isolated Source service. */
 data class ExtensionDescriptor(
-    val schemaVersion: Int,
-    val name: String,
-    val sources: List<SourceDescriptor>,
-    /** Minimum extension-api contract version required by every source in this bundle. */
-    val requiredApiVersion: Int = 1,
-)
-
-data class SourceDescriptor(
-    val className: String,
-    val id: String,
+    val packageName: String,
+    val serviceClassName: String,
+    val processName: String,
+    val sourceId: String,
     val name: String,
     val lang: String,
     val baseUrl: String,
+    val protocol: Int,
 )
 
-internal object ExtensionDescriptorJson {
-    fun parse(json: String): ExtensionDescriptor {
-        val root = JSONObject(json)
-        val schemaVersion = root.getInt("schemaVersion")
-        val sources = root.getJSONArray("sources")
-        return ExtensionDescriptor(
-            schemaVersion = schemaVersion,
-            // Schema v1 predates API negotiation and is therefore implicitly API v1.
-            requiredApiVersion = if (schemaVersion == 1) 1 else root.getInt("requiredApiVersion"),
-            name = root.requiredString("name"),
-            sources = List(sources.length()) { index ->
-                val source = sources.getJSONObject(index)
-                SourceDescriptor(
-                    className = source.requiredString("className"),
-                    id = source.requiredString("id"),
-                    name = source.requiredString("name"),
-                    lang = source.requiredString("lang"),
-                    baseUrl = source.requiredString("baseUrl"),
-                )
-            },
-        ).also(ExtensionDescriptorValidator::validate)
-    }
-
-    private fun JSONObject.requiredString(name: String): String =
-        getString(name).trim().also { value ->
-            require(value.isNotEmpty()) { "'$name' must not be blank" }
-        }
-}
-
-/** Pure validation kept separate from Android package loading so malformed registries are testable. */
 internal object ExtensionDescriptorValidator {
-    const val CURRENT_SCHEMA_VERSION = 2
-    const val CURRENT_API_VERSION = 2
+    fun fromServiceInfo(service: ServiceInfo): ExtensionDescriptor {
+        val metadata = requireNotNull(service.metaData) { "Missing Source service metadata" }
+        require(metadata.getInt(ExtensionProtocol.META_PROTOCOL, -1) == ExtensionProtocol.VERSION) {
+            "Unsupported extension protocol"
+        }
+        require(
+            !metadata.containsKey(ExtensionProtocol.META_NEEDS_LOGIN) &&
+                !metadata.containsKey(ExtensionProtocol.META_LOGIN_URL) &&
+                !metadata.containsKey(ExtensionProtocol.META_LOGIN_HOSTS),
+        ) { "Protocol v2 forbids legacy login metadata; authentication is declared at runtime" }
+        require(service.exported) { "Source service must be exported" }
+        require(service.permission == ExtensionProtocol.BIND_PERMISSION) {
+            "Source service must require ${ExtensionProtocol.BIND_PERMISSION}"
+        }
+        require(service.flags and ServiceInfo.FLAG_ISOLATED_PROCESS != 0) {
+            "Source service must use isolatedProcess"
+        }
+        require(service.flags and ServiceInfo.FLAG_EXTERNAL_SERVICE == 0) {
+            "Source service must not use externalService"
+        }
+        require(service.processName.startsWith("${service.packageName}:")) {
+            "Source service must use a private package process"
+        }
 
-    fun validate(descriptor: ExtensionDescriptor) {
-        require(descriptor.schemaVersion in 1..CURRENT_SCHEMA_VERSION) {
-            "Unsupported extension descriptor schema version: ${descriptor.schemaVersion}"
+        fun required(key: String): String = metadata.getString(key)?.trim().orEmpty().also {
+            require(it.isNotEmpty()) { "Missing $key" }
+            require(it.length <= 512) { "$key is too long" }
         }
-        require(descriptor.requiredApiVersion in 1..CURRENT_API_VERSION) {
-            "Unsupported extension API version: ${descriptor.requiredApiVersion}"
-        }
-        require(descriptor.schemaVersion != 1 || descriptor.requiredApiVersion == 1) {
-            "Extension descriptor schema version 1 is limited to API version 1"
-        }
-        require(descriptor.name.isNotBlank()) { "Extension name must not be blank" }
-        require(descriptor.sources.isNotEmpty()) { "Extension descriptor must declare at least one source" }
 
-        descriptor.sources.forEach { source ->
-            require(source.className.isNotBlank()) { "Source className must not be blank" }
-            require(source.id.isNotBlank()) { "Source id must not be blank" }
-            require(source.name.isNotBlank()) { "Source name must not be blank" }
-            require(source.lang.isNotBlank()) { "Source lang must not be blank" }
-            require(source.baseUrl.isNotBlank()) { "Source baseUrl must not be blank" }
+        val sourceId = required(ExtensionProtocol.META_SOURCE_ID)
+        require(sourceId.matches(Regex("[A-Za-z0-9._-]{1,160}"))) { "Invalid Source id" }
+        val baseUrl = required(ExtensionProtocol.META_SOURCE_BASE_URL)
+        val parsedBase = runCatching { java.net.URI(baseUrl) }.getOrNull()
+        require(parsedBase?.scheme == "https" && !parsedBase.host.isNullOrBlank()) {
+            "Source base URL must be HTTPS"
         }
-        val duplicateIds = descriptor.sources.groupBy(SourceDescriptor::id)
-            .filterValues { it.size > 1 }
-            .keys
-        require(duplicateIds.isEmpty()) {
-            "Extension descriptor contains duplicate source ids: ${duplicateIds.joinToString()}"
-        }
-    }
-
-    fun validateRuntimeSource(descriptor: SourceDescriptor, source: Source) {
-        require(descriptor.id == source.id) {
-            "Source id mismatch for ${descriptor.className}: descriptor=${descriptor.id}, runtime=${source.id}"
-        }
-        require(descriptor.name == source.name) {
-            "Source name mismatch for ${descriptor.className}: descriptor=${descriptor.name}, runtime=${source.name}"
-        }
-        require(descriptor.lang == source.language) {
-            "Source language mismatch for ${descriptor.className}: descriptor=${descriptor.lang}, runtime=${source.language}"
-        }
+        return ExtensionDescriptor(
+            packageName = service.packageName,
+            serviceClassName = service.name,
+            processName = service.processName,
+            sourceId = sourceId,
+            name = required(ExtensionProtocol.META_SOURCE_NAME),
+            lang = required(ExtensionProtocol.META_SOURCE_LANG),
+            baseUrl = baseUrl,
+            protocol = metadata.getInt(ExtensionProtocol.META_PROTOCOL),
+        )
     }
 }

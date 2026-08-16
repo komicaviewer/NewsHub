@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "mode": "ephemeral",
+  "repository": {
+    "name": "Example extensions",
+    "description": "Example NewsHub repository",
+    "baseUrl": "https://extensions.example.com",
+    "iconUrl": null,
+    "website": null
+  },
+  "paths": { "keyDirectory": "keys", "publicDirectory": "public" },
+  "versions": { "root": 1, "targets": 1, "snapshot": 1, "timestamp": 1 },
+  "expiryDays": { "root": 365, "targets": 30, "snapshot": 7, "timestamp": 2 },
+  "roles": {
+    "root": { "keyNames": ["root-1", "root-2"], "threshold": 2 },
+    "targets": { "keyNames": ["targets-1", "targets-2"], "threshold": 2 },
+    "snapshot": { "keyNames": ["snapshot-1"], "threshold": 1 },
+    "timestamp": { "keyNames": ["timestamp-1"], "threshold": 1 }
+  },
+  "extensions": [
+    {
+      "apk": "fixture.apk",
+      "name": "Example extension",
+      "lang": "en",
+      "apkSignerPins": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+      "lineageRootSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sources": [
+        {
+          "id": "com.example.source",
+          "name": "Example",
+          "lang": "en",
+          "baseUrl": "https://api.example.com",
+          "service": "com.example.extension.ExampleService",
+          "protocol": 2,
+          "networkPolicy": {
+            "schemaVersion": 2,
+            "request": { "rules": [{ "exactHosts": ["api.example.com"], "operation": { "name": "source_read", "methods": ["GET"], "pathPrefixes": ["/v1/"], "credentialed": false } }] },
+            "resource": { "exactHosts": [] },
+            "external": { "exactHosts": [] },
+            "auth": { "exactHosts": [] },
+            "namedCapabilities": []
+          }
+        }
+      ],
+      "acceptedArtifacts": [
+        { "versionCode": 1, "length": 12345, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+      ]
+    }
+  ]
+}

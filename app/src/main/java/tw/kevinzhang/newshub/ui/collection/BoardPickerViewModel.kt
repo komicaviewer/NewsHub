@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -12,6 +13,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.SourceFailure
+import tw.kevinzhang.extension_api.SourceFailureException
+import tw.kevinzhang.extension_api.SourceFailures
+import tw.kevinzhang.extension_api.SourceIdentity
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.BoardCategory
 import tw.kevinzhang.extension_api.model.BoardPageRequest
@@ -34,16 +39,18 @@ data class SourceWithBoards(
 
 data class SelectedBoard(
     val sourceId: String,
+    val sourceKey: String,
     val boardUrl: String,
     val boardName: String,
+    val sourceIdentity: SourceIdentity? = null,
 ) {
-    val key: String get() = selectedBoardKey(sourceId, boardUrl)
+    val key: String get() = selectedBoardKey(sourceKey, boardUrl)
 }
 
 /** A source-level board request failure, retained so the UI can explain what can be retried. */
 data class BoardLoadFailure(
     val source: Source,
-    val cause: Throwable,
+    val failure: SourceFailure,
 )
 
 sealed interface BoardPickerUiState {
@@ -259,12 +266,18 @@ class BoardPickerViewModel @Inject constructor(
                 )
                 cache.put(sourceId, requestQuery, merged)
             }.onFailure { error ->
+                if (error is CancellationException) throw error
                 val current = _uiState.value as? BoardPickerUiState.Content ?: return@onFailure
                 if (!current.matches(state)) return@onFailure
                 _uiState.value = current.copy(
                     sources = current.sources.map {
                         if (it.source.id == sourceId) {
-                            it.copy(isAppending = false, appendFailure = error)
+                            it.copy(
+                                isAppending = false,
+                                appendFailure = SourceFailureException(
+                                    SourceFailures.fromThrowable(error, "board_page"),
+                                ),
+                            )
                         } else {
                             it
                         }
@@ -359,6 +372,7 @@ class BoardPickerViewModel @Inject constructor(
                     cache.putCategories(source.id, it)
                 }
             } else {
+                remote.exceptionOrNull()?.let { if (it is CancellationException) throw it }
                 cache.getCategories(source.id).also {
                     if (it.isNotEmpty()) categoriesBySource[source.id] = it
                 }
@@ -383,13 +397,17 @@ class BoardPickerViewModel @Inject constructor(
                 )
             },
             onFailure = { error ->
+                if (error is CancellationException) throw error
                 val cachedBoards = cache.get(source.id, boardQuery)
                 SourceBoardLoadResult(
                     source = source,
                     boards = cachedBoards,
                     categories = categories,
                     isFromCache = cachedBoards.isNotEmpty(),
-                    failure = BoardLoadFailure(source, error),
+                    failure = BoardLoadFailure(
+                        source,
+                        SourceFailures.fromThrowable(error, "board_page"),
+                    ),
                 )
             },
         )

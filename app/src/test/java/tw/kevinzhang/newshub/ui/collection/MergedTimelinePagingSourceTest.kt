@@ -6,8 +6,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tw.kevinzhang.data.domain.BoardSubscriptionEntity
+import tw.kevinzhang.data.domain.BoardSubscriptionRecord
+import tw.kevinzhang.data.domain.CanonicalSourceIdentities
 import tw.kevinzhang.extension_api.AuthenticationRequiredException
 import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.SourceIdentity
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.BoardPage
 import tw.kevinzhang.extension_api.model.BoardPageRequest
@@ -20,6 +23,7 @@ class MergedTimelinePagingSourceTest {
         val notifiedSourceIds = mutableListOf<String>()
         val source = object : Source {
             override val id = "gamer"
+            override val sourceIdentity = identity(id)
             override val name = "Gamer"
             override val language = "zh-TW"
             override val version = 1
@@ -39,13 +43,10 @@ class MergedTimelinePagingSourceTest {
         }
         val pagingSource = MergedTimelinePagingSource(
             subscriptions = listOf(
-                BoardSubscriptionEntity(
-                    id = "subscription",
-                    collectionId = "collection",
+                subscription(
                     sourceId = source.id,
                     boardUrl = "https://forum.gamer.com.tw/B.php?bsn=60076",
                     boardName = "場外休息區",
-                    sortOrder = 0,
                 ),
             ),
             sourceResolver = { source },
@@ -117,14 +118,24 @@ class MergedTimelinePagingSourceTest {
     private fun refreshParams() =
         PagingSource.LoadParams.Refresh<Int>(key = null, loadSize = 20, placeholdersEnabled = false)
 
-    private fun subscription(sourceId: String) = BoardSubscriptionEntity(
-        id = "subscription-$sourceId",
-        collectionId = "collection",
-        sourceId = sourceId,
-        boardUrl = "https://example.com/$sourceId",
-        boardName = "$sourceId 看板",
-        sortOrder = 0,
-    )
+    private fun subscription(
+        sourceId: String,
+        boardUrl: String = "https://example.com/$sourceId",
+        boardName: String = "$sourceId 看板",
+    ): BoardSubscriptionRecord {
+        val stored = CanonicalSourceIdentities.fromRuntimeIdentity(identity(sourceId))
+        return BoardSubscriptionRecord(
+            subscription = BoardSubscriptionEntity(
+                id = "subscription-$sourceId",
+                collectionId = "collection",
+                sourceKey = stored.sourceKey,
+                boardUrl = boardUrl,
+                boardName = boardName,
+                sortOrder = 0,
+            ),
+            sourceIdentity = stored,
+        )
+    }
 
     private fun summary(sourceId: String, id: String, createdAt: Long) = ThreadSummary(
         sourceId = sourceId,
@@ -144,6 +155,7 @@ class MergedTimelinePagingSourceTest {
         getSummaries: suspend (Board, Int) -> List<ThreadSummary>,
     ) = object : Source {
         override val id = id
+        override val sourceIdentity = identity(id)
         override val name = id
         override val language = "zh-TW"
         override val version = 1
@@ -159,4 +171,10 @@ class MergedTimelinePagingSourceTest {
 
         override suspend fun getThread(summary: ThreadSummary): Thread = error("Not used")
     }
+
+    private fun identity(sourceId: String) = SourceIdentity(
+        packageName = "test.$sourceId",
+        signerSha256 = "a".repeat(64),
+        sourceId = sourceId,
+    )
 }

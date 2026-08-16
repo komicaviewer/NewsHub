@@ -1,5 +1,8 @@
 package tw.kevinzhang.marketplace.data
 
+import tw.kevinzhang.extension_api.SourceNetworkPolicy
+import tw.kevinzhang.marketplace.RepositoryTrustDomains
+
 data class RepoMetadata(
     val name: String,
     val description: String,
@@ -17,10 +20,23 @@ data class ExtensionInfo(
     val language: String,
     val iconUrl: String?,
     val apkUrl: String,
-    /** SHA-256 hex digest of the APK. When present, verified after download. Null for legacy index entries (integrity not enforced). */
-    val sha256: String? = null,
+    /** SHA-256 hex digest authenticated by threshold-signed targets metadata. */
+    val sha256: String,
+    val targetLength: Long,
+    /** Stable first certificate in the approved Android signing lineage. */
+    val lineageRootSha256: String,
+    val signerPins: Set<String>,
+    /** Older APK bytes still explicitly authorized by the current signed targets metadata. */
+    val acceptedArtifacts: List<AcceptedArtifact> = emptyList(),
     /** Sources bundled in this extension. */
     val sources: List<AvailableSource> = emptyList(),
+    val repositoryDomainId: String = RepositoryTrustDomains.OFFICIAL_ID,
+)
+
+data class AcceptedArtifact(
+    val versionCode: Long,
+    val length: Long,
+    val sha256: String,
 )
 
 /** Metadata for a single Source inside an extension, as declared in index.min.json. */
@@ -29,6 +45,11 @@ data class AvailableSource(
     val name: String,
     val lang: String,
     val baseUrl: String,
+    val serviceClass: String,
+    val protocol: Int,
+    val policyHash: String,
+    /** Full threshold-signed capability policy, present for verified TUF targets. */
+    val networkPolicy: SourceNetworkPolicy? = null,
 )
 
 // index.min.json root

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "request": {
+    "rules": [
+      {
+        "exactHosts": ["*.example.com"],
+        "operation": {
+          "name": "source_read",
+          "methods": ["GET"],
+          "pathPrefixes": ["/"],
+          "credentialed": false
+        }
+      }
+    ]
+  },
+  "resource": { "exactHosts": [] },
+  "external": { "exactHosts": [] },
+  "auth": { "exactHosts": [] },
+  "namedCapabilities": []
+}

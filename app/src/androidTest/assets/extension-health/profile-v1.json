@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "profileId": "official-live-v1",
+  "operationTimeoutMs": 25000,
+  "runTimeoutMs": 420000,
+  "maxRequests": 48,
+  "sources": [
+    {
+      "sourceId": "tw.kevinzhang.eyny",
+      "packageName": "tw.kevinzhang.newshub.extension.eyny",
+      "allowedHosts": ["eyny.com", "www.eyny.com", "www52.eyny.com", "www53.eyny.com"],
+      "requireAuthenticatedSession": true,
+      "authenticatedOperations": ["get_thread_summaries", "get_thread_page"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.newshub.extension.gamer",
+      "packageName": "tw.kevinzhang.newshub.extension.gamer",
+      "allowedHosts": ["forum.gamer.com.tw"],
+      "requireAuthenticatedSession": true,
+      "authenticatedOperations": ["get_thread_summaries", "get_thread_page"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.newshub.extension.hackernews",
+      "packageName": "tw.kevinzhang.newshub.extension.hackernews",
+      "allowedHosts": ["news.ycombinator.com"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.komica.twocat",
+      "packageName": "tw.kevinzhang.newshub.extension.komica",
+      "allowedHosts": ["2cat.org", "cat.2nyan.org", "eclair.nagatoyuki.org", "www.gomiga.org"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.komica.sora",
+      "packageName": "tw.kevinzhang.newshub.extension.komica",
+      "allowedHosts": ["fenrisulfr.org", "gaia.komica1.org", "gita.komica1.org", "iris.komica1.org", "komica.dbfoxtw.me", "msgirls.boguspix.com", "pixmicat.alica.idv.tw", "sister.boguspix.com", "storysol.boguspix.com", "travel.voidfactory.com", "www.karlsland.net"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.akraft",
+      "packageName": "tw.kevinzhang.newshub.extension.komica",
+      "allowedHosts": ["www.akraft.net"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.nagatoyuki",
+      "packageName": "tw.kevinzhang.newshub.extension.komica",
+      "allowedHosts": ["eclair.nagatoyuki.org", "selene.zawarudo.org", "www.gomiga.org"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.wtako",
+      "packageName": "tw.kevinzhang.newshub.extension.komica",
+      "allowedHosts": ["kemono.wtako.net", "rthost.win", "www.karlsland.net"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.komica2.twocat",
+      "packageName": "tw.kevinzhang.newshub.extension.komica2",
+      "allowedHosts": ["2cat.org"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.komica2.sora",
+      "packageName": "tw.kevinzhang.newshub.extension.komica2",
+      "allowedHosts": ["2cat.org", "2cat.uk"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.komica2.zawarudo",
+      "packageName": "tw.kevinzhang.newshub.extension.komica2",
+      "allowedHosts": ["majeur.zawarudo.org"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.mobile01",
+      "packageName": "tw.kevinzhang.newshub.extension.mobile01",
+      "allowedHosts": ["www.mobile01.com"]
+    },
+    {
+      "sourceId": "tw.kevinzhang.newshub.extension.ptt",
+      "packageName": "tw.kevinzhang.newshub.extension.ptt",
+      "allowedHosts": ["www.ptt.cc"],
+      "boardQuery": "Stock",
+      "boardNameContains": "Stock"
+    }
+  ]
+}

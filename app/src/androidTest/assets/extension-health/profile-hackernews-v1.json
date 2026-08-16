@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "profileId": "zero-secret-hackernews-v1",
+  "operationTimeoutMs": 25000,
+  "runTimeoutMs": 120000,
+  "maxRequests": 3,
+  "sources": [
+    {
+      "sourceId": "tw.kevinzhang.newshub.extension.hackernews",
+      "packageName": "tw.kevinzhang.newshub.extension.hackernews",
+      "allowedHosts": ["news.ycombinator.com"],
+      "requireAuthenticatedSession": false,
+      "minimumSummaries": 1,
+      "minimumPosts": 1
+    }
+  ]
+}

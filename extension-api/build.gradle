@@ -1,13 +1,25 @@
 plugins {
-    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.android)
 }
 
-java {
-    sourceCompatibility = JavaVersion.VERSION_1_8
-    targetCompatibility = JavaVersion.VERSION_1_8
-}
+android {
+    namespace 'tw.kevinzhang.extension_api'
+    compileSdk 35
 
-tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    defaultConfig {
+        minSdk 29
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildFeatures {
+        aidl true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
     kotlinOptions {
         jvmTarget = '1.8'
         freeCompilerArgs += ['-Xjvm-default=all-compatibility']
@@ -15,7 +27,7 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
 }
 
 dependencies {
-    implementation libs.okhttp.core
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4"
+    api libs.gson
+    api libs.coroutines.android
     testImplementation libs.junit4
 }

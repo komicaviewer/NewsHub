@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:allowBackup="false"
+        android:hasCode="true"
+        android:label="Example NewsHub extension"
+        android:supportsRtl="true">
+        <service
+            android:name=".ExampleExtensionService"
+            android:exported="true"
+            android:isolatedProcess="true"
+            android:permission="tw.kevinzhang.newshub.permission.BIND_EXTENSION"
+            android:process=":example_source">
+            <intent-filter>
+                <action android:name="tw.kevinzhang.newshub.extension.SERVICE" />
+            </intent-filter>
+
+            <meta-data android:name="newshub.extension.protocol" android:value="2" />
+            <meta-data android:name="newshub.extension.source_id" android:value="com.example.news" />
+            <meta-data android:name="newshub.extension.source_name" android:value="Example News" />
+            <meta-data android:name="newshub.extension.source_lang" android:value="en" />
+            <meta-data android:name="newshub.extension.source_base_url" android:value="https://api.example.com" />
+        </service>
+    </application>
+</manifest>

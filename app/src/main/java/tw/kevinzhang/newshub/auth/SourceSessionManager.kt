@@ -19,11 +19,20 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import tw.kevinzhang.extension_api.AuthState
 import tw.kevinzhang.extension_api.AuthSpec
-import tw.kevinzhang.extension_api.AuthenticationSession
-import tw.kevinzhang.extension_api.SourceRuntime
-import tw.kevinzhang.extension_api.SourceRuntimeProvider
+import tw.kevinzhang.extension_api.HostBrokerProvider
+import tw.kevinzhang.extension_api.HostResourceProvider
+import tw.kevinzhang.extension_api.IHostBroker
+import tw.kevinzhang.extension_api.SourceIdentity
+import tw.kevinzhang.extension_api.SourceNetworkPolicy
+import tw.kevinzhang.extension_api.ResourceHandle
+import tw.kevinzhang.extension_api.ResourcePayload
+import tw.kevinzhang.extension_api.ResourceRange
+import tw.kevinzhang.extension_api.ExternalLinkHandle
+import tw.kevinzhang.extension_api.NamedHostCapabilities
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -35,13 +44,21 @@ import javax.inject.Singleton
 private const val COOKIE_PREFS = "source_cookie_sessions"
 private const val KEYSTORE = "AndroidKeyStore"
 private const val KEY_ALIAS = "newshub.source.cookies.v1"
+private const val MAX_RESOURCE_HANDLES_PER_SOURCE = 4_096
+private const val MAX_LINK_HANDLES_PER_SOURCE = 1_024
 
 @Singleton
 class SourceSessionManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val baseClient: OkHttpClient,
-) : SourceRuntimeProvider {
+) : HostBrokerProvider, HostResourceProvider {
     private val sessions = mutableMapOf<String, SourceSession>()
+    private val sourceIdentities = mutableMapOf<String, String>()
+    private val resourceGenerations = mutableMapOf<String, Long>()
+    private val resourceBrokers = mutableMapOf<String, SourceNetworkBroker>()
+    private val sourcePolicies = mutableMapOf<String, SourceNetworkPolicy>()
+    private val resources = mutableMapOf<String, ResourceBinding>()
+    private val externalLinks = mutableMapOf<String, ExternalLinkBinding>()
     private val mutableStates = MutableStateFlow<Map<String, AuthState>>(emptyMap())
     val states: StateFlow<Map<String, AuthState>> = mutableStates.asStateFlow()
     private val mutableAuthenticationRequiredNotice = MutableStateFlow<String?>(null)
@@ -51,19 +68,154 @@ class SourceSessionManager @Inject constructor(
      */
     val authenticationRequiredNotice: StateFlow<String?> = mutableAuthenticationRequiredNotice.asStateFlow()
 
-    override fun runtimeFor(sourceId: String): SourceRuntime = synchronized(sessions) {
-        sessions.getOrPut(sourceId) { SourceSession(sourceId) }.runtime
+    override fun brokerFor(identity: SourceIdentity, policy: SourceNetworkPolicy): IHostBroker {
+        val storageKey = identity.storageKey()
+        synchronized(sessions) {
+            sourceIdentities[identity.sourceId] = storageKey
+        }
+        val broker = SourceNetworkBroker(baseClient, session(identity.sourceId).jar, identity, policy)
+        synchronized(resources) {
+            resourceBrokers.remove(storageKey)?.revoke()
+            val generation = (resourceGenerations[storageKey] ?: 0L) + 1L
+            resourceGenerations[storageKey] = generation
+            resourceBrokers[storageKey] = broker
+            sourcePolicies[storageKey] = policy
+            resources.entries.removeAll { it.value.storageKey == storageKey }
+            externalLinks.entries.removeAll { it.value.storageKey == storageKey }
+        }
+        return broker
+    }
+
+    override fun issueResource(
+        identity: SourceIdentity,
+        policy: SourceNetworkPolicy,
+        untrustedUrl: String,
+    ): ResourceHandle {
+        require(NamedHostCapabilities.RESOURCE_READ in policy.namedCapabilities) {
+            "Resource capability is not authorized"
+        }
+        validateResourceUrl(untrustedUrl, policy)
+        val storageKey = identity.storageKey()
+        return synchronized(resources) {
+            val generation = requireNotNull(resourceGenerations[storageKey]) { "Source session is not active" }
+            require(resourceBrokers.containsKey(storageKey)) { "Source broker is not active" }
+            require(resources.values.count { it.storageKey == storageKey } < MAX_RESOURCE_HANDLES_PER_SOURCE) {
+                "Source issued too many resource handles"
+            }
+            val tokenBytes = ByteArray(32).also(SecureRandom()::nextBytes)
+            val token = Base64.encodeToString(tokenBytes, Base64.NO_WRAP or Base64.URL_SAFE).trimEnd('=')
+            val handle = ResourceHandle(storageKey.take(16), generation, token)
+            resources[token] = ResourceBinding(storageKey, generation, untrustedUrl)
+            handle
+        }
+    }
+
+    override suspend fun openResource(handle: ResourceHandle): ResourcePayload {
+        val (binding, broker) = synchronized(resources) {
+            val binding = requireNotNull(resources[handle.token]) { "Unknown resource handle" }
+            require(binding.storageKey.take(16) == handle.sourceSession) { "Resource source mismatch" }
+            require(binding.generation == handle.generation) { "Stale resource handle" }
+            require(resourceGenerations[binding.storageKey] == handle.generation) { "Revoked resource handle" }
+            binding to requireNotNull(resourceBrokers[binding.storageKey]) { "Source broker is unavailable" }
+        }
+        val payload = broker.fetchResource(binding.url)
+        ensureResourceCurrent(handle, binding)
+        return payload
+    }
+
+    override suspend fun openResourceRange(
+        handle: ResourceHandle,
+        offset: Long,
+        length: Int,
+    ): ResourceRange {
+        val (binding, broker) = resolveResource(handle)
+        val range = broker.fetchResourceRange(binding.url, offset, length)
+        ensureResourceCurrent(handle, binding)
+        return range
+    }
+
+    override fun issueExternalLink(
+        identity: SourceIdentity,
+        policy: SourceNetworkPolicy,
+        untrustedUrl: String,
+    ): ExternalLinkHandle {
+        require(NamedHostCapabilities.EXTERNAL_LINK in policy.namedCapabilities) {
+            "External link capability is not authorized"
+        }
+        validateExternalLink(untrustedUrl, policy)
+        val storageKey = identity.storageKey()
+        return synchronized(resources) {
+            val generation = requireNotNull(resourceGenerations[storageKey]) { "Source session is not active" }
+            require(resourceBrokers.containsKey(storageKey)) { "Source broker is not active" }
+            require(externalLinks.values.count { it.storageKey == storageKey } < MAX_LINK_HANDLES_PER_SOURCE) {
+                "Source issued too many external link handles"
+            }
+            val token = secureCapabilityToken()
+            val handle = ExternalLinkHandle(storageKey.take(16), generation, token)
+            externalLinks[token] = ExternalLinkBinding(storageKey, generation, untrustedUrl)
+            handle
+        }
+    }
+
+    override fun consumeExternalLink(handle: ExternalLinkHandle): String = synchronized(resources) {
+        val binding = requireNotNull(externalLinks[handle.token]) { "Unknown external link handle" }
+        require(binding.storageKey.take(16) == handle.sourceSession) { "External link source mismatch" }
+        require(binding.generation == handle.generation) { "Stale external link handle" }
+        require(resourceGenerations[binding.storageKey] == handle.generation) { "Revoked external link handle" }
+        require(resourceBrokers.containsKey(binding.storageKey)) { "Source broker is unavailable" }
+        externalLinks.remove(handle.token)
+        binding.url
+    }
+
+    override fun revoke(identity: SourceIdentity) {
+        val storageKey = identity.storageKey()
+        synchronized(resources) {
+            resourceBrokers.remove(storageKey)?.revoke()
+            sourcePolicies.remove(storageKey)
+            rotateHandles(storageKey)
+        }
     }
 
     fun stateFor(sourceId: String): AuthState = states.value[sourceId] ?: AuthState.Unknown
 
-    fun beginLogin(sourceId: String) = session(sourceId).setState(AuthState.SigningIn)
+    fun beginLogin(sourceId: String) {
+        invalidateSourceCapabilities(sourceId)
+        session(sourceId).setState(AuthState.SigningIn)
+    }
 
-    fun markSignedIn(sourceId: String) = session(sourceId).setState(AuthState.SignedIn)
+    fun markSignedIn(sourceId: String) {
+        invalidateSourceCapabilities(sourceId)
+        session(sourceId).setState(AuthState.SignedIn)
+    }
 
-    fun markSignedOut(sourceId: String) = session(sourceId).setState(AuthState.SignedOut)
+    fun markSignedOut(sourceId: String) {
+        invalidateSourceCapabilities(sourceId)
+        session(sourceId).setState(AuthState.SignedOut)
+    }
 
-    fun markExpired(sourceId: String) = session(sourceId).setState(AuthState.Expired)
+    fun markExpired(sourceId: String) {
+        invalidateSourceCapabilities(sourceId)
+        session(sourceId).setState(AuthState.Expired)
+    }
+
+    /** Imports a pre-validated Host snapshot before any extension service is bound. */
+    fun importHostOwnedSession(
+        identity: SourceIdentity,
+        cookies: List<Cookie>,
+    ) {
+        require(cookies.isNotEmpty()) { "Host session import is empty" }
+        val storageKey = identity.storageKey()
+        synchronized(sessions) {
+            require(sourceIdentities[identity.sourceId] == null || sourceIdentities[identity.sourceId] == storageKey) {
+                "Host session identity mismatch"
+            }
+            sourceIdentities[identity.sourceId] = storageKey
+        }
+        session(identity.sourceId).apply {
+            jar.saveAllFromResponses(cookies)
+            setState(AuthState.Unknown)
+        }
+    }
 
     /**
      * Called when a foreground request reaches a protected resource. The user explicitly starts
@@ -88,11 +240,14 @@ class SourceSessionManager @Inject constructor(
      * pairs, so those cookies remain host-only and are never widened to a parent domain.
      */
     fun importWebViewCookies(sourceId: String, spec: AuthSpec.WebCookie) {
+        val policy = activePolicyForSource(sourceId)
         val jar = session(sourceId).jar
         val cookieManager = CookieManager.getInstance()
         cookieManager.flush()
+        val origins = spec.validCookieOrigins(policy)
+        require(origins.isNotEmpty()) { "Source has no authorized authentication origin" }
         val originHeaders = buildList {
-            spec.validCookieOrigins().forEach { url ->
+            origins.forEach { url ->
                 val raw = cookieManager.getCookie(url.toString()) ?: return@forEach
                 add(url to raw)
             }
@@ -104,9 +259,12 @@ class SourceSessionManager @Inject constructor(
 
     /** Clears only one source's OkHttp and WebView cookies. */
     fun logout(sourceId: String, spec: AuthSpec.WebCookie) {
+        val policy = activePolicyForSource(sourceId)
         val jar = session(sourceId).jar
         val cookieManager = CookieManager.getInstance()
-        spec.validCookieOrigins().forEach { url ->
+        val origins = spec.validCookieOrigins(policy)
+        require(origins.isNotEmpty()) { "Source has no authorized authentication origin" }
+        origins.forEach { url ->
             val cookieNames = buildSet {
                 addAll(jar.cookiesFor(url).map { it.name })
                 cookieManager.getCookie(url.toString())
@@ -124,27 +282,30 @@ class SourceSessionManager @Inject constructor(
         }
         cookieManager.flush()
         jar.clear()
+        invalidateSourceCapabilities(sourceId)
         session(sourceId).setState(AuthState.SignedOut)
     }
 
     private fun session(sourceId: String): SourceSession = synchronized(sessions) {
-        sessions.getOrPut(sourceId) { SourceSession(sourceId) }
+        val storageKey = sourceIdentities[sourceId] ?: sourceId
+        sessions.getOrPut(storageKey) { SourceSession(sourceId, storageKey) }
     }
 
-    private inner class SourceSession(private val sourceId: String) {
-        val jar = SourceCookieJar(context, sourceId)
+    private fun activePolicyForSource(sourceId: String): SourceNetworkPolicy {
+        val storageKey = synchronized(sessions) {
+            requireNotNull(sourceIdentities[sourceId]) { "Source identity is not active" }
+        }
+        return synchronized(resources) {
+            requireNotNull(sourcePolicies[storageKey]) { "Source authentication policy is not active" }
+        }
+    }
+
+    private inner class SourceSession(private val sourceId: String, storageKey: String) {
+        val jar = SourceCookieJar(context, storageKey)
         private val mutableState = MutableStateFlow(if (jar.isEmpty()) AuthState.SignedOut else AuthState.Unknown)
 
         init {
             mutableStates.value = mutableStates.value + (sourceId to mutableState.value)
-        }
-
-        val runtime = object : SourceRuntime {
-            override val httpClient: OkHttpClient = baseClient.newBuilder().cookieJar(jar).build()
-            override val authentication: AuthenticationSession = object : AuthenticationSession {
-                override val state: StateFlow<AuthState> = mutableState.asStateFlow()
-                override fun markExpired() = setState(AuthState.Expired)
-            }
         }
 
         fun setState(state: AuthState) {
@@ -152,13 +313,101 @@ class SourceSessionManager @Inject constructor(
             mutableStates.value = mutableStates.value + (sourceId to state)
         }
     }
+
+    private data class ResourceBinding(
+        val storageKey: String,
+        val generation: Long,
+        val url: String,
+    )
+
+    private data class ExternalLinkBinding(
+        val storageKey: String,
+        val generation: Long,
+        val url: String,
+    )
+
+    private fun resolveResource(handle: ResourceHandle): Pair<ResourceBinding, SourceNetworkBroker> =
+        synchronized(resources) {
+            val binding = requireNotNull(resources[handle.token]) { "Unknown resource handle" }
+            require(binding.storageKey.take(16) == handle.sourceSession) { "Resource source mismatch" }
+            require(binding.generation == handle.generation) { "Stale resource handle" }
+            require(resourceGenerations[binding.storageKey] == handle.generation) { "Revoked resource handle" }
+            binding to requireNotNull(resourceBrokers[binding.storageKey]) { "Source broker is unavailable" }
+        }
+
+    private fun ensureResourceCurrent(handle: ResourceHandle, binding: ResourceBinding) = synchronized(resources) {
+        require(resourceGenerations[binding.storageKey] == handle.generation) { "Resource was revoked during read" }
+        require(resources[handle.token] == binding) { "Resource was revoked during read" }
+    }
+
+    private fun rotateHandles(storageKey: String) {
+        resourceGenerations[storageKey] = (resourceGenerations[storageKey] ?: 0L) + 1L
+        resources.entries.removeAll { it.value.storageKey == storageKey }
+        externalLinks.entries.removeAll { it.value.storageKey == storageKey }
+    }
+
+    private fun invalidateSourceCapabilities(sourceId: String) {
+        val storageKey = synchronized(sessions) { sourceIdentities[sourceId] } ?: return
+        synchronized(resources) {
+            resourceBrokers[storageKey]?.invalidateInFlight()
+            rotateHandles(storageKey)
+        }
+    }
+
+    private fun secureCapabilityToken(): String {
+        val tokenBytes = ByteArray(32).also(SecureRandom()::nextBytes)
+        return Base64.encodeToString(tokenBytes, Base64.NO_WRAP or Base64.URL_SAFE).trimEnd('=')
+    }
+}
+
+internal fun validateExternalLink(url: String, policy: SourceNetworkPolicy): HttpUrl {
+    require(NamedHostCapabilities.EXTERNAL_LINK in policy.namedCapabilities) {
+        "External link capability is not authorized"
+    }
+    val parsed = url.toHttpsUrlOrNull() ?: throw IllegalArgumentException("External link must be HTTPS")
+    require(parsed.port == 443) { "External link uses a non-default port" }
+    require(parsed.username.isEmpty() && parsed.password.isEmpty()) { "External link userinfo is forbidden" }
+    require(parsed.host.lowercase(Locale.ROOT) in policy.externalExactHosts) {
+        "External link host is not authorized"
+    }
+    require(!parsed.host.matches(Regex("[0-9.]+")) && ':' !in parsed.host) { "External link IP is forbidden" }
+    return parsed
+}
+
+internal fun validateResourceUrl(url: String, policy: SourceNetworkPolicy): HttpUrl {
+    require(NamedHostCapabilities.RESOURCE_READ in policy.namedCapabilities) {
+        "Resource capability is not authorized"
+    }
+    val parsed = url.toHttpsUrlOrNull() ?: throw IllegalArgumentException("Resource URL must be HTTPS")
+    require(parsed.port == 443) { "Resource URL uses a non-default port" }
+    require(parsed.username.isEmpty() && parsed.password.isEmpty()) { "Resource URL userinfo is forbidden" }
+    require(parsed.host.lowercase(Locale.ROOT) in policy.resourceExactHosts) {
+        "Resource host is not authorized"
+    }
+    require(!parsed.host.matches(Regex("[0-9.]+")) && ':' !in parsed.host) { "Resource IP is forbidden" }
+    return parsed
+}
+
+private fun SourceIdentity.storageKey(): String = sourceStorageKey(this)
+
+internal fun sourceStorageKey(identity: SourceIdentity): String {
+    val canonical = listOf(
+        identity.repositoryDomainId,
+        identity.packageName,
+        identity.signerSha256.lowercase(Locale.ROOT),
+        identity.sourceId,
+    )
+        .joinToString(separator = "\u0000", prefix = "newshub-source\u0000")
+    return MessageDigest.getInstance("SHA-256")
+        .digest(canonical.toByteArray(StandardCharsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
 }
 
 private fun String.toHttpsUrlOrNull(): HttpUrl? = runCatching {
     toHttpUrl().takeIf { it.isHttps }
 }.getOrNull()
 
-private fun AuthSpec.WebCookie.validCookieOrigins(): Set<HttpUrl> {
+private fun AuthSpec.WebCookie.validCookieOrigins(policy: SourceNetworkPolicy): Set<HttpUrl> {
     val normalizedAllowedHosts = allowedHosts.asSequence()
         .map { it.lowercase(Locale.ROOT) }
         .toHashSet()
@@ -166,7 +415,19 @@ private fun AuthSpec.WebCookie.validCookieOrigins(): Set<HttpUrl> {
     return cookieOrigins.mapNotNullTo(linkedSetOf()) { origin ->
         val url = origin.toHttpsUrlOrNull() ?: return@mapNotNullTo null
         url.takeIf { it.host.lowercase(Locale.ROOT) in normalizedAllowedHosts }
+            ?.let { runCatching { validateAuthUrl(it.toString(), policy) }.getOrNull() }
     }
+}
+
+internal fun validateAuthUrl(url: String, policy: SourceNetworkPolicy): HttpUrl {
+    val parsed = url.toHttpsUrlOrNull() ?: throw IllegalArgumentException("Authentication URL must be HTTPS")
+    require(parsed.port == 443) { "Authentication URL uses a non-default port" }
+    require(parsed.username.isEmpty() && parsed.password.isEmpty()) { "Authentication URL userinfo is forbidden" }
+    require(parsed.host.lowercase(Locale.ROOT) in policy.authExactHosts) {
+        "Authentication host is not authorized"
+    }
+    require(!parsed.host.matches(Regex("[0-9.]+")) && ':' !in parsed.host) { "Authentication IP is forbidden" }
+    return parsed
 }
 
 /**

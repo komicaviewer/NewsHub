@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://newshub.example/schemas/network-policy-v2.schema.json",
+  "title": "NewsHub network policy v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "request", "resource", "external", "auth", "namedCapabilities"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rules"],
+      "properties": {
+        "rules": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/requestRule" }
+        }
+      }
+    },
+    "resource": { "$ref": "#/$defs/hostScope" },
+    "external": { "$ref": "#/$defs/hostScope" },
+    "auth": { "$ref": "#/$defs/hostScope" },
+    "namedCapabilities": {
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["resource_read", "external_link", "ptt_adult_consent_status", "eyny_challenge_proof"]
+      }
+    }
+  },
+  "$defs": {
+    "exactHost": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 253,
+      "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "hostScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exactHosts"],
+      "properties": {
+        "exactHosts": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/exactHost" }
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "methods", "pathPrefixes", "credentialed"],
+      "properties": {
+        "name": { "const": "source_read" },
+        "methods": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "enum": ["GET", "HEAD"] }
+        },
+        "pathPrefixes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^/" }
+        },
+        "credentialed": { "type": "boolean" }
+      }
+    },
+    "requestRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exactHosts", "operation"],
+      "properties": {
+        "exactHosts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/exactHost" }
+        },
+        "operation": { "$ref": "#/$defs/operation" }
+      }
+    }
+  }
+}

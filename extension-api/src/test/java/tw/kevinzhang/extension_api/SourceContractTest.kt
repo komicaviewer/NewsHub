@@ -61,6 +61,26 @@ class SourceContractTest {
         assertTrue(method.isDefault)
     }
 
+    @Test fun `board website defaults to board URL inside the isolated Source`() = runBlocking {
+        val source = testSource { Thread("thread-1", null, "Title", emptyList()) }
+        val board = Board(
+            sourceId = source.id,
+            url = "https://example.test/board",
+            name = "Board",
+            description = null,
+        )
+
+        assertEquals(board.url, source.getBoardWebUrl(board))
+    }
+
+    @Test fun `getBoardWebUrl is a JVM interface default method`() {
+        val method = Source::class.java.methods.single { method ->
+            method.name == "getBoardWebUrl" && method.parameterTypes.size == 2
+        }
+
+        assertTrue(method.isDefault)
+    }
+
     private fun testSource(getThread: suspend (ThreadSummary) -> Thread): Source = object : Source {
         override val id = "tw.test.source"
         override val name = "Test"

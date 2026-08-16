@@ -1,14 +1,26 @@
 package tw.kevinzhang.data.domain
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
+import androidx.room.Embedded
+import androidx.room.Relation
 import tw.kevinzhang.extension_api.model.ThreadSummary
 
 @Entity(
     tableName = "reading_history",
-    primaryKeys = ["sourceId", "threadId"],
+    primaryKeys = ["sourceKey", "threadId"],
+    foreignKeys = [ForeignKey(
+        entity = SourceIdentityEntity::class,
+        parentColumns = ["sourceKey"],
+        childColumns = ["sourceKey"],
+        onDelete = ForeignKey.RESTRICT,
+        onUpdate = ForeignKey.CASCADE,
+    )],
+    indices = [Index("sourceKey")],
 )
 data class ReadingHistoryEntity(
-    val sourceId: String,
+    val sourceKey: String,
     val sourceName: String? = null,
     val threadId: String,
     val boardUrl: String,
@@ -24,7 +36,7 @@ data class ReadingHistoryEntity(
     val sourceIconUrl: String?,
     val readAt: Long,
 ) {
-    fun toThreadSummary(): ThreadSummary = ThreadSummary(
+    fun toThreadSummary(sourceId: String): ThreadSummary = ThreadSummary(
         sourceId = sourceId,
         boardUrl = boardUrl,
         id = threadId,
@@ -38,4 +50,12 @@ data class ReadingHistoryEntity(
         previewContent = ParagraphListConverter().fromJson(previewContent),
         sourceIconUrl = sourceIconUrl,
     )
+}
+
+data class ReadingHistoryRecord(
+    @Embedded val history: ReadingHistoryEntity,
+    @Relation(parentColumn = "sourceKey", entityColumn = "sourceKey")
+    val sourceIdentity: SourceIdentityEntity,
+) {
+    fun toThreadSummary(): ThreadSummary = history.toThreadSummary(sourceIdentity.sourceId)
 }

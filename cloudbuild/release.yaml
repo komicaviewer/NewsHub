@@ -1,0 +1,164 @@
+timeout: 1200s
+queueTtl: 300s
+serviceAccount: projects/$PROJECT_ID/serviceAccounts/$_APP_RELEASE_SERVICE_ACCOUNT
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_STANDARD_2
+  substitutionOption: MUST_MATCH
+tags:
+  - newshub-app-release
+steps:
+  - id: validate-release-source-before-cost-reservation
+    name: $_ANDROID_BUILDER_IMAGE
+    entrypoint: python3
+    args:
+      - scripts/release/validate_release_source.py
+      - --tag
+      - $TAG_NAME
+      - --commit-sha
+      - $COMMIT_SHA
+      - --source-root
+      - /workspace
+
+  - id: fetch-generation-guarded-cost-state
+    name: $_GCLOUD_BUILDER_IMAGE
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        install -d -m 700 /workspace/private
+        gcloud storage cp "gs://$_STATE_BUCKET/cost/state.json" /workspace/private/cost.json || printf '{}\n' > /workspace/private/cost.json
+        gcloud storage objects describe "gs://$_STATE_BUCKET/cost/state.json" \
+          --format='value(generation)' > /workspace/private/cost-generation || printf '0\n' > /workspace/private/cost-generation
+
+  - id: reserve-bounded-release-cost
+    name: $_ANDROID_BUILDER_IMAGE
+    entrypoint: python3
+    args:
+      - scripts/release/reserve_release_cost.py
+      - --state
+      - /workspace/private/cost.json
+      - --output
+      - /workspace/private/cost-reserved.json
+      - --monthly-build-limit
+      - $_MONTHLY_BUILD_MINUTES
+      - --monthly-release-limit
+      - $_MAX_APP_RELEASE_JOBS_PER_MONTH
+      - --release-tag
+      - $TAG_NAME
+      - --release-commit-sha
+      - $COMMIT_SHA
+      - --emergency-approved
+      - $_APP_RELEASE_EMERGENCY_OVERRIDE_APPROVED
+      - --emergency-month
+      - $_APP_RELEASE_EMERGENCY_OVERRIDE_MONTH
+      - --emergency-max-releases
+      - $_APP_RELEASE_EMERGENCY_OVERRIDE_MAX_JOBS
+      - --emergency-tag
+      - $_APP_RELEASE_EMERGENCY_OVERRIDE_TAG
+      - --emergency-commit-sha
+      - $_APP_RELEASE_EMERGENCY_OVERRIDE_COMMIT_SHA
+
+  - id: persist-cost-before-build
+    name: $_GCLOUD_BUILDER_IMAGE
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        generation="$$(cat /workspace/private/cost-generation)"
+        gcloud storage cp --if-generation-match="$$generation" \
+          /workspace/private/cost-reserved.json "gs://$_STATE_BUCKET/cost/state.json"
+
+  - id: materialize-version-pinned-signing-bundle
+    name: $_ANDROID_BUILDER_IMAGE
+    entrypoint: bash
+    secretEnv:
+      - NEWSHUB_APP_SIGNING_BUNDLE
+    args:
+      - -ceu
+      - |
+        set +x
+        printf '%s' "$$NEWSHUB_APP_SIGNING_BUNDLE" | python3 scripts/release/prepare_release.py \
+          --tag "$TAG_NAME" \
+          --commit-sha "$COMMIT_SHA" \
+          --source-root /workspace \
+          --private-dir /workspace/private/signing \
+          --metadata-output /workspace/private/release-metadata.json \
+          --expected-certificate-sha256 "$_NEWSHUB_APP_SIGNING_CERT_SHA256"
+
+  - id: build-signed-release-apk
+    name: $_ANDROID_BUILDER_IMAGE
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        set +x
+        version_name="$$(python3 -c 'import json; print(json.load(open("/workspace/private/release-metadata.json"))["versionName"])')"
+        version_code="$$(python3 -c 'import json; print(json.load(open("/workspace/private/release-metadata.json"))["versionCode"])')"
+        export KEYSTORE_PATH=/workspace/private/signing/keystore.jks
+        export KEYSTORE_PASSWORD="$$(cat /workspace/private/signing/storePassword)"
+        export KEY_ALIAS="$$(cat /workspace/private/signing/keyAlias)"
+        export KEY_PASSWORD="$$(cat /workspace/private/signing/keyPassword)"
+        ./gradlew --no-daemon --stacktrace assembleRelease \
+          -PAPP_VERSION_NAME="$$version_name" \
+          -PAPP_VERSION_CODE="$$version_code"
+
+  - id: verify-version-certificate-and-digest
+    name: $_ANDROID_BUILDER_IMAGE
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        install -d -m 755 /workspace/release-output
+        apk="/workspace/release-output/newshub-$TAG_NAME.apk"
+        mv app/build/outputs/apk/release/app-release.apk "$$apk"
+        python3 scripts/release/verify_release_apk.py \
+          --apk "$$apk" \
+          --metadata /workspace/private/release-metadata.json \
+          --aapt /opt/android-sdk/build-tools/35.0.0/aapt \
+          --apksigner /opt/android-sdk/build-tools/35.0.0/apksigner \
+          --output /workspace/release-output/verification.json
+
+  - id: create-repository-restricted-github-token
+    name: $_OPS_BUILDER_IMAGE
+    entrypoint: bash
+    secretEnv:
+      - OPS_GITHUB_BUNDLE
+    args:
+      - -ceu
+      - |
+        set +x
+        install -d -m 700 /workspace/private/github
+        printf '%s' "$$OPS_GITHUB_BUNDLE" | python3 scripts/release/prepare_github_token.py \
+          --app-id "$_OPS_GITHUB_APP_ID" \
+          --installation-id "$_OPS_GITHUB_APP_INSTALLATION_ID" \
+          --private-dir /workspace/private/github \
+          --token-output /workspace/private/github/token
+
+  - id: publish-exact-github-release
+    name: $_OPS_BUILDER_IMAGE
+    entrypoint: python3
+    args:
+      - scripts/release/publish_github_release.py
+      - --token-file
+      - /workspace/private/github/token
+      - --apk
+      - /workspace/release-output/newshub-$TAG_NAME.apk
+      - --verification
+      - /workspace/release-output/verification.json
+
+  - id: cleanup-private-material
+    name: $_OPS_BUILDER_IMAGE
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        find /workspace/private -type f -exec shred -u {} + 2>/dev/null || true
+        rm -rf /workspace/private
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/$_SECRET_PREFIX-newshub-app-signing-bundle/versions/$_NEWSHUB_APP_SIGNING_BUNDLE_VERSION
+      env: NEWSHUB_APP_SIGNING_BUNDLE
+    - versionName: projects/$PROJECT_ID/secrets/$_SECRET_PREFIX-ops-bundle/versions/$_OPS_BUNDLE_VERSION
+      env: OPS_GITHUB_BUNDLE

@@ -1,0 +1,362 @@
+package tw.kevinzhang.extension_loader
+
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.IBinder
+import android.os.ParcelFileDescriptor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeout
+import tw.kevinzhang.extension_api.AuthSpec
+import tw.kevinzhang.extension_api.AuthenticatedSource
+import tw.kevinzhang.extension_api.BoardWebUrlRequest
+import tw.kevinzhang.extension_api.CommentPageRequest
+import tw.kevinzhang.extension_api.ExtensionProtocol
+import tw.kevinzhang.extension_api.ExtensionWireJson
+import tw.kevinzhang.extension_api.HostResourceProvider
+import tw.kevinzhang.extension_api.IHostBroker
+import tw.kevinzhang.extension_api.ISourceCallback
+import tw.kevinzhang.extension_api.ISourceService
+import tw.kevinzhang.extension_api.PipePayload
+import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.SourceFailure
+import tw.kevinzhang.extension_api.SourceFailureCode
+import tw.kevinzhang.extension_api.SourceFailureException
+import tw.kevinzhang.extension_api.SourceFailureWire
+import tw.kevinzhang.extension_api.SourceIdentity
+import tw.kevinzhang.extension_api.SourceNetworkPolicy
+import tw.kevinzhang.extension_api.SourceRuntimeDescriptor
+import tw.kevinzhang.extension_api.ThreadPageRequest
+import tw.kevinzhang.extension_api.ThreadSummariesRequest
+import tw.kevinzhang.extension_api.WebUrlRequest
+import tw.kevinzhang.extension_api.WebLoginUserAgentProvider
+import tw.kevinzhang.extension_api.model.Board
+import tw.kevinzhang.extension_api.model.BoardCategory
+import tw.kevinzhang.extension_api.model.BoardPage
+import tw.kevinzhang.extension_api.model.BoardPageRequest
+import tw.kevinzhang.extension_api.model.CommentPage
+import tw.kevinzhang.extension_api.model.Post
+import tw.kevinzhang.extension_api.model.Comment
+import tw.kevinzhang.extension_api.model.Paragraph
+import tw.kevinzhang.extension_api.model.Thread
+import tw.kevinzhang.extension_api.model.ThreadPage
+import tw.kevinzhang.extension_api.model.ThreadSummary
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
+internal class RemoteSourceConnection(
+    context: Context,
+    descriptor: ExtensionDescriptor,
+    private val onUnexpectedDisconnect: () -> Unit,
+) : ServiceConnection {
+    private val appContext = context.applicationContext
+    private val component = ComponentName(descriptor.packageName, descriptor.serviceClassName)
+    private val service = MutableStateFlow<ISourceService?>(null)
+    private var bound = false
+    private val requestIds = AtomicLong()
+
+    fun bind(): Boolean {
+        if (bound) return true
+        bound = appContext.bindService(
+            Intent(ExtensionProtocol.SERVICE_ACTION).setComponent(component),
+            this,
+            Context.BIND_AUTO_CREATE,
+        )
+        return bound
+    }
+
+    suspend fun awaitService(): ISourceService = withTimeout(ExtensionProtocol.REQUEST_TIMEOUT_MS) {
+        service.filterNotNull().first()
+    }
+
+    suspend inline fun <reified Request, reified Response> call(
+        operation: Int,
+        request: Request,
+        broker: IHostBroker,
+        maxResultBytes: Int = ExtensionProtocol.MAX_RESULT_BYTES,
+    ): Response {
+        val requestId = requestIds.incrementAndGet()
+        val remoteService = awaitService()
+        val requestJson = ExtensionWireJson.encode(request)
+        require(requestJson.toByteArray(Charsets.UTF_8).size <= ExtensionProtocol.MAX_CONTROL_BYTES) {
+            "Extension request is too large"
+        }
+        val pipe = PipePayload.writeUtf8(requestJson)
+        return try {
+            try {
+                withTimeout(ExtensionProtocol.REQUEST_TIMEOUT_MS) {
+                    suspendCancellableCoroutine { continuation ->
+                        val callback = object : ISourceCallback.Stub() {
+                            override fun onResult(id: Long, status: Int, payload: ParcelFileDescriptor) {
+                                if (id != requestId || !continuation.isActive) {
+                                    runCatching { payload.close() }
+                                    return
+                                }
+                                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                                    runCatching {
+                                        val result = PipePayload.readUtf8(payload, maxResultBytes)
+                                        when (status) {
+                                            ExtensionProtocol.STATUS_OK -> ExtensionWireJson.decode<Response>(result)
+                                            ExtensionProtocol.STATUS_SOURCE_FAILURE ->
+                                                throw SourceFailureException(SourceFailureWire.decode(result))
+                                            ExtensionProtocol.STATUS_PAYLOAD_TOO_LARGE -> throw SourceFailureException(
+                                                SourceFailure(SourceFailureCode.PAYLOAD_TOO_LARGE),
+                                            )
+                                            ExtensionProtocol.STATUS_CANCELLED ->
+                                                throw kotlinx.coroutines.CancellationException("cancelled")
+                                            ExtensionProtocol.STATUS_INVALID_REQUEST -> throw SourceFailureException(
+                                                SourceFailure(SourceFailureCode.INVALID_REQUEST),
+                                            )
+                                            else -> throw SourceFailureException(
+                                                SourceFailure(SourceFailureCode.EXTENSION_RUNTIME),
+                                            )
+                                        }
+                                    }.onSuccess(continuation::resume)
+                                        .onFailure(continuation::resumeWithException)
+                                }
+                            }
+                        }
+                        continuation.invokeOnCancellation { runCatching { remoteService.cancel(requestId) } }
+                        runCatching { remoteService.execute(requestId, operation, pipe, callback, broker) }
+                            .onFailure(continuation::resumeWithException)
+                    }
+                }
+            } catch (_: TimeoutCancellationException) {
+                throw SourceFailureException(
+                    SourceFailure(
+                        SourceFailureCode.TIMED_OUT,
+                        operation = remoteOperationName(operation),
+                        retryable = true,
+                    ),
+                )
+            }
+        } finally {
+            runCatching { pipe.close() }
+        }
+    }
+
+    suspend fun runtimeDescriptor(broker: IHostBroker): SourceRuntimeDescriptor =
+        call<Unit, SourceRuntimeDescriptor>(
+            ExtensionProtocol.OP_RUNTIME_DESCRIPTOR,
+            Unit,
+            broker,
+            ExtensionProtocol.MAX_DESCRIPTOR_BYTES,
+        )
+
+    fun close() {
+        service.value?.close()
+        service.value = null
+        if (bound) runCatching { appContext.unbindService(this) }
+        bound = false
+    }
+
+    override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+        service.value = ISourceService.Stub.asInterface(binder)
+    }
+
+    override fun onServiceDisconnected(name: ComponentName) {
+        service.value = null
+        onUnexpectedDisconnect()
+    }
+
+    override fun onBindingDied(name: ComponentName) {
+        service.value = null
+        bound = false
+        onUnexpectedDisconnect()
+    }
+
+    override fun onNullBinding(name: ComponentName) {
+        service.value = null
+        onUnexpectedDisconnect()
+    }
+}
+
+internal open class RemoteSource(
+    protected val descriptor: ExtensionDescriptor,
+    protected val runtimeDescriptor: ValidatedSourceRuntimeDescriptor,
+    final override val sourceIdentity: SourceIdentity,
+    private val policy: SourceNetworkPolicy,
+    private val connection: RemoteSourceConnection,
+    private val broker: IHostBroker,
+    private val resourceProvider: HostResourceProvider,
+) : Source {
+    private val networkPolicy = policy
+
+    final override val id: String = descriptor.sourceId
+    final override val name: String = descriptor.name
+    final override val language: String = descriptor.lang
+    final override val version: Int = runtimeDescriptor.sourceVersion
+    final override val iconUrl: String? = runtimeDescriptor.iconUrl?.let(::resourceModel)
+    final override val supportsCommentPagination: Boolean = runtimeDescriptor.supportsCommentPagination
+    final override val alwaysUseRawImage: Boolean = runtimeDescriptor.alwaysUseRawImage
+    final override val needsLogin: Boolean = runtimeDescriptor.needsLogin
+
+    override suspend fun getBoardCategories(): List<BoardCategory> =
+        call(ExtensionProtocol.OP_BOARD_CATEGORIES, Unit)
+
+    override suspend fun getBoardPage(request: BoardPageRequest): BoardPage =
+        call(ExtensionProtocol.OP_BOARD_PAGE, request)
+
+    override suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary> =
+        call<ThreadSummariesRequest, List<ThreadSummary>>(
+            ExtensionProtocol.OP_THREAD_SUMMARIES,
+            ThreadSummariesRequest(board, page),
+        )
+            .map(::protect)
+
+    override suspend fun getThread(summary: ThreadSummary): Thread =
+        protect(call<ThreadSummary, Thread>(ExtensionProtocol.OP_THREAD, summary))
+
+    override suspend fun getThreadPage(summary: ThreadSummary, pageToken: String?): ThreadPage =
+        protect(
+            call<ThreadPageRequest, ThreadPage>(
+                ExtensionProtocol.OP_THREAD_PAGE,
+                ThreadPageRequest(summary, pageToken),
+            ),
+        )
+
+    override suspend fun getComments(post: Post, page: Int): CommentPage =
+        call<CommentPageRequest, CommentPage>(
+            ExtensionProtocol.OP_COMMENTS,
+            CommentPageRequest(post, page),
+        ).let { pageResult ->
+            pageResult.copy(comments = pageResult.comments.map(::protect))
+        }
+
+    override suspend fun getWebUrl(summary: ThreadSummary): String? =
+        call<WebUrlRequest, String?>(ExtensionProtocol.OP_WEB_URL, WebUrlRequest(summary))
+            ?.let(::linkModel)
+
+    override suspend fun getBoardWebUrl(board: Board): String? =
+        call<BoardWebUrlRequest, String?>(ExtensionProtocol.OP_BOARD_WEB_URL, BoardWebUrlRequest(board))
+            ?.let(::linkModel)
+
+    protected suspend inline fun <reified Request, reified Response> call(
+        operation: Int,
+        request: Request,
+    ): Response = connection.call(operation, request, broker)
+
+    private fun protect(thread: Thread): Thread = thread.copy(
+        url = thread.url?.let(::linkModel),
+        posts = thread.posts.map(::protect),
+    )
+
+    private fun protect(page: ThreadPage): ThreadPage = page.copy(
+        posts = page.posts.map(::protect),
+        metadata = page.metadata?.let { metadata ->
+            metadata.copy(url = metadata.url?.let(::linkModel))
+        },
+    )
+
+    private fun protect(summary: ThreadSummary): ThreadSummary = summary.copy(
+        rawImage = summary.rawImage?.let(::resourceModel),
+        thumbnail = summary.thumbnail?.let(::resourceModel),
+        previewContent = summary.previewContent.map(::protect),
+        sourceIconUrl = summary.sourceIconUrl?.let(::resourceModel),
+    )
+
+    private fun protect(post: Post): Post = post.copy(
+        thumbnail = post.thumbnail?.let(::resourceModel),
+        content = post.content.map(::protect),
+        comments = post.comments.map(::protect),
+        rawHtml = null,
+        sourceIconUrl = post.sourceIconUrl?.let(::resourceModel),
+    )
+
+    private fun protect(comment: Comment): Comment = comment.copy(content = comment.content.map(::protect))
+
+    private fun protect(paragraph: Paragraph): Paragraph = when (paragraph) {
+        is Paragraph.ImageInfo -> paragraph.copy(
+            thumb = paragraph.thumb?.let(::resourceModel),
+            raw = resourceModel(paragraph.raw),
+        )
+        is Paragraph.VideoInfo -> paragraph.copy(url = resourceModel(paragraph.url))
+        is Paragraph.RichText -> paragraph.copy(
+            runs = paragraph.runs.map { run ->
+                run.copy(linkUrl = run.linkUrl?.let(::linkModel))
+            },
+        )
+        is Paragraph.Link -> Paragraph.Link(linkModel(paragraph.content))
+        else -> paragraph
+    }
+
+    private fun resourceModel(untrustedUrl: String): String = runCatching {
+        resourceProvider.issueResource(
+            sourceIdentity,
+            networkPolicy,
+            untrustedUrl,
+        ).asModel()
+    }.getOrDefault("newshub-blocked://resource")
+
+    private fun linkModel(untrustedUrl: String): String = runCatching {
+        resourceProvider.issueExternalLink(sourceIdentity, networkPolicy, untrustedUrl).asModel()
+    }.getOrDefault("newshub-blocked://link")
+}
+
+private fun remoteOperationName(operation: Int): String = when (operation) {
+    ExtensionProtocol.OP_BOARD_CATEGORIES -> "board_categories"
+    ExtensionProtocol.OP_BOARD_PAGE -> "board_page"
+    ExtensionProtocol.OP_THREAD_SUMMARIES -> "thread_summaries"
+    ExtensionProtocol.OP_THREAD -> "thread"
+    ExtensionProtocol.OP_THREAD_PAGE -> "thread_page"
+    ExtensionProtocol.OP_COMMENTS -> "comments"
+    ExtensionProtocol.OP_WEB_URL -> "web_url"
+    ExtensionProtocol.OP_VALIDATE_SESSION -> "validate_session"
+    ExtensionProtocol.OP_BOARD_WEB_URL -> "board_web_url"
+    ExtensionProtocol.OP_RUNTIME_DESCRIPTOR -> "runtime_descriptor"
+    else -> "unknown"
+}
+
+internal open class RemoteAuthenticatedSource(
+    descriptor: ExtensionDescriptor,
+    runtimeDescriptor: ValidatedSourceRuntimeDescriptor,
+    sourceIdentity: SourceIdentity,
+    policy: SourceNetworkPolicy,
+    connection: RemoteSourceConnection,
+    broker: IHostBroker,
+    resourceProvider: HostResourceProvider,
+) : RemoteSource(
+    descriptor,
+    runtimeDescriptor,
+    sourceIdentity,
+    policy,
+    connection,
+    broker,
+    resourceProvider,
+), AuthenticatedSource {
+    final override val authSpec: AuthSpec = requireNotNull(runtimeDescriptor.authSpec)
+
+    override suspend fun validateSession(): Boolean =
+        call<Unit, Boolean>(ExtensionProtocol.OP_VALIDATE_SESSION, Unit)
+}
+
+internal class RemoteAuthenticatedSourceWithUserAgent(
+    descriptor: ExtensionDescriptor,
+    runtimeDescriptor: ValidatedSourceRuntimeDescriptor,
+    sourceIdentity: SourceIdentity,
+    policy: SourceNetworkPolicy,
+    connection: RemoteSourceConnection,
+    broker: IHostBroker,
+    resourceProvider: HostResourceProvider,
+) : RemoteAuthenticatedSource(
+    descriptor,
+    runtimeDescriptor,
+    sourceIdentity,
+    policy,
+    connection,
+    broker,
+    resourceProvider,
+), WebLoginUserAgentProvider {
+    override val webLoginUserAgent: String = requireNotNull(runtimeDescriptor.webLoginUserAgent)
+}

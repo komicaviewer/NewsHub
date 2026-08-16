@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://newshub.example/schemas/repository-config.schema.json",
+  "title": "NewsHub extension repository config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "mode", "repository", "paths", "versions", "expiryDays", "roles", "extensions"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "mode": { "enum": ["ephemeral", "production"] },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description", "baseUrl", "iconUrl", "website"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "baseUrl": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "iconUrl": { "type": ["string", "null"], "format": "uri" },
+        "website": { "type": ["string", "null"], "format": "uri" }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keyDirectory", "publicDirectory"],
+      "properties": {
+        "keyDirectory": { "type": "string", "minLength": 1 },
+        "publicDirectory": { "type": "string", "minLength": 1 }
+      }
+    },
+    "versions": { "$ref": "#/$defs/roleIntegers" },
+    "expiryDays": { "$ref": "#/$defs/roleIntegers" },
+    "roles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "targets", "snapshot", "timestamp"],
+      "properties": {
+        "root": { "$ref": "#/$defs/role" },
+        "targets": { "$ref": "#/$defs/role" },
+        "snapshot": { "$ref": "#/$defs/role" },
+        "timestamp": { "$ref": "#/$defs/role" }
+      }
+    },
+    "extensions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/extension" }
+    }
+  },
+  "$defs": {
+    "positiveInteger": { "type": "integer", "minimum": 1 },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "roleIntegers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "targets", "snapshot", "timestamp"],
+      "properties": {
+        "root": { "$ref": "#/$defs/positiveInteger" },
+        "targets": { "$ref": "#/$defs/positiveInteger" },
+        "snapshot": { "$ref": "#/$defs/positiveInteger" },
+        "timestamp": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keyNames", "threshold"],
+      "properties": {
+        "keyNames": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$" } },
+        "threshold": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "acceptedArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["versionCode", "length", "sha256"],
+      "properties": {
+        "versionCode": { "$ref": "#/$defs/positiveInteger" },
+        "length": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "lang", "baseUrl", "service", "protocol", "networkPolicy"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,160}$" },
+        "name": { "type": "string", "minLength": 1 },
+        "lang": { "type": "string", "minLength": 1 },
+        "baseUrl": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "service": { "type": "string", "minLength": 1 },
+        "protocol": { "const": 2 },
+        "networkPolicy": { "$ref": "network-policy-v2.schema.json" }
+      }
+    },
+    "extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["apk", "name", "lang", "apkSignerPins", "lineageRootSha256", "sources"],
+      "properties": {
+        "apk": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "lang": { "type": "string", "minLength": 1 },
+        "apkSignerPins": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/sha256" } },
+        "lineageRootSha256": { "$ref": "#/$defs/sha256" },
+        "sources": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/source" } },
+        "acceptedArtifacts": { "type": "array", "maxItems": 2, "uniqueItems": true, "items": { "$ref": "#/$defs/acceptedArtifact" } }
+      }
+    }
+  }
+}

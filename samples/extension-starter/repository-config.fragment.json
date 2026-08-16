@@ -1,0 +1,37 @@
+{
+  "apk": "extension/build/outputs/apk/release/extension-release.apk",
+  "name": "Example NewsHub extension",
+  "lang": "en",
+  "apkSignerPins": ["replace_with_lowercase_apk_signer_sha256"],
+  "lineageRootSha256": "replace_with_lowercase_lineage_root_sha256",
+  "sources": [
+    {
+      "id": "com.example.news",
+      "name": "Example News",
+      "lang": "en",
+      "baseUrl": "https://api.example.com",
+      "service": "com.example.newshub.extension.ExampleExtensionService",
+      "protocol": 2,
+      "networkPolicy": {
+        "schemaVersion": 2,
+        "request": {
+          "rules": [
+            {
+              "exactHosts": ["api.example.com"],
+              "operation": {
+                "name": "source_read",
+                "methods": ["GET"],
+                "pathPrefixes": ["/v1/"],
+                "credentialed": false
+              }
+            }
+          ]
+        },
+        "resource": { "exactHosts": [] },
+        "external": { "exactHosts": ["www.example.com"] },
+        "auth": { "exactHosts": [] },
+        "namedCapabilities": ["external_link"]
+      }
+    }
+  ]
+}

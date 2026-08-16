@@ -127,7 +127,7 @@ private fun ThreadMetadata(
     ) {
         if (sourceIconUrl != null) {
             AsyncImage(
-                model = sourceIconUrl,
+                model = resourceModelOrNull(sourceIconUrl),
                 contentDescription = sourceName?.let { "$it 圖示" },
                 modifier = Modifier
                     .size(16.dp)
@@ -236,7 +236,7 @@ private fun CompactThreadContent(
         }
         content.imageUrl?.let { imageUrl ->
             AsyncImage(
-                model = imageUrl,
+                model = resourceModelOrNull(imageUrl),
                 contentDescription = "貼文附圖，點擊可查看完整內容",
                 modifier = Modifier
                     .width(112.dp)
@@ -256,7 +256,7 @@ private fun MediaFirstThreadContent(
 ) {
     content.imageUrl?.let { imageUrl ->
         AsyncImage(
-            model = imageUrl,
+            model = resourceModelOrNull(imageUrl),
             contentDescription = "貼文附圖，點擊可查看完整內容",
             modifier = Modifier
                 .fillMaxWidth()

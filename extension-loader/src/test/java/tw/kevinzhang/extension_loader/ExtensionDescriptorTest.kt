@@ -1,168 +1,147 @@
 package tw.kevinzhang.extension_loader
 
+import android.content.pm.ServiceInfo
+import android.os.Bundle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import tw.kevinzhang.extension_api.Source
-import tw.kevinzhang.extension_api.model.Board
-import tw.kevinzhang.extension_api.model.BoardPage
-import tw.kevinzhang.extension_api.model.BoardPageRequest
-import tw.kevinzhang.extension_api.model.Thread
-import tw.kevinzhang.extension_api.model.ThreadSummary
+import tw.kevinzhang.extension_api.ExtensionProtocol
+import tw.kevinzhang.extension_api.NamedHostCapabilities
+import tw.kevinzhang.extension_api.NetworkOperationPolicy
+import tw.kevinzhang.extension_api.NetworkOperations
+import tw.kevinzhang.extension_api.SourceNetworkPolicy
+import tw.kevinzhang.extension_api.sha256
 
 @RunWith(RobolectricTestRunner::class)
 class ExtensionDescriptorTest {
+    @Test
+    fun `accepts one isolated service with current metadata`() {
+        val descriptor = ExtensionDescriptorValidator.fromServiceInfo(validService())
+        assertEquals("tw.kevinzhang.newshub.extension.hackernews", descriptor.packageName)
+        assertEquals("tw.kevinzhang.newshub.extension.hackernews", descriptor.sourceId)
+    }
 
     @Test
-    fun `parses a version 1 bundle registry`() {
-        val descriptor = ExtensionDescriptorJson.parse(
-            """
-            {
-              "schemaVersion": 1,
-              "name": "NewsHub: Komica",
-              "sources": [{
-                "className": "example.TwocatSource",
-                "id": "tw.example.twocat",
-                "name": "Twocat",
-                "lang": "zh-TW",
-                "baseUrl": "https://2cat.org"
-              }]
-            }
-            """.trimIndent(),
+    fun `rejects a service that can run with extension app permissions`() {
+        assertInvalid(validService().apply { flags = flags and ServiceInfo.FLAG_ISOLATED_PROCESS.inv() })
+    }
+
+    @Test
+    fun `rejects isolated service process outside its package private namespace`() {
+        assertInvalid(validService().apply { processName = ":shared" })
+        assertInvalid(validService().apply { processName = "attacker.package:shared" })
+    }
+
+    @Test
+    fun `rejects service without host signature bind permission`() {
+        assertInvalid(validService().apply { permission = null })
+    }
+
+    @Test
+    fun `rejects legacy or future protocol instead of negotiating fallback`() {
+        assertInvalid(validService().apply { metaData.putInt(ExtensionProtocol.META_PROTOCOL, 0) })
+        assertInvalid(validService().apply { metaData.putInt(ExtensionProtocol.META_PROTOCOL, 3) })
+    }
+
+    @Test
+    fun `protocol v2 rejects every legacy manifest login field`() {
+        listOf(
+            ExtensionProtocol.META_NEEDS_LOGIN to true,
+            ExtensionProtocol.META_LOGIN_URL to "https://login.example.com",
+            ExtensionProtocol.META_LOGIN_HOSTS to "login.example.com",
+        ).forEach { (key, value) ->
+            assertInvalid(validService().apply {
+                when (value) {
+                    is Boolean -> metaData.putBoolean(key, value)
+                    is String -> metaData.putString(key, value)
+                }
+            })
+        }
+    }
+
+    @Test
+    fun `signed service metadata must match every runtime descriptor field`() {
+        val descriptor = ExtensionDescriptorValidator.fromServiceInfo(validService())
+        val expected = ExpectedSourceService(
+            serviceClassName = descriptor.serviceClassName,
+            name = descriptor.name,
+            lang = descriptor.lang,
+            baseUrl = descriptor.baseUrl,
+            protocol = descriptor.protocol,
+            policyHash = "a".repeat(64),
         )
-
-        assertEquals("NewsHub: Komica", descriptor.name)
-        assertEquals("example.TwocatSource", descriptor.sources.single().className)
-        assertEquals(1, descriptor.requiredApiVersion)
+        verifyServiceDescriptor(descriptor, expected)
+        listOf(
+            expected.copy(serviceClassName = "attacker.OtherService"),
+            expected.copy(name = "Lookalike"),
+            expected.copy(lang = "zh-TW"),
+            expected.copy(baseUrl = "https://attacker.example"),
+            expected.copy(protocol = expected.protocol + 1),
+        ).forEach { mismatch ->
+            assertInvalidDescriptor { verifyServiceDescriptor(descriptor, mismatch) }
+        }
     }
 
     @Test
-    fun `parses a version 2 bundle registry with API requirement`() {
-        val descriptor = ExtensionDescriptorJson.parse(
-            """
-            {
-              "schemaVersion": 2,
-              "requiredApiVersion": 2,
-              "name": "NewsHub: PTT",
-              "sources": [{
-                "className": "example.PttSource",
-                "id": "tw.example.ptt",
-                "name": "PTT",
-                "lang": "zh-TW",
-                "baseUrl": "https://www.ptt.cc"
-              }]
-            }
-            """.trimIndent(),
-        )
-
-        assertEquals(2, descriptor.schemaVersion)
-        assertEquals(2, descriptor.requiredApiVersion)
-    }
-
-    @Test
-    fun `rejects empty source list`() {
-        assertInvalid("""{"schemaVersion":1,"name":"Bundle","sources":[]}""")
-    }
-
-    @Test
-    fun `rejects an extension that requires a newer host API before class loading`() {
-        assertInvalid(
-            """{"schemaVersion":2,"requiredApiVersion":3,"name":"Bundle","sources":[
-                {"className":"example.Future","id":"tw.example.future","name":"Future","lang":"zh-TW","baseUrl":"https://future.example"}
-            ]}""".trimIndent(),
-        )
-    }
-
-    @Test
-    fun `rejects a future descriptor schema`() {
-        assertInvalid(
-            """{"schemaVersion":3,"requiredApiVersion":2,"name":"Bundle","sources":[
-                {"className":"example.Future","id":"tw.example.future","name":"Future","lang":"zh-TW","baseUrl":"https://future.example"}
-            ]}""".trimIndent(),
-        )
-    }
-
-    @Test
-    fun `schema version 1 cannot claim a newer API contract`() {
-        try {
-            ExtensionDescriptorValidator.validate(
-                ExtensionDescriptor(
-                    schemaVersion = 1,
-                    requiredApiVersion = 2,
-                    name = "Legacy bundle",
-                    sources = listOf(
-                        SourceDescriptor(
-                            className = "example.Legacy",
-                            id = "tw.example.legacy",
-                            name = "Legacy",
-                            lang = "zh-TW",
-                            baseUrl = "https://legacy.example",
-                        ),
-                    ),
+    fun `signed policy hash mismatch fails closed`() {
+        val policy = SourceNetworkPolicy(
+            exactHosts = setOf("news.ycombinator.com"),
+            operations = mapOf(
+                NetworkOperations.SOURCE_READ to NetworkOperationPolicy(
+                    name = NetworkOperations.SOURCE_READ,
+                    methods = setOf("GET", "HEAD"),
+                    pathPrefixes = setOf("/"),
+                    credentialed = true,
                 ),
-            )
-            fail("Expected schema version 1 API mismatch")
-        } catch (_: IllegalArgumentException) {
-            // Schema v1 hosts only know API v1 and must never accept newer contracts.
-        }
-    }
-
-    @Test
-    fun `rejects duplicate source ids before loading classes`() {
-        assertInvalid(
-            """
-            {"schemaVersion":1,"name":"Bundle","sources":[
-              {"className":"example.One","id":"tw.example.same","name":"One","lang":"zh-TW","baseUrl":"https://one.example"},
-              {"className":"example.Two","id":"tw.example.same","name":"Two","lang":"zh-TW","baseUrl":"https://two.example"}
-            ]}
-            """.trimIndent(),
-        )
-    }
-
-    @Test
-    fun `rejects source runtime metadata that differs from registry`() {
-        val registrySource = SourceDescriptor(
-            className = "example.Source",
-            id = "tw.example.source",
-            name = "Registry name",
-            lang = "zh-TW",
-            baseUrl = "https://example.test",
+            ),
+            namedCapabilities = setOf(
+                NamedHostCapabilities.RESOURCE_READ,
+                NamedHostCapabilities.EXTERNAL_LINK,
+            ),
         )
 
-        try {
-            ExtensionDescriptorValidator.validateRuntimeSource(registrySource, fakeSource(name = "Runtime name"))
-            fail("Expected source metadata mismatch")
-        } catch (_: IllegalArgumentException) {
-            // Expected: runtime source metadata must agree with the signed APK registry.
+        verifyExpectedNetworkPolicyHash(
+            policy.sha256(),
+            policy,
+        )
+        assertInvalidDescriptor {
+            verifyExpectedNetworkPolicyHash("0".repeat(64), policy)
         }
     }
 
-    private fun assertInvalid(json: String) {
-        try {
-            ExtensionDescriptorJson.parse(json)
-            fail("Expected invalid extension descriptor")
-        } catch (_: IllegalArgumentException) {
-            // Expected.
+    private fun validService() = ServiceInfo().apply {
+        packageName = "tw.kevinzhang.newshub.extension.hackernews"
+        name = "$packageName.HackerNewsService"
+        processName = "$packageName:hackernews"
+        exported = true
+        permission = ExtensionProtocol.BIND_PERMISSION
+        flags = ServiceInfo.FLAG_ISOLATED_PROCESS
+        metaData = Bundle().apply {
+            putInt(ExtensionProtocol.META_PROTOCOL, ExtensionProtocol.VERSION)
+            putString(ExtensionProtocol.META_SOURCE_ID, "tw.kevinzhang.newshub.extension.hackernews")
+            putString(ExtensionProtocol.META_SOURCE_NAME, "Hacker News")
+            putString(ExtensionProtocol.META_SOURCE_LANG, "en")
+            putString(ExtensionProtocol.META_SOURCE_BASE_URL, "https://news.ycombinator.com")
         }
     }
 
-    private fun fakeSource(
-        id: String = "tw.example.source",
-        name: String = "Source",
-        language: String = "zh-TW",
-    ) = object : Source {
-        override val id = id
-        override val name = name
-        override val language = language
-        override val version = 1
-        override val iconUrl: String? = null
-        override val supportsCommentPagination = false
-        override val alwaysUseRawImage = false
-        override val needsLogin = false
-        override suspend fun getBoardPage(request: BoardPageRequest) = BoardPage(emptyList())
-        override suspend fun getThreadSummaries(board: Board, page: Int) = emptyList<ThreadSummary>()
-        override suspend fun getThread(summary: ThreadSummary) = Thread("", null, null, emptyList())
+    private fun assertInvalid(service: ServiceInfo) {
+        try {
+            ExtensionDescriptorValidator.fromServiceInfo(service)
+            fail("Expected invalid Source service")
+        } catch (_: IllegalArgumentException) {
+            // expected
+        }
+    }
+
+    private fun assertInvalidDescriptor(block: () -> Unit) {
+        try {
+            block()
+            fail("Expected signed descriptor mismatch")
+        } catch (_: IllegalArgumentException) {
+            // expected
+        }
     }
 }

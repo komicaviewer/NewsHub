@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tw.kevinzhang.extension_api.model.ThreadSummary
+import tw.kevinzhang.data.domain.SourceResolution
 import tw.kevinzhang.newshub.ui.component.BodySmallText
 import tw.kevinzhang.newshub.ui.component.ThreadSummaryCard
 import tw.kevinzhang.newshub.ui.component.timelineCardMetadata
@@ -42,7 +43,7 @@ import tw.kevinzhang.newshub.ui.component.timelineCardMetadata
 @Composable
 fun ReadingHistoryScreen(
     onNavigateUp: () -> Unit,
-    onThreadClick: (ThreadSummary) -> Unit,
+    onThreadClick: (sourceKey: String, ThreadSummary) -> Unit,
     viewModel: ReadingHistoryViewModel = hiltViewModel(),
 ) {
     val history by viewModel.history.collectAsStateWithLifecycle()
@@ -117,10 +118,11 @@ fun ReadingHistoryScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(history, key = { "${it.sourceId}:${it.threadId}" }) { entity ->
-                        val summary = entity.toThreadSummary()
+                    items(history, key = { "${it.history.sourceKey}:${it.history.threadId}" }) { record ->
+                        val entity = record.history
+                        val summary = record.toThreadSummary()
                         val metadata = timelineCardMetadata(
-                            sourceId = entity.sourceId,
+                            sourceId = record.sourceIdentity.sourceId,
                             sourceName = entity.sourceName,
                             boardName = entity.boardName,
                             rawImageSourceIds = rawImageSourceIds,
@@ -132,7 +134,11 @@ fun ReadingHistoryScreen(
                             sourceName = metadata.sourceName,
                             boardName = metadata.boardName,
                             displayMode = timelineDisplayMode,
-                            onClick = { onThreadClick(summary) },
+                            onClick = {
+                                if (record.sourceIdentity.resolution == SourceResolution.OFFICIAL) {
+                                    onThreadClick(entity.sourceKey, summary)
+                                }
+                            },
                         )
                     }
                     item {

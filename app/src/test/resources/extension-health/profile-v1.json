@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "profileId": "unit-v1",
+  "operationTimeoutMs": 5000,
+  "runTimeoutMs": 30000,
+  "maxRequests": 3,
+  "sources": [
+    {
+      "sourceId": "test.source",
+      "packageName": "test.extension",
+      "allowedHosts": ["example.com"]
+    }
+  ]
+}

@@ -10,9 +10,9 @@ import kotlinx.coroutines.flow.Flow
 interface PostReadDao {
     @Query(
         "SELECT postId FROM post_read_states " +
-            "WHERE sourceId = :sourceId AND threadId = :threadId",
+            "WHERE sourceKey = :sourceKey AND threadId = :threadId",
     )
-    fun observeReadPostIds(sourceId: String, threadId: String): Flow<List<String>>
+    fun observeReadPostIds(sourceKey: String, threadId: String): Flow<List<String>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: PostReadEntity)

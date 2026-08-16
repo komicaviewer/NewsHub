@@ -10,11 +10,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tw.kevinzhang.data.CollectionRepository
+import tw.kevinzhang.data.SourceIdentityRepository
 import javax.inject.Inject
 
 @HiltViewModel
 class CreateCollectionViewModel @Inject constructor(
     private val collectionRepo: CollectionRepository,
+    private val sourceIdentityRepository: SourceIdentityRepository,
 ) : ViewModel() {
 
     private val _name = MutableStateFlow("")
@@ -50,9 +52,10 @@ class CreateCollectionViewModel @Inject constructor(
                 emoji = _emoji.value,
             )
             _selectedBoards.value.forEach { board ->
+                board.sourceIdentity?.let { sourceIdentityRepository.register(it) }
                 collectionRepo.addBoardSubscription(
                     collectionId = id,
-                    sourceId = board.sourceId,
+                    sourceKey = board.sourceKey,
                     boardUrl = board.boardUrl,
                     boardName = board.boardName,
                 )

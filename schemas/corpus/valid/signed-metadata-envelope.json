@@ -1,0 +1,14 @@
+{
+  "signatures": [
+    {
+      "keyid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sig": "AA=="
+    }
+  ],
+  "signed": {
+    "_type": "targets",
+    "expires": "2030-01-01T00:00:00Z",
+    "specVersion": "1.0",
+    "version": 1
+  }
+}

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -47,11 +48,16 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -78,20 +84,58 @@ import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.newshub.data.TimelineDisplayMode
 import tw.kevinzhang.newshub.ui.component.BodyLargeText
 import tw.kevinzhang.newshub.ui.component.ThreadSummaryCard
+import tw.kevinzhang.newshub.ui.component.resourceModelOrNull
 
 private const val BAR_VISIBILITY_ANIMATION_MILLIS = 220
 private val BarVisibilityScrollThreshold = 12.dp
 
+/**
+ * UI-element state owned by one collection destination. It deliberately keeps scrolling and
+ * bar visibility out of the app shell: a bottom-tab reselect is an immediate action, not state
+ * which can be replayed after navigating back from a thread.
+ */
+@Stable
+class CollectionTimelineState internal constructor(
+    val listState: LazyListState,
+    private val barsVisibleState: MutableState<Boolean>,
+) {
+    var barsVisible by barsVisibleState
+        private set
+
+    fun showBars() {
+        barsVisible = true
+    }
+
+    fun updateBarsVisibility(visible: Boolean) {
+        barsVisible = visible
+    }
+
+    suspend fun scrollToTop() {
+        showBars()
+        listState.animateScrollToItem(0)
+    }
+}
+
+/**
+ * Retains a separate saveable lazy-list position for every collection destination and activity
+ * recreation. The collection key prevents one collection from inheriting another's UI state.
+ */
+@Composable
+fun rememberCollectionTimelineState(collectionId: String): CollectionTimelineState =
+    key(collectionId) {
+        val listState = rememberLazyListState()
+        val barsVisible = rememberSaveable { mutableStateOf(true) }
+        remember(listState, barsVisible) { CollectionTimelineState(listState, barsVisible) }
+    }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CollectionTimelineScreen(
+    timelineState: CollectionTimelineState,
     onOpenDrawer: () -> Unit,
-    onThreadClick: (ThreadSummary, boardName: String?) -> Unit,
+    onThreadClick: (sourceKey: String, ThreadSummary, boardName: String?) -> Unit,
     onNavigateToBoardPicker: () -> Unit,
     onNavigateToBoards: () -> Unit,
-    scrollToTopTrigger: Int = 0,
-    barsVisible: Boolean = true,
-    onBarsVisibilityChange: (Boolean) -> Unit = {},
     bottomOverlayHeight: Dp = 0.dp,
     viewModel: CollectionTimelineViewModel = hiltViewModel(),
 ) {
@@ -110,7 +154,6 @@ fun CollectionTimelineScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val pullToRefreshState = rememberPullToRefreshState()
 
-    val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     var topOverlayHeightPx by remember { mutableIntStateOf(0) }
     val topOverlayHeight = with(LocalDensity.current) { topOverlayHeightPx.toDp() }
@@ -122,44 +165,33 @@ fun CollectionTimelineScreen(
     )
     val activity = LocalContext.current as Activity
     val barsScrollConnection = rememberBarsVisibilityScrollConnection(
-        onBarsVisibilityChange = onBarsVisibilityChange,
+        onBarsVisibilityChange = timelineState::updateBarsVisibility,
     )
     val onSourceSelect = remember(
         coroutineScope,
-        listState,
-        onBarsVisibilityChange,
+        timelineState,
         selectedSourceId,
         viewModel,
     ) {
         { sourceId: String? ->
             if (shouldResetTimelinePosition(selectedSourceId, sourceId)) {
-                onBarsVisibilityChange(true)
+                timelineState.showBars()
                 coroutineScope.launch {
-                    listState.scrollToItem(0)
+                    timelineState.listState.scrollToItem(0)
                 }
                 viewModel.selectSource(sourceId)
             }
         }
     }
 
-    LaunchedEffect(Unit) {
-        onBarsVisibilityChange(true)
-    }
-
-    LaunchedEffect(scrollToTopTrigger) {
-        if (scrollToTopTrigger > 0) {
-            onBarsVisibilityChange(true)
-            listState.animateScrollToItem(0)
-        }
-    }
-
-    LaunchedEffect(listState) {
+    LaunchedEffect(timelineState.listState) {
         snapshotFlow {
-            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+            timelineState.listState.firstVisibleItemIndex == 0 &&
+                timelineState.listState.firstVisibleItemScrollOffset == 0
         }
             .distinctUntilChanged()
             .collect { isAtTop ->
-                if (isAtTop) onBarsVisibilityChange(true)
+                if (isAtTop) timelineState.showBars()
             }
     }
 
@@ -200,7 +232,7 @@ fun CollectionTimelineScreen(
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(
-                    state = listState,
+                    state = timelineState.listState,
                     modifier = Modifier
                         .fillMaxSize()
                         .widthIn(max = 720.dp)
@@ -223,9 +255,11 @@ fun CollectionTimelineScreen(
                         count = items.itemCount,
                     ) { index ->
                         val summary = items[index] ?: return@items
-                        val subscription = subscriptions?.firstOrNull {
-                            it.sourceId == summary.sourceId && it.boardUrl == summary.boardUrl
+                        val subscriptionRecord = subscriptions?.firstOrNull {
+                            it.sourceIdentity.sourceId == summary.sourceId &&
+                                it.subscription.boardUrl == summary.boardUrl
                         }
+                        val subscription = subscriptionRecord?.subscription
                         ThreadSummaryCard(
                             summary = summary,
                             alwaysUseRawImage = summary.sourceId in rawImageSourceIds,
@@ -233,8 +267,12 @@ fun CollectionTimelineScreen(
                             sourceName = sourceNames[summary.sourceId],
                             boardName = subscription?.boardName,
                             displayMode = timelineDisplayMode,
-                            isRead = (summary.sourceId to summary.id) in readThreadKeys,
-                            onClick = { onThreadClick(summary, subscription?.boardName) },
+                            isRead = subscription?.let { (it.sourceKey to summary.id) in readThreadKeys } == true,
+                            onClick = {
+                                subscription?.let {
+                                    onThreadClick(it.sourceKey, summary, it.boardName)
+                                }
+                            },
                         )
                     }
                     when (val appendState = items.loadState.append) {
@@ -342,7 +380,7 @@ fun CollectionTimelineScreen(
         )
 
         AnimatedVisibility(
-            visible = barsVisible,
+            visible = timelineState.barsVisible,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
@@ -445,7 +483,7 @@ private fun SourceFilterRow(
                 leadingIcon = sourceIconUrls[sourceId]?.let { iconUrl ->
                     {
                         AsyncImage(
-                            model = iconUrl,
+                            model = resourceModelOrNull(iconUrl),
                             contentDescription = null,
                             modifier = Modifier
                                 .size(18.dp)

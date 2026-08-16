@@ -46,14 +46,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import coil.request.CachePolicy
-import coil.request.ImageRequest
+import tw.kevinzhang.extension_api.ExternalLinkHandle
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.RichTextColor
 import tw.kevinzhang.extension_api.model.RichTextEmphasis
 import tw.kevinzhang.extension_api.model.RichTextLayout
-import tw.kevinzhang.newshub.ui.component.gallery.YouTubePlayer
-import tw.kevinzhang.newshub.ui.component.gallery.extractYouTubeVideoId
+import tw.kevinzhang.newshub.ui.component.gallery.VideoPlayer
+import tw.kevinzhang.newshub.auth.hostResourceProvider
 
 @Composable
 fun AppText(
@@ -448,8 +447,10 @@ private fun RichTextParagraph(
     layout: RichTextLayout,
     style: TextStyle,
 ) {
-    val uriHandler = LocalUriHandler.current
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val resourceProvider = remember(context) { context.hostResourceProvider() }
     val text = buildAnnotatedString {
         runs.forEach { run ->
             val start = length
@@ -485,7 +486,8 @@ private fun RichTextParagraph(
         onClick = { offset ->
             text.getStringAnnotations(RICH_TEXT_URL_TAG, offset, offset)
                 .firstOrNull()
-                ?.let { annotation -> uriHandler.openUri(annotation.item) }
+                ?.item
+                ?.let { openExternalLink(it, resourceProvider::consumeExternalLink, uriHandler::openUri) }
         },
     )
 }
@@ -624,26 +626,34 @@ private fun ReplyReference(
 
 @Composable
 fun Paragraph.Link.View() {
+    val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val resourceProvider = remember(context) { context.hostResourceProvider() }
+    val handle = remember(content) { ExternalLinkHandle.parse(content) }
     TextButton(
         onClick = {
-            uriHandler.openUri(content)
+            handle?.let { openExternalLink(it.asModel(), resourceProvider::consumeExternalLink, uriHandler::openUri) }
         },
+        enabled = handle != null,
         contentPadding = PaddingValues(0.dp),
         shape = RectangleShape,
-    ) { Text(content) }
+    ) { Text(if (handle == null) "連結已封鎖" else "在瀏覽器開啟連結") }
 }
 
 @Composable
 fun Paragraph.Link.Small() {
+    val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val resourceProvider = remember(context) { context.hostResourceProvider() }
+    val handle = remember(content) { ExternalLinkHandle.parse(content) }
     TextButton(
         onClick = {
-            uriHandler.openUri(content)
+            handle?.let { openExternalLink(it.asModel(), resourceProvider::consumeExternalLink, uriHandler::openUri) }
         },
+        enabled = handle != null,
         contentPadding = PaddingValues(0.dp),
         shape = RectangleShape,
-    ) { BodySmallText(content) }
+    ) { BodySmallText(if (handle == null) "連結已封鎖" else "在瀏覽器開啟連結") }
 }
 
 @Composable
@@ -651,65 +661,30 @@ fun Paragraph.ImageInfo.View(
     alwaysUseRawImage: Boolean,
     onClick: (() -> Unit)? = null
 ) {
-    val url = selectImageUrl(raw, thumb, alwaysUseRawImage)
-    val context = LocalContext.current
-    var retryCount by remember(url) { mutableIntStateOf(0) }
-    var loadFailed by remember(url) { mutableStateOf(false) }
-    val model = remember(url, retryCount) {
-        if (retryCount == 0) {
-            url
-        } else {
-            // Failed requests are not normally cached, but disable both caches here so a retry
-            // cannot reuse an outdated entry and always starts a new image request.
-            ImageRequest.Builder(context)
-                .data(url)
-                .memoryCachePolicy(CachePolicy.DISABLED)
-                .diskCachePolicy(CachePolicy.DISABLED)
-                .networkCachePolicy(CachePolicy.ENABLED)
-                .build()
-        }
+    val model = resourceModelOrNull(selectImageUrl(raw, thumb, alwaysUseRawImage))
+    val imageModifier = if (onClick == null) {
+        Modifier.fillMaxWidth()
+    } else {
+        Modifier.fillMaxWidth().appClickable(onClick = onClick)
     }
-    var imageModifier = Modifier.fillMaxWidth()
-    if (onClick != null) {
-        imageModifier = imageModifier.appClickable { onClick() }
-    }
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 120.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        key(retryCount) {
+        if (model == null) {
+            Text(
+                text = "遠端圖片已封鎖",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
             AsyncImage(
                 model = model,
                 modifier = imageModifier,
                 contentDescription = null,
-                onSuccess = { loadFailed = false },
-                onError = { loadFailed = true },
             )
-        }
-
-        if (loadFailed) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = "圖片載入失敗",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TextButton(
-                    onClick = {
-                        loadFailed = false
-                        retryCount += 1
-                    },
-                ) {
-                    Text("重試")
-                }
-            }
         }
     }
 }
@@ -717,33 +692,20 @@ fun Paragraph.ImageInfo.View(
 
 @Composable
 fun Paragraph.VideoInfo.View(onClick: (() -> Unit)? = null) {
-    if (site == Paragraph.VideoInfo.Site.YOUTUBE) {
-        val videoId = extractYouTubeVideoId(url)
-        if (videoId != null) {
-            YouTubePlayer(videoId = videoId)
-            return
-        }
-    }
+    VideoPlayer(
+        handleModel = url,
+        modifier = Modifier.fillMaxWidth().height(220.dp),
+    )
+}
 
-    var m = Modifier.fillMaxWidth()
-    if (onClick != null) {
-        m = m.appClickable { onClick() }
-    }
-
-    Box(
-        modifier = m,
-        contentAlignment = Alignment.Center,
-    ) {
-        AsyncImage(
-            model = url,
-            contentDescription = null,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Icon(
-            imageVector = Icons.Default.PlayCircle,
-            contentDescription = "播放影片",
-            tint = Color.White.copy(alpha = 0.85f),
-            modifier = Modifier.size(48.dp),
-        )
-    }
+internal fun openExternalLink(
+    handleModel: String,
+    consume: (ExternalLinkHandle) -> String,
+    openUri: (String) -> Unit,
+): Boolean {
+    val handle = ExternalLinkHandle.parse(handleModel) ?: return false
+    return runCatching {
+        openUri(consume(handle))
+        true
+    }.getOrDefault(false)
 }

@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import tw.kevinzhang.data.domain.CanonicalSourceIdentities
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.BoardCategory
 
@@ -256,7 +257,14 @@ private fun BoardCatalogContent(
                 )
             }
             items(sourceWithBoards.boards, key = { "${source.id}:${it.url}" }) { board ->
-                val selection = SelectedBoard(source.id, board.url, board.name)
+                val identity = source.sourceIdentity ?: return@items
+                val selection = SelectedBoard(
+                    sourceId = source.id,
+                    sourceKey = CanonicalSourceIdentities.fromRuntimeIdentity(identity).sourceKey,
+                    boardUrl = board.url,
+                    boardName = board.name,
+                    sourceIdentity = identity,
+                )
                 val existing = selectedByKey[selection.key]
                 BoardListItem(
                     boardName = board.name,

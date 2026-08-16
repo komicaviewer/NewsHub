@@ -1,7 +1,5 @@
 package tw.kevinzhang.newshub.ui
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -33,6 +31,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -45,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -68,6 +68,7 @@ import tw.kevinzhang.newshub.ui.boards.BoardsScreen
 import tw.kevinzhang.newshub.ui.auth.AuthWebViewScreen
 import tw.kevinzhang.newshub.ui.collection.BoardPickerScreen
 import tw.kevinzhang.newshub.ui.collection.CollectionTimelineScreen
+import tw.kevinzhang.newshub.ui.collection.CollectionTimelineState
 import tw.kevinzhang.newshub.ui.collection.CollectionTimelineViewModel
 import tw.kevinzhang.newshub.ui.collection.CreateCollectionScreen
 import tw.kevinzhang.newshub.ui.collection.CreateCollectionViewModel
@@ -75,6 +76,7 @@ import tw.kevinzhang.newshub.ui.collection.EditCollectionScreen
 import tw.kevinzhang.newshub.ui.collection.EditCollectionViewModel
 import tw.kevinzhang.newshub.ui.collection.ManageCollectionsScreen
 import tw.kevinzhang.newshub.ui.collection.SelectedBoard
+import tw.kevinzhang.newshub.ui.collection.rememberCollectionTimelineState
 import tw.kevinzhang.newshub.ui.component.BodyLargeText
 import tw.kevinzhang.newshub.ui.component.AppBottomBar
 import tw.kevinzhang.newshub.ui.component.AppDrawer
@@ -92,11 +94,91 @@ import tw.kevinzhang.newshub.ui.theme.NewshubTheme
 import tw.kevinzhang.newshub.ui.thread.ThreadDetailScreen
 
 private const val THREAD_DETAIL_ROUTE =
-    "thread_detail?threadId={threadId}&sourceId={sourceId}&boardUrl={boardUrl}" +
+    "thread_detail?threadId={threadId}&sourceId={sourceId}&sourceKey={sourceKey}&boardUrl={boardUrl}" +
         "&threadTitle={threadTitle}&boardName={boardName}"
 
 private const val AUTH_WEB_LOGIN_ROUTE = "auth_web_login"
 private const val APP_BAR_ANIMATION_MILLIS = 220
+
+private class CollectionBottomBarBinding {
+    private var timelineState by mutableStateOf<CollectionTimelineState?>(null)
+
+    val barsVisible: Boolean
+        get() = timelineState?.barsVisible ?: true
+
+    fun attach(state: CollectionTimelineState) {
+        timelineState = state
+    }
+
+    fun detach(state: CollectionTimelineState) {
+        if (timelineState === state) timelineState = null
+    }
+
+    suspend fun scrollToTop() {
+        timelineState?.scrollToTop()
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+internal fun AppBottomBarOverlay(
+    isCollectionRoute: Boolean,
+    collectionBarsVisible: Boolean,
+    navItems: List<NavItems>,
+    selectedTab: NavItems,
+    onNavItemClick: (NavItems) -> Unit,
+    onHeightChanged: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .onSizeChanged { size ->
+                if (size.height > 0) onHeightChanged(size.height)
+            },
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        AnimatedVisibility(
+            visible = !isCollectionRoute || collectionBarsVisible,
+            enter = if (isCollectionRoute) {
+                slideInVertically(
+                    animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
+                    initialOffsetY = { it },
+                ) + fadeIn(animationSpec = tween(APP_BAR_ANIMATION_MILLIS))
+            } else {
+                EnterTransition.None
+            },
+            exit = if (isCollectionRoute) {
+                slideOutVertically(
+                    animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
+                    targetOffsetY = { it },
+                ) + fadeOut(animationSpec = tween(APP_BAR_ANIMATION_MILLIS))
+            } else {
+                ExitTransition.None
+            },
+        ) {
+            AppBottomBar(
+                navItems = navItems,
+                selectedItem = selectedTab,
+                onNavItemClick = onNavItemClick,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BottomBarPaddedContent(
+    bottomBarHeight: Dp,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = bottomBarHeight),
+    ) {
+        content()
+    }
+}
 
 internal sealed class AppBottomBarAction {
     data object ScrollCollectionToTop : AppBottomBarAction()
@@ -123,13 +205,14 @@ internal fun resolveAppBottomBarAction(
     )
 }
 
-private fun ThreadSummary.threadDetailRoute(boardName: String? = null): String {
+private fun ThreadSummary.threadDetailRoute(sourceKey: String, boardName: String? = null): String {
     val encodedThreadId = id.encode()
     val encodedSourceId = sourceId.encode()
+    val encodedSourceKey = sourceKey.encode()
     val encodedBoardUrl = boardUrl.encode()
     val encodedTitle = title?.encode() ?: ""
     val encodedBoardName = boardName?.encode() ?: ""
-    return "thread_detail?threadId=$encodedThreadId&sourceId=$encodedSourceId" +
+    return "thread_detail?threadId=$encodedThreadId&sourceId=$encodedSourceId&sourceKey=$encodedSourceKey" +
         "&boardUrl=$encodedBoardUrl&threadTitle=$encodedTitle&boardName=$encodedBoardName"
 }
 
@@ -142,6 +225,7 @@ private fun NavGraphBuilder.threadDetailDestination(
         arguments = listOf(
             navArgument("threadId") { type = NavType.StringType },
             navArgument("sourceId") { type = NavType.StringType },
+            navArgument("sourceKey") { type = NavType.StringType },
             navArgument("boardUrl") { type = NavType.StringType },
             navArgument("threadTitle") {
                 type = NavType.StringType
@@ -155,17 +239,113 @@ private fun NavGraphBuilder.threadDetailDestination(
             },
         ),
     ) {
-        val context = LocalContext.current
         ThreadDetailScreen(
             onNavigateUp = onNavigateUp,
             onNavigateToBoards = onNavigateToBoards,
-            onOpenWebClick = { url ->
-                context.startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
-            },
         )
+    }
+}
+
+/**
+ * Collection-only UI state stays with this destination. In particular, reselecting Collections
+ * invokes [CollectionTimelineState.scrollToTop] immediately instead of storing an event in the
+ * app shell for a later composition to replay.
+ */
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun CollectionTimelineDestination(
+    collectionId: String,
+    navController: NavHostController,
+    bottomOverlayHeight: Dp,
+    bottomBarBinding: CollectionBottomBarBinding,
+    onOpenDrawer: () -> Unit,
+) {
+    val timelineState = rememberCollectionTimelineState(collectionId)
+
+    DisposableEffect(bottomBarBinding, timelineState) {
+        bottomBarBinding.attach(timelineState)
+        onDispose {
+            bottomBarBinding.detach(timelineState)
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val useTwoPane = maxWidth >= 840.dp
+            if (useTwoPane) {
+                val detailNavController = rememberNavController()
+                Row(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.weight(0.42f)) {
+                        CollectionTimelineScreen(
+                            timelineState = timelineState,
+                            onOpenDrawer = onOpenDrawer,
+                            bottomOverlayHeight = bottomOverlayHeight,
+                            onNavigateToBoards = {
+                                navController.navigate(MainNavItems.Boards.route)
+                            },
+                            onNavigateToBoardPicker = {
+                                navController.navigate("board_picker/collection/$collectionId")
+                            },
+                            onThreadClick = { sourceKey, summary, boardName ->
+                                detailNavController.navigate(summary.threadDetailRoute(sourceKey, boardName)) {
+                                    popUpTo("detail_empty")
+                                    launchSingleTop = true
+                                }
+                            },
+                        )
+                    }
+                    VerticalDivider()
+                    Box(modifier = Modifier.weight(0.58f)) {
+                        NavHost(
+                            navController = detailNavController,
+                            startDestination = "detail_empty",
+                            enterTransition = { EnterTransition.None },
+                            exitTransition = { ExitTransition.None },
+                            popEnterTransition = { EnterTransition.None },
+                            popExitTransition = { ExitTransition.None },
+                        ) {
+                            composable("detail_empty") {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    BodyLargeText(
+                                        text = "選擇一篇貼文開始閱讀",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            threadDetailDestination(
+                                onNavigateUp = {
+                                    detailNavController.popBackStack(
+                                        route = "detail_empty",
+                                        inclusive = false,
+                                    )
+                                },
+                                onNavigateToBoards = {
+                                    navController.navigate(MainNavItems.Boards.route)
+                                },
+                            )
+                        }
+                    }
+                }
+            } else {
+                CollectionTimelineScreen(
+                    timelineState = timelineState,
+                    onOpenDrawer = onOpenDrawer,
+                    bottomOverlayHeight = bottomOverlayHeight,
+                    onNavigateToBoards = {
+                        navController.navigate(MainNavItems.Boards.route)
+                    },
+                    onNavigateToBoardPicker = {
+                        navController.navigate("board_picker/collection/$collectionId")
+                    },
+                    onThreadClick = { sourceKey, summary, boardName ->
+                        navController.navigate(summary.threadDetailRoute(sourceKey, boardName))
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -193,14 +373,9 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     } ?: MainNavItems.Collections
 
     val defaultCollectionId by appViewModel.defaultCollectionId.collectAsStateWithLifecycle()
-
-    var collectionScrollToTopTrigger by remember { mutableIntStateOf(0) }
-    var collectionBarsVisible by remember { mutableStateOf(true) }
-    var collectionBottomOverlayHeightPx by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
-    val collectionBottomOverlayHeight = with(density) {
-        collectionBottomOverlayHeightPx.toDp()
-    }
+    val bottomBarBinding = remember { CollectionBottomBarBinding() }
+    var bottomOverlayHeightPx by remember { mutableIntStateOf(0) }
+    val bottomOverlayHeight = with(LocalDensity.current) { bottomOverlayHeightPx.toDp() }
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
@@ -214,8 +389,7 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
             )
         ) {
             AppBottomBarAction.ScrollCollectionToTop -> {
-                collectionBarsVisible = true
-                collectionScrollToTopTrigger++
+                coroutineScope.launch { bottomBarBinding.scrollToTop() }
             }
 
             is AppBottomBarAction.Navigate -> {
@@ -269,17 +443,6 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     contentWindowInsets = WindowInsets(0),
-                    bottomBar = {
-                        // Collections draw this bar as a sibling overlay so the timeline's
-                        // viewport never receives a changing Scaffold bottom padding.
-                        if (showBottomBar && !isCollectionRoute) {
-                            AppBottomBar(
-                                navItems = navItems,
-                                selectedItem = selectedTab,
-                                onNavItemClick = onBottomBarItemClick,
-                            )
-                        }
-                    },
                 ) { padding ->
                     NavHost(
                         navController = navController,
@@ -326,28 +489,30 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             }
 
                             if (defaultCollectionId.isNullOrBlank()) {
-                                Scaffold(
-                                    topBar = {
-                                        TopAppBar(
-                                            title = {},
-                                            navigationIcon = {
-                                                IconButton(onClick = { openDrawer() }) {
-                                                    Icon(Icons.Default.Menu, contentDescription = "Open drawer")
-                                                }
-                                            },
-                                        )
-                                    },
-                                ) { innerPadding ->
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(innerPadding),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        BodyLargeText(
-                                            text = "Swipe right or tap \u2630 to select a collection",
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
+                                BottomBarPaddedContent(bottomOverlayHeight) {
+                                    Scaffold(
+                                        topBar = {
+                                            TopAppBar(
+                                                title = {},
+                                                navigationIcon = {
+                                                    IconButton(onClick = { openDrawer() }) {
+                                                        Icon(Icons.Default.Menu, contentDescription = "Open drawer")
+                                                    }
+                                                },
+                                            )
+                                        },
+                                    ) { innerPadding ->
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(innerPadding),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            BodyLargeText(
+                                                text = "Swipe right or tap \u2630 to select a collection",
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -357,88 +522,13 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                             arguments = listOf(navArgument("collectionId") { type = NavType.StringType }),
                         ) { backStackEntry ->
                             val collectionId = backStackEntry.arguments?.getString("collectionId") ?: ""
-                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                                val useTwoPane = maxWidth >= 840.dp
-                                if (useTwoPane) {
-                                    val detailNavController = rememberNavController()
-                                    Row(modifier = Modifier.fillMaxSize()) {
-                                        Box(modifier = Modifier.weight(0.42f)) {
-                                            CollectionTimelineScreen(
-                                                onOpenDrawer = { openDrawer() },
-                                                scrollToTopTrigger = collectionScrollToTopTrigger,
-                                                barsVisible = collectionBarsVisible,
-                                                onBarsVisibilityChange = { collectionBarsVisible = it },
-                                                bottomOverlayHeight = collectionBottomOverlayHeight,
-                                                onNavigateToBoards = {
-                                                    navController.navigate(MainNavItems.Boards.route)
-                                                },
-                                                onNavigateToBoardPicker = {
-                                                    navController.navigate("board_picker/collection/$collectionId")
-                                                },
-                                                onThreadClick = { summary, boardName ->
-                                                    detailNavController.navigate(
-                                                        summary.threadDetailRoute(boardName),
-                                                    ) {
-                                                        popUpTo("detail_empty")
-                                                        launchSingleTop = true
-                                                    }
-                                                },
-                                            )
-                                        }
-                                        VerticalDivider()
-                                        Box(modifier = Modifier.weight(0.58f)) {
-                                            NavHost(
-                                                navController = detailNavController,
-                                                startDestination = "detail_empty",
-                                                enterTransition = { EnterTransition.None },
-                                                exitTransition = { ExitTransition.None },
-                                                popEnterTransition = { EnterTransition.None },
-                                                popExitTransition = { ExitTransition.None },
-                                            ) {
-                                                composable("detail_empty") {
-                                                    Box(
-                                                        modifier = Modifier.fillMaxSize(),
-                                                        contentAlignment = Alignment.Center,
-                                                    ) {
-                                                        BodyLargeText(
-                                                            text = "選擇一篇貼文開始閱讀",
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        )
-                                                    }
-                                                }
-                                                threadDetailDestination(
-                                                    onNavigateUp = {
-                                                        detailNavController.popBackStack(
-                                                            route = "detail_empty",
-                                                            inclusive = false,
-                                                        )
-                                                    },
-                                                    onNavigateToBoards = {
-                                                        navController.navigate(MainNavItems.Boards.route)
-                                                    },
-                                                )
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    CollectionTimelineScreen(
-                                        onOpenDrawer = { openDrawer() },
-                                        scrollToTopTrigger = collectionScrollToTopTrigger,
-                                        barsVisible = collectionBarsVisible,
-                                        onBarsVisibilityChange = { collectionBarsVisible = it },
-                                        bottomOverlayHeight = collectionBottomOverlayHeight,
-                                        onNavigateToBoards = {
-                                            navController.navigate(MainNavItems.Boards.route)
-                                        },
-                                        onNavigateToBoardPicker = {
-                                            navController.navigate("board_picker/collection/$collectionId")
-                                        },
-                                        onThreadClick = { summary, boardName ->
-                                            navController.navigate(summary.threadDetailRoute(boardName))
-                                        },
-                                    )
-                                }
-                            }
+                            CollectionTimelineDestination(
+                                collectionId = collectionId,
+                                navController = navController,
+                                bottomOverlayHeight = bottomOverlayHeight,
+                                bottomBarBinding = bottomBarBinding,
+                                onOpenDrawer = { openDrawer() },
+                            )
                         }
                     }
                     threadDetailDestination(
@@ -446,14 +536,16 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                         onNavigateToBoards = { navController.navigate(MainNavItems.Boards.route) },
                     )
                     composable("boards") {
-                        BoardsScreen(
-                            onNavigateToMarketplace = { navController.navigate("marketplace") },
-                            onNavigateToGroupDetail = { sourceId ->
-                                navController.navigate("board_group/${sourceId.encode()}")
-                            },
-                            onLoginClick = { sourceId -> authViewModel.triggerLogin(sourceId) },
-                            onLogoutClick = { sourceId -> authViewModel.logout(sourceId) },
-                        )
+                        BottomBarPaddedContent(bottomOverlayHeight) {
+                            BoardsScreen(
+                                onNavigateToMarketplace = { navController.navigate("marketplace") },
+                                onNavigateToGroupDetail = { sourceId ->
+                                    navController.navigate("board_group/${sourceId.encode()}")
+                                },
+                                onLoginClick = { sourceId -> authViewModel.triggerLogin(sourceId) },
+                                onLogoutClick = { sourceId -> authViewModel.logout(sourceId) },
+                            )
+                        }
                     }
                     composable(
                         route = "board_group/{sourceId}",
@@ -482,52 +574,57 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                         startDestination = "settings_home",
                     ) {
                         composable("settings_home") {
-                            SettingsScreen(
-                                onNavigateToReadingHistory = { navController.navigate("reading_history") },
-                                onNavigateToSavedPosts = { navController.navigate("saved_posts") },
-                                onNavigateToReadingPreferences = {
-                                    navController.navigate("reading_preferences")
-                                },
-                            )
+                            BottomBarPaddedContent(bottomOverlayHeight) {
+                                SettingsScreen(
+                                    onNavigateToReadingHistory = { navController.navigate("reading_history") },
+                                    onNavigateToSavedPosts = { navController.navigate("saved_posts") },
+                                    onNavigateToReadingPreferences = {
+                                        navController.navigate("reading_preferences")
+                                    },
+                                )
+                            }
                         }
                         composable("reading_preferences") {
-                            ReadingPreferencesScreen(onNavigateUp = { navController.navigateUp() })
+                            BottomBarPaddedContent(bottomOverlayHeight) {
+                                ReadingPreferencesScreen(onNavigateUp = { navController.navigateUp() })
+                            }
                         }
                         composable("reading_history") {
-                            ReadingHistoryScreen(
-                                onNavigateUp = { navController.navigateUp() },
-                                onThreadClick = { summary ->
-                                    navController.navigate(summary.threadDetailRoute())
-                                },
-                            )
+                            BottomBarPaddedContent(bottomOverlayHeight) {
+                                ReadingHistoryScreen(
+                                    onNavigateUp = { navController.navigateUp() },
+                                    onThreadClick = { sourceKey, summary ->
+                                        navController.navigate(summary.threadDetailRoute(sourceKey))
+                                    },
+                                )
+                            }
                         }
                         composable("saved_posts") {
-                            SavedPostsScreen(
-                                onNavigateUp = { navController.navigateUp() },
-                                onThreadClick = { entity ->
-                                    val sourceId = entity.sourceId.encode()
-                                    val threadId = entity.threadId.encode()
-                                    navController.navigate("saved_post_detail?sourceId=$sourceId&threadId=$threadId")
-                                },
-                            )
+                            BottomBarPaddedContent(bottomOverlayHeight) {
+                                SavedPostsScreen(
+                                    onNavigateUp = { navController.navigateUp() },
+                                    onThreadClick = { record ->
+                                        val sourceKey = record.savedPost.sourceKey.encode()
+                                        val threadId = record.savedPost.threadId.encode()
+                                        navController.navigate(
+                                            "saved_post_detail?sourceKey=$sourceKey&threadId=$threadId",
+                                        )
+                                    },
+                                )
+                            }
                         }
                         composable(
-                            route = "saved_post_detail?sourceId={sourceId}&threadId={threadId}",
+                            route = "saved_post_detail?sourceKey={sourceKey}&threadId={threadId}",
                             arguments = listOf(
-                                navArgument("sourceId") { type = NavType.StringType },
+                                navArgument("sourceKey") { type = NavType.StringType },
                                 navArgument("threadId") { type = NavType.StringType },
                             ),
                         ) {
-                            val context = LocalContext.current
-                            SavedPostDetailScreen(
-                                onNavigateUp = { navController.navigateUp() },
-                                onOpenWebClick = { url ->
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    )
-                                },
-                            )
+                            BottomBarPaddedContent(bottomOverlayHeight) {
+                                SavedPostDetailScreen(
+                                    onNavigateUp = { navController.navigateUp() },
+                                )
+                            }
                         }
                     }
                     composable("create_collection") {
@@ -606,38 +703,21 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
                     }
                 }
 
-                if (showBottomBar && isCollectionRoute) {
-                    Box(
+                if (showBottomBar) {
+                    AppBottomBarOverlay(
+                        isCollectionRoute = isCollectionRoute,
+                        collectionBarsVisible = bottomBarBinding.barsVisible,
+                        navItems = navItems,
+                        selectedTab = selectedTab,
+                        onNavItemClick = onBottomBarItemClick,
+                        onHeightChanged = { height ->
+                            // Retain the complete bar height after a collection scroll hides it,
+                            // keeping both timeline and ordinary-tab viewports stable.
+                            bottomOverlayHeightPx = height
+                        },
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .onSizeChanged { size ->
-                                // AnimatedVisibility removes its child after exit. Keep the last
-                                // complete measurement so timeline content padding stays stable.
-                                if (size.height > 0) {
-                                    collectionBottomOverlayHeightPx = size.height
-                                }
-                            },
-                        contentAlignment = Alignment.BottomCenter,
-                    ) {
-                        AnimatedVisibility(
-                            visible = collectionBarsVisible,
-                            enter = slideInVertically(
-                                animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
-                                initialOffsetY = { it },
-                            ) + fadeIn(animationSpec = tween(APP_BAR_ANIMATION_MILLIS)),
-                            exit = slideOutVertically(
-                                animationSpec = tween(APP_BAR_ANIMATION_MILLIS),
-                                targetOffsetY = { it },
-                            ) + fadeOut(animationSpec = tween(APP_BAR_ANIMATION_MILLIS)),
-                        ) {
-                            AppBottomBar(
-                                navItems = navItems,
-                                selectedItem = selectedTab,
-                                onNavItemClick = onBottomBarItemClick,
-                            )
-                        }
-                    }
+                            .align(Alignment.BottomCenter),
+                    )
                 }
             }
         }

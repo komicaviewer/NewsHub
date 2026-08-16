@@ -1,11 +1,11 @@
 package tw.kevinzhang.data
 
 import androidx.room.withTransaction
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import tw.kevinzhang.data.domain.BoardSubscriptionEntity
+import tw.kevinzhang.data.domain.BoardSubscriptionRecord
+import tw.kevinzhang.data.domain.CanonicalSourceIdentities
 import tw.kevinzhang.data.domain.CollectionDao
 import tw.kevinzhang.data.domain.CollectionDatabase
 import tw.kevinzhang.data.domain.CollectionEntity
@@ -13,19 +13,25 @@ import tw.kevinzhang.data.domain.ParagraphListConverter
 import tw.kevinzhang.data.domain.PostReadEntity
 import tw.kevinzhang.data.domain.ReadingHistoryEntity
 import tw.kevinzhang.data.domain.SavedPostEntity
+import tw.kevinzhang.data.domain.SavedPostRecord
+import tw.kevinzhang.data.domain.SourceIdentityDao
+import tw.kevinzhang.data.domain.SourceIdentityEntity
+import tw.kevinzhang.data.domain.SourceResolution
+import tw.kevinzhang.extension_api.SourceIdentity
 import tw.kevinzhang.extension_api.model.ThreadSummary
-import java.io.File
 import java.util.UUID
 import javax.inject.Inject
 
 class CollectionRepositoryImpl @Inject constructor(
     private val dao: CollectionDao,
     private val db: CollectionDatabase,
-) : CollectionRepository, ReadingHistoryRepository, SavedPostRepository {
+    private val savedPostAssetStore: SavedPostAssetStore,
+    private val sourceIdentityDao: SourceIdentityDao,
+) : CollectionRepository, ReadingHistoryRepository, SavedPostRepository, SourceIdentityRepository {
 
     override fun observeCollections(): Flow<List<CollectionEntity>> = dao.observeAll()
 
-    override fun observeSubscriptions(collectionId: String): Flow<List<BoardSubscriptionEntity>> =
+    override fun observeSubscriptions(collectionId: String): Flow<List<BoardSubscriptionRecord>> =
         dao.observeSubscriptions(collectionId)
 
     override suspend fun createCollection(name: String, description: String, emoji: String): String {
@@ -66,16 +72,17 @@ class CollectionRepositoryImpl @Inject constructor(
 
     override suspend fun addBoardSubscription(
         collectionId: String,
-        sourceId: String,
+        sourceKey: String,
         boardUrl: String,
         boardName: String,
     ) {
-        if (dao.countSubscription(collectionId, sourceId, boardUrl) > 0) return
+        requireOnlineIdentity(sourceKey)
+        if (dao.countSubscription(collectionId, sourceKey, boardUrl) > 0) return
         dao.insertSubscription(
             BoardSubscriptionEntity(
                 id = UUID.randomUUID().toString(),
                 collectionId = collectionId,
-                sourceId = sourceId,
+                sourceKey = sourceKey,
                 boardUrl = boardUrl,
                 boardName = boardName,
                 sortOrder = 0,
@@ -87,24 +94,27 @@ class CollectionRepositoryImpl @Inject constructor(
         dao.deleteSubscriptionById(subscriptionId)
     }
 
-    override suspend fun removeAllSubscriptionsForSource(sourceId: String) {
-        dao.deleteSubscriptionsBySource(sourceId)
+    override suspend fun removeAllSubscriptionsForSource(sourceKey: String) {
+        dao.deleteSubscriptionsBySource(sourceKey)
     }
 
     override fun observeReadingHistory() = db.readingHistoryDao().observeAll()
 
-    override fun observeReadPostIds(sourceId: String, threadId: String): Flow<Set<String>> =
-        db.postReadDao().observeReadPostIds(sourceId, threadId).map { it.toSet() }
+    override fun observeReadPostIds(sourceKey: String, threadId: String): Flow<Set<String>> =
+        db.postReadDao().observeReadPostIds(sourceKey, threadId).map { it.toSet() }
 
     override suspend fun recordRead(
+        sourceKey: String,
         summary: ThreadSummary,
         sourceName: String?,
         boardName: String?,
     ) {
+        val identity = requireOnlineIdentity(sourceKey)
+        require(identity.sourceId == summary.sourceId) { "Thread source does not match canonical identity" }
         val converter = ParagraphListConverter()
         db.readingHistoryDao().upsert(
             ReadingHistoryEntity(
-                sourceId = summary.sourceId,
+                sourceKey = sourceKey,
                 sourceName = sourceName,
                 threadId = summary.id,
                 boardUrl = summary.boardUrl,
@@ -123,10 +133,11 @@ class CollectionRepositoryImpl @Inject constructor(
         )
     }
 
-    override suspend fun markPostRead(sourceId: String, threadId: String, postId: String) {
+    override suspend fun markPostRead(sourceKey: String, threadId: String, postId: String) {
+        requireOnlineIdentity(sourceKey)
         db.postReadDao().upsert(
             PostReadEntity(
-                sourceId = sourceId,
+                sourceKey = sourceKey,
                 threadId = threadId,
                 postId = postId,
                 readAt = System.currentTimeMillis(),
@@ -134,13 +145,14 @@ class CollectionRepositoryImpl @Inject constructor(
         )
     }
 
-    override suspend fun markPostsRead(sourceId: String, threadId: String, postIds: Collection<String>) {
+    override suspend fun markPostsRead(sourceKey: String, threadId: String, postIds: Collection<String>) {
         if (postIds.isEmpty()) return
+        requireOnlineIdentity(sourceKey)
         val readAt = System.currentTimeMillis()
         db.postReadDao().upsertAll(
             postIds.distinct().map { postId ->
                 PostReadEntity(
-                    sourceId = sourceId,
+                    sourceKey = sourceKey,
                     threadId = threadId,
                     postId = postId,
                     readAt = readAt,
@@ -153,20 +165,21 @@ class CollectionRepositoryImpl @Inject constructor(
         db.readingHistoryDao().deleteAll()
     }
 
-    override fun observeSavedPosts(): Flow<List<SavedPostEntity>> = db.savedPostDao().observeAll()
+    override fun observeSavedPosts(): Flow<List<SavedPostRecord>> = db.savedPostDao().observeAll()
 
-    override fun observeSavedPost(sourceId: String, threadId: String): Flow<SavedPostEntity?> =
-        db.savedPostDao().observeById(sourceId, threadId)
+    override fun observeSavedPost(sourceKey: String, threadId: String) =
+        db.savedPostDao().observeById(sourceKey, threadId)
 
     override suspend fun savePost(entity: SavedPostEntity) {
+        requireOnlineIdentity(entity.sourceKey)
         db.savedPostDao().upsert(entity)
     }
 
-    override suspend fun unsavePost(sourceId: String, threadId: String) {
-        val entity = db.savedPostDao().getById(sourceId, threadId)
+    override suspend fun unsavePost(sourceKey: String, threadId: String) {
+        val entity = db.savedPostDao().getById(sourceKey, threadId)
         if (entity != null) {
             deleteScreenshots(entity)
-            db.savedPostDao().delete(sourceId, threadId)
+            db.savedPostDao().delete(sourceKey, threadId)
         }
     }
 
@@ -176,19 +189,29 @@ class CollectionRepositoryImpl @Inject constructor(
         db.savedPostDao().deleteAll()
     }
 
-    private val gson = Gson()
-    private val pathListType = object : TypeToken<List<String>>() {}.type
-
     private fun deleteScreenshots(entity: SavedPostEntity) {
-        try {
-            val paths: List<String> = gson.fromJson(entity.screenshotPaths, pathListType) ?: emptyList()
-            paths.forEach { path ->
-                val file = File(path)
-                if (file.exists()) {
-                    file.delete()
-                }
-            }
-        } catch (_: Exception) {
+        savedPostAssetStore.deleteSerializedReferences(entity.screenshotAssetRefs)
+    }
+
+    override suspend fun register(identity: SourceIdentity): SourceIdentityEntity {
+        val canonical = CanonicalSourceIdentities.fromRuntimeIdentity(identity)
+        sourceIdentityDao.insert(canonical)
+        return requireNotNull(sourceIdentityDao.getByKey(canonical.sourceKey)).also { stored ->
+            require(stored == canonical) { "Canonical source key is already bound to another identity" }
         }
+    }
+
+    override suspend fun getByKey(sourceKey: String): SourceIdentityEntity? =
+        sourceIdentityDao.getByKey(sourceKey)
+
+    override fun observeUnresolved(): Flow<List<SourceIdentityEntity>> =
+        sourceIdentityDao.observeUnresolved()
+
+    private suspend fun requireOnlineIdentity(sourceKey: String): SourceIdentityEntity {
+        val identity = sourceIdentityDao.getByKey(sourceKey)
+        require(identity?.resolution == SourceResolution.OFFICIAL) {
+            "Unresolved source identity is offline-only"
+        }
+        return identity
     }
 }
