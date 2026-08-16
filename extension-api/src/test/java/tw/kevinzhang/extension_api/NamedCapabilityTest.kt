@@ -56,12 +56,16 @@ class NamedCapabilityTest {
     @Test fun `version two policy hashes four independent exact host scopes`() {
         val policy = SourceNetworkPolicy(
             exactHosts = setOf("api.example.com"),
-            operations = mapOf(
-                NetworkOperations.SOURCE_READ to NetworkOperationPolicy(
-                    name = NetworkOperations.SOURCE_READ,
-                    methods = setOf("GET"),
-                    pathPrefixes = setOf("/v1/"),
-                    credentialed = false,
+            operations = emptyMap(),
+            requestRules = listOf(
+                NetworkRequestRule(
+                    exactHosts = setOf("api.example.com"),
+                    operation = NetworkOperationPolicy(
+                        name = NetworkOperations.SOURCE_READ,
+                        methods = setOf("GET"),
+                        pathPrefixes = setOf("/v1/"),
+                        credentialed = false,
+                    ),
                 ),
             ),
             namedCapabilities = setOf(
@@ -133,11 +137,15 @@ class NamedCapabilityTest {
     @Test fun `version two policy rejects cross-scope widening primitives`() {
         val base = SourceNetworkPolicy(
             exactHosts = setOf("api.example.com"),
-            operations = mapOf(
-                NetworkOperations.SOURCE_READ to NetworkOperationPolicy(
-                    NetworkOperations.SOURCE_READ,
-                    setOf("GET"),
-                    setOf("/"),
+            operations = emptyMap(),
+            requestRules = listOf(
+                NetworkRequestRule(
+                    exactHosts = setOf("api.example.com"),
+                    operation = NetworkOperationPolicy(
+                        NetworkOperations.SOURCE_READ,
+                        setOf("GET"),
+                        setOf("/"),
+                    ),
                 ),
             ),
             policyVersion = 2,
@@ -146,6 +154,11 @@ class NamedCapabilityTest {
             authExactHosts = emptySet(),
         )
         base.canonicalJson()
+        assertInvalid {
+            base.copy(
+                operations = mapOf(NetworkOperations.SOURCE_READ to base.requestRules.single().operation),
+            ).canonicalJson()
+        }
         assertInvalid { base.copy(exactHosts = setOf("*.example.com")).canonicalJson() }
         assertInvalid {
             base.copy(

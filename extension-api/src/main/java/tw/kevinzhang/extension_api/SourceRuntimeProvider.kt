@@ -73,6 +73,8 @@ fun SourceNetworkPolicy.canonicalJson(): String {
     require(operations.all { (key, value) -> key == value.name }) { "Operation key/name mismatch" }
     if (policyVersion == 1) {
         require(operations.keys == setOf(NetworkOperations.SOURCE_READ)) { "Unknown network operation" }
+    } else {
+        require(operations.isEmpty()) { "Version 2 policy must use request rules" }
     }
     require(requestRules.isNotEmpty() && requestRules.size <= MAX_REQUEST_RULES) {
         "Request rules must be non-empty and bounded"
