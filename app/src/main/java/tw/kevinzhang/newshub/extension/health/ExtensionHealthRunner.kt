@@ -106,14 +106,20 @@ class ExtensionHealthRunner(
                                 classification,
                                 elapsed(operationStartedAt),
                                 error,
+                                allowAuthPending = sourceProfile.allowsAuthPending(operation),
                             )
                             null
                         }
                     }
 
+                    val authenticatedSessionAvailable =
+                        sourceProfile.sourceId in authenticatedSessionSourceIds
+                    fun requiresUnavailableSession(operation: HealthProbeOperation): Boolean =
+                        !authenticatedSessionAvailable && operation in sourceProfile.authenticatedOperations
+
                     var continueProbe = true
                     if (sourceProfile.requireAuthenticatedSession) {
-                        if (sourceProfile.sourceId !in authenticatedSessionSourceIds) {
+                        if (!authenticatedSessionAvailable) {
                             steps += pendingStep(sourceProfile, "session_provision", 0)
                             continueProbe = false
                         } else {
@@ -134,7 +140,7 @@ class ExtensionHealthRunner(
 
                     val board = if (continueProbe) {
                         request(
-                            operation = "get_board_page",
+                            operation = HealthProbeOperation.GET_BOARD_PAGE.wireName,
                             block = {
                                 val page = source.getBoardPage(
                                     BoardPageRequest(
@@ -150,9 +156,18 @@ class ExtensionHealthRunner(
                         )
                     } else null
 
-                    val summaries = if (board != null) {
+                    val summariesBlockedByAuth =
+                        board != null && requiresUnavailableSession(HealthProbeOperation.GET_THREAD_SUMMARIES)
+                    val summaries = if (summariesBlockedByAuth) {
+                        steps += pendingStep(
+                            sourceProfile,
+                            HealthProbeOperation.GET_THREAD_SUMMARIES.wireName,
+                            0,
+                        )
+                        null
+                    } else if (board != null) {
                         request(
-                            operation = "get_thread_summaries",
+                            operation = HealthProbeOperation.GET_THREAD_SUMMARIES.wireName,
                             block = {
                                 source.getThreadSummaries(board, 1).also { summaries ->
                                     require(summaries.size >= sourceProfile.minimumSummaries) {
@@ -173,8 +188,14 @@ class ExtensionHealthRunner(
                     } else null
 
                     if (!summaries.isNullOrEmpty()) {
-                        request(
-                            operation = "get_thread_page",
+                        if (requiresUnavailableSession(HealthProbeOperation.GET_THREAD_PAGE)) {
+                            steps += pendingStep(
+                                sourceProfile,
+                                HealthProbeOperation.GET_THREAD_PAGE.wireName,
+                                0,
+                            )
+                        } else request(
+                            operation = HealthProbeOperation.GET_THREAD_PAGE.wireName,
                             block = {
                                 source.getThreadPage(summaries.first(), null).also { page ->
                                     require(page.posts.size >= sourceProfile.minimumPosts) {
@@ -186,6 +207,15 @@ class ExtensionHealthRunner(
                                 }
                             },
                             validate = { it.posts.size },
+                        )
+                    } else if (
+                        summariesBlockedByAuth &&
+                        HealthProbeOperation.GET_THREAD_PAGE in sourceProfile.authenticatedOperations
+                    ) {
+                        steps += pendingStep(
+                            sourceProfile,
+                            HealthProbeOperation.GET_THREAD_PAGE.wireName,
+                            0,
                         )
                     }
                 }
@@ -255,13 +285,14 @@ private fun failedStep(
     failureClass: HealthFailureClass,
     durationMs: Long,
     error: Throwable? = null,
+    allowAuthPending: Boolean = false,
 ) : HealthStepResult {
     val typedFailure = (error as? SourceFailureException)?.failure?.sanitized()
     val effectiveOperation = typedFailure?.operation ?: operation
     val hostPolicyViolation = error as? HostPolicyViolationException
     return HealthStepResult(
     operation = effectiveOperation,
-    status = if (failureClass == HealthFailureClass.AUTH_REQUIRED) {
+    status = if (failureClass == HealthFailureClass.AUTH_REQUIRED && allowAuthPending) {
         HealthStatus.AUTH_PENDING
     } else {
         HealthStatus.FAIL
@@ -290,7 +321,17 @@ private fun pendingStep(
     profile: SourceHealthProfile,
     operation: String,
     durationMs: Long,
-) = failedStep(profile, operation, HealthFailureClass.AUTH_REQUIRED, durationMs)
+) = failedStep(
+    profile,
+    operation,
+    HealthFailureClass.AUTH_REQUIRED,
+    durationMs,
+    allowAuthPending = true,
+)
+
+private fun SourceHealthProfile.allowsAuthPending(operation: String): Boolean =
+    (requireAuthenticatedSession && operation == "validate_session") ||
+        authenticatedOperations.any { it.wireName == operation }
 
 /** Classifies with private exception text but never stores or logs that text. */
 internal fun classifyFailure(error: Throwable): HealthFailureClass {

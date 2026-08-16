@@ -47,7 +47,7 @@ class ExtensionHealthProfileSelectionTest {
     }
 
     @Test
-    fun publicRecurringProfileKeepsAllThirteenButAllowsTwoPendingSessions() {
+    fun publicRecurringProfileKeepsAllThirteenAndUsesOperationLevelAuthentication() {
         val full = officialProfile()
         val selection = ExtensionHealthProfileSelection.selectionFor(
             ExtensionHealthProfileSelection.PUBLIC_RECURRING_PROFILE,
@@ -55,9 +55,52 @@ class ExtensionHealthProfileSelectionTest {
         val public = selection.select(full)
 
         assertEquals(13, public.sources.size)
-        assertEquals(2, public.sources.count { it.requireAuthenticatedSession })
+        assertEquals(0, public.sources.count { it.requireAuthenticatedSession })
+        assertEquals(
+            setOf(
+                "tw.kevinzhang.eyny",
+                "tw.kevinzhang.newshub.extension.gamer",
+            ),
+            public.sources.filter { it.authenticatedOperations.isNotEmpty() }.mapTo(linkedSetOf()) { it.sourceId },
+        )
+        assertEquals(
+            setOf(
+                HealthProbeOperation.GET_THREAD_SUMMARIES,
+                HealthProbeOperation.GET_THREAD_PAGE,
+            ),
+            public.sources.first { it.sourceId == "tw.kevinzhang.eyny" }.authenticatedOperations,
+        )
+        assertEquals(35, public.maxRequests)
         assertEquals(ExtensionHealthProfileSelection.PUBLIC_RECURRING_PROFILE, public.profileId)
         assertEquals(true, selection.allowAuthPending)
+    }
+
+    @Test
+    fun fullProfileRetainsCredentialValidationAndKomica2SoraExactHosts() {
+        val full = ExtensionHealthProfileSelection.selectionFor(null).select(officialProfile())
+
+        assertEquals(2, full.sources.count { it.requireAuthenticatedSession })
+        assertEquals(41, full.maxRequests)
+        assertEquals(
+            setOf("2cat.org", "2cat.uk"),
+            full.sources.first { it.sourceId == "tw.kevinzhang.komica2.sora" }.allowedHosts,
+        )
+    }
+
+    @Test
+    fun profileRejectsAnAuthenticatedBoardDirectoryOrUnsafeDependencyGap() {
+        val source = officialProfile().sources.first()
+
+        assertThrows(IllegalArgumentException::class.java) {
+            source.copy(
+                authenticatedOperations = setOf(HealthProbeOperation.GET_BOARD_PAGE),
+            ).validate()
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            source.copy(
+                authenticatedOperations = setOf(HealthProbeOperation.GET_THREAD_SUMMARIES),
+            ).validate()
+        }
     }
 
     private fun resource(name: String): String = requireNotNull(

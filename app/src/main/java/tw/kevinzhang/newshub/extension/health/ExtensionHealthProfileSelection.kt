@@ -12,6 +12,7 @@ object ExtensionHealthProfileSelection {
         val packageName: String? = null,
         val sourceIds: Set<String>? = null,
         val allowAuthPending: Boolean = false,
+        val useOperationLevelAuthentication: Boolean = false,
     ) {
         fun select(profile: ExtensionHealthProfile): ExtensionHealthProfile {
             val selectedSources = sourceIds?.let { expected ->
@@ -24,12 +25,18 @@ object ExtensionHealthProfileSelection {
                     }
                 }
             } ?: profile.sources
+            val effectiveSources = if (useOperationLevelAuthentication) {
+                selectedSources.map { source ->
+                    if (source.authenticatedOperations.isEmpty()) source
+                    else source.copy(requireAuthenticatedSession = false)
+                }
+            } else {
+                selectedSources
+            }
             return profile.copy(
                 profileId = profileId,
-                maxRequests = selectedSources.fold(0) { total, source ->
-                    total + if (source.requireAuthenticatedSession) 4 else 3
-                },
-                sources = selectedSources,
+                maxRequests = effectiveSources.sumOf(SourceHealthProfile::maximumRequestCount),
+                sources = effectiveSources,
             ).validated()
         }
     }
@@ -37,19 +44,26 @@ object ExtensionHealthProfileSelection {
     private const val FULL_ASSET = "extension-health/profile-v1.json"
     private val selectionByProfile = listOf(
         Selection(FULL_PROFILE, FULL_ASSET),
-        Selection(PUBLIC_RECURRING_PROFILE, FULL_ASSET, allowAuthPending = true),
+        Selection(
+            PUBLIC_RECURRING_PROFILE,
+            FULL_ASSET,
+            allowAuthPending = true,
+            useOperationLevelAuthentication = true,
+        ),
         Selection(ZERO_SECRET_HACKERNEWS_PROFILE, "extension-health/profile-hackernews-v1.json"),
         candidate(
             "candidate-eyny-v1",
             "tw.kevinzhang.newshub.extension.eyny",
             "tw.kevinzhang.eyny",
             allowAuthPending = true,
+            useOperationLevelAuthentication = true,
         ),
         candidate(
             "candidate-gamer-v1",
             "tw.kevinzhang.newshub.extension.gamer",
             "tw.kevinzhang.newshub.extension.gamer",
             allowAuthPending = true,
+            useOperationLevelAuthentication = true,
         ),
         candidate(
             "candidate-hackernews-v1",
@@ -89,12 +103,14 @@ object ExtensionHealthProfileSelection {
         packageName: String,
         vararg sourceIds: String,
         allowAuthPending: Boolean = false,
+        useOperationLevelAuthentication: Boolean = false,
     ) = Selection(
         profileId = profileId,
         assetPath = FULL_ASSET,
         packageName = packageName,
         sourceIds = sourceIds.toCollection(linkedSetOf()),
         allowAuthPending = allowAuthPending,
+        useOperationLevelAuthentication = useOperationLevelAuthentication,
     )
 
     fun selectionFor(argument: String?): Selection = selectionByProfile[

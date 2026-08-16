@@ -30,10 +30,10 @@ data class ExtensionHealthProfile(
         require(sources.map(SourceHealthProfile::sourceId).distinct().size == sources.size) {
             "Duplicate source id"
         }
-        require(maxRequests >= sources.map { if (it.requireAuthenticatedSession) 4 else 3 }.sum()) {
+        sources.forEach(SourceHealthProfile::validate)
+        require(maxRequests >= sources.sumOf(SourceHealthProfile::maximumRequestCount)) {
             "Request budget cannot cover the configured probes"
         }
-        sources.forEach(SourceHealthProfile::validate)
     }
 
     companion object {
@@ -50,6 +50,7 @@ data class SourceHealthProfile(
     val boardNameContains: String? = null,
     val boardUrl: String? = null,
     val requireAuthenticatedSession: Boolean = false,
+    val authenticatedOperations: Set<HealthProbeOperation> = emptySet(),
     val minimumSummaries: Int = 1,
     val minimumPosts: Int = 1,
 ) {
@@ -67,14 +68,38 @@ data class SourceHealthProfile(
             "Invalid board selector"
         }
         boardUrl?.let { requireHostAllowed(it, allowedHosts) }
+        require(HealthProbeOperation.GET_BOARD_PAGE !in authenticatedOperations) {
+            "Board discovery must remain available without a session"
+        }
+        require(
+            HealthProbeOperation.GET_THREAD_SUMMARIES !in authenticatedOperations ||
+                HealthProbeOperation.GET_THREAD_PAGE in authenticatedOperations,
+        ) { "Authenticated probe operations must form a dependency-safe suffix" }
         require(minimumSummaries in 1..20) { "Invalid minimum summary count" }
         require(minimumPosts in 1..20) { "Invalid minimum post count" }
+    }
+
+    internal fun maximumRequestCount(): Int = if (requireAuthenticatedSession) {
+        HealthProbeOperation.entries.size + 1
+    } else {
+        HealthProbeOperation.entries.size - authenticatedOperations.size
     }
 
     companion object {
         private val SAFE_NAME = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,159}")
         private val HOST = Regex("[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?")
         private val CONTROL_CHAR = Regex("[\\x00-\\x1f\\x7f]")
+    }
+}
+
+enum class HealthProbeOperation(val wireName: String) {
+    GET_BOARD_PAGE("get_board_page"),
+    GET_THREAD_SUMMARIES("get_thread_summaries"),
+    GET_THREAD_PAGE("get_thread_page");
+
+    companion object {
+        fun fromWireName(value: String): HealthProbeOperation = entries.firstOrNull { it.wireName == value }
+            ?: throw IllegalArgumentException("Unknown authenticated health operation")
     }
 }
 
@@ -157,6 +182,7 @@ object ExtensionHealthJson {
                     "boardNameContains",
                     "boardUrl",
                     "requireAuthenticatedSession",
+                    "authenticatedOperations",
                     "minimumSummaries",
                     "minimumPosts",
                 )
@@ -170,6 +196,9 @@ object ExtensionHealthJson {
                     boardNameContains = source.optionalString("boardNameContains"),
                     boardUrl = source.optionalString("boardUrl"),
                     requireAuthenticatedSession = source.get("requireAuthenticatedSession")?.asBoolean ?: false,
+                    authenticatedOperations = source.getAsJsonArray("authenticatedOperations")
+                        ?.mapTo(linkedSetOf()) { HealthProbeOperation.fromWireName(it.asString) }
+                        .orEmpty(),
                     minimumSummaries = source.get("minimumSummaries")?.asInt ?: 1,
                     minimumPosts = source.get("minimumPosts")?.asInt ?: 1,
                 )

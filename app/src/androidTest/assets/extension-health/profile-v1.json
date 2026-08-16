@@ -9,13 +9,15 @@
       "sourceId": "tw.kevinzhang.eyny",
       "packageName": "tw.kevinzhang.newshub.extension.eyny",
       "allowedHosts": ["eyny.com", "www.eyny.com"],
-      "requireAuthenticatedSession": true
+      "requireAuthenticatedSession": true,
+      "authenticatedOperations": ["get_thread_summaries", "get_thread_page"]
     },
     {
       "sourceId": "tw.kevinzhang.newshub.extension.gamer",
       "packageName": "tw.kevinzhang.newshub.extension.gamer",
       "allowedHosts": ["forum.gamer.com.tw"],
-      "requireAuthenticatedSession": true
+      "requireAuthenticatedSession": true,
+      "authenticatedOperations": ["get_thread_summaries", "get_thread_page"]
     },
     {
       "sourceId": "tw.kevinzhang.newshub.extension.hackernews",
@@ -55,7 +57,7 @@
     {
       "sourceId": "tw.kevinzhang.komica2.sora",
       "packageName": "tw.kevinzhang.newshub.extension.komica2",
-      "allowedHosts": ["komica1.org"]
+      "allowedHosts": ["2cat.org", "2cat.uk"]
     },
     {
       "sourceId": "tw.kevinzhang.komica2.zawarudo",

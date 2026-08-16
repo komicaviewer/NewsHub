@@ -78,6 +78,19 @@ class ExtensionHealthRunnerTest {
     }
 
     @Test
+    fun missingSourceStillProducesSanitizedHostRuntimeReport() = runBlocking {
+        val report = ExtensionHealthRunner().run(loadProfile(), emptyList())
+        val json = ExtensionHealthJson.encodeReport(report)
+
+        assertEquals(HealthStatus.FAIL, report.status)
+        assertEquals(0, report.requestCount)
+        assertEquals("load_source", report.results.single().steps.single().operation)
+        assertEquals(HealthFailureClass.HOST_RUNTIME, report.results.single().steps.single().failureClass)
+        assertFalse(json.contains("Exception"))
+        assertFalse(json.contains("Timed out"))
+    }
+
+    @Test
     fun profileRejectsCredentialBearingOrUntrustedBoardUrl() {
         val fixture = resource("profile-v1.json")
         val credentialBearing = fixture.replace(
@@ -148,7 +161,7 @@ class ExtensionHealthRunnerTest {
     }
 
     @Test
-    fun typedAuthenticationFailureIsPendingAndNeverPasses() = runBlocking {
+    fun authenticationFailureFromPublicBoardDirectoryFailsInsteadOfBeingAllowedPending() = runBlocking {
         val source = FakeSource(
             boardFailure = SourceFailureException(
                 SourceFailure(SourceFailureCode.AUTH_REQUIRED, operation = "board_page"),
@@ -157,9 +170,9 @@ class ExtensionHealthRunnerTest {
 
         val report = ExtensionHealthRunner().run(loadProfile(), listOf(source))
 
-        assertEquals(HealthStatus.PARTIAL_AUTH_PENDING, report.status)
-        assertEquals(HealthStatus.AUTH_PENDING, report.results.single().status)
-        assertEquals(HealthStatus.AUTH_PENDING, report.results.single().steps.single().status)
+        assertEquals(HealthStatus.FAIL, report.status)
+        assertEquals(HealthStatus.FAIL, report.results.single().status)
+        assertEquals(HealthStatus.FAIL, report.results.single().steps.single().status)
         assertEquals(HealthFailureClass.AUTH_REQUIRED, report.results.single().steps.single().failureClass)
     }
 
@@ -180,7 +193,15 @@ class ExtensionHealthRunnerTest {
     fun missingHostOwnedSessionIsPendingWithoutCallingCandidateCode() = runBlocking {
         val profile = loadProfile().copy(
             maxRequests = 4,
-            sources = loadProfile().sources.map { it.copy(requireAuthenticatedSession = true) },
+            sources = loadProfile().sources.map {
+                it.copy(
+                    requireAuthenticatedSession = true,
+                    authenticatedOperations = setOf(
+                        HealthProbeOperation.GET_THREAD_SUMMARIES,
+                        HealthProbeOperation.GET_THREAD_PAGE,
+                    ),
+                )
+            },
         )
         val source = FakeAuthenticatedSource()
 
@@ -198,7 +219,15 @@ class ExtensionHealthRunnerTest {
     fun provisionedButExpiredSessionRemainsPendingAndNeverLooksHealthy() = runBlocking {
         val profile = loadProfile().copy(
             maxRequests = 4,
-            sources = loadProfile().sources.map { it.copy(requireAuthenticatedSession = true) },
+            sources = loadProfile().sources.map {
+                it.copy(
+                    requireAuthenticatedSession = true,
+                    authenticatedOperations = setOf(
+                        HealthProbeOperation.GET_THREAD_SUMMARIES,
+                        HealthProbeOperation.GET_THREAD_PAGE,
+                    ),
+                )
+            },
         )
         val source = FakeAuthenticatedSource(sessionValid = false)
         var evidenceCalls = 0
@@ -219,6 +248,72 @@ class ExtensionHealthRunnerTest {
         assertEquals(1, source.calls)
         assertEquals(0, evidenceCalls)
         assertNull(report.results.single().evidenceScreenshot)
+    }
+
+    @Test
+    fun publicProbeCallsBoardDirectoryBeforeMarkingOnlyProtectedOperationsPending() = runBlocking {
+        val source = FakeAuthenticatedSource()
+        val profile = loadProfile().copy(
+            maxRequests = 1,
+            sources = loadProfile().sources.map {
+                it.copy(
+                    authenticatedOperations = setOf(
+                        HealthProbeOperation.GET_THREAD_SUMMARIES,
+                        HealthProbeOperation.GET_THREAD_PAGE,
+                    ),
+                )
+            },
+        )
+
+        val report = ExtensionHealthRunner().run(profile, listOf(source))
+
+        assertEquals(HealthStatus.PARTIAL_AUTH_PENDING, report.status)
+        assertEquals(1, report.requestCount)
+        assertEquals(1, source.calls)
+        assertEquals(
+            listOf(
+                HealthProbeOperation.GET_BOARD_PAGE.wireName to HealthStatus.PASS,
+                HealthProbeOperation.GET_THREAD_SUMMARIES.wireName to HealthStatus.AUTH_PENDING,
+                HealthProbeOperation.GET_THREAD_PAGE.wireName to HealthStatus.AUTH_PENDING,
+            ),
+            report.results.single().steps.map { it.operation to it.status },
+        )
+    }
+
+    @Test
+    fun fullCredentialedProbeValidatesSessionThenRunsEveryOperation() = runBlocking {
+        val source = FakeAuthenticatedSource()
+        val profile = loadProfile().copy(
+            maxRequests = 4,
+            sources = loadProfile().sources.map {
+                it.copy(
+                    requireAuthenticatedSession = true,
+                    authenticatedOperations = setOf(
+                        HealthProbeOperation.GET_THREAD_SUMMARIES,
+                        HealthProbeOperation.GET_THREAD_PAGE,
+                    ),
+                )
+            },
+        )
+
+        val report = ExtensionHealthRunner().run(
+            profile,
+            listOf(source),
+            authenticatedSessionSourceIds = setOf("test.source"),
+        )
+
+        assertEquals(HealthStatus.PASS, report.status)
+        assertEquals(4, report.requestCount)
+        assertEquals(4, source.calls)
+        assertEquals(
+            listOf(
+                "validate_session",
+                HealthProbeOperation.GET_BOARD_PAGE.wireName,
+                HealthProbeOperation.GET_THREAD_SUMMARIES.wireName,
+                HealthProbeOperation.GET_THREAD_PAGE.wireName,
+            ),
+            report.results.single().steps.map(HealthStepResult::operation),
+        )
     }
 
     @Test
@@ -322,15 +417,20 @@ class ExtensionHealthRunnerTest {
         override suspend fun validateSession(): Boolean { calls += 1; return sessionValid }
         override suspend fun getBoardPage(request: BoardPageRequest): BoardPage {
             calls += 1
-            return BoardPage(emptyList())
+            return BoardPage(listOf(Board(id, "https://example.com/board", "Board")))
         }
         override suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary> {
             calls += 1
-            return emptyList()
+            return listOf(FakeSource.summary)
         }
         override suspend fun getThread(summary: ThreadSummary): Thread {
             calls += 1
-            error("not reached")
+            return Thread(
+                id = summary.id,
+                url = "https://example.com/thread/1",
+                title = summary.title,
+                posts = listOf(FakeSource.post),
+            )
         }
     }
 }

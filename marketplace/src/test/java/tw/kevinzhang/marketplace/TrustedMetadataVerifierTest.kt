@@ -42,6 +42,21 @@ class TrustedMetadataVerifierTest {
     }
 
     @Test
+    fun `production root verifies published timestamp version 3`() {
+        val verifier = TrustedMetadataVerifier(
+            productionRootBytes(),
+            now = { Instant.parse("2026-08-16T00:00:00Z") },
+        )
+
+        val timestamp = verifier.verify(
+            PRODUCTION_TIMESTAMP_V3.toByteArray(Charsets.UTF_8),
+            "timestamp",
+        )
+
+        assertEquals(3L, timestamp.version)
+    }
+
+    @Test
     fun `canonical JSON matches Python UTF8 and HTML escaping behavior`() {
         val input = JsonObject().apply {
             addProperty("z", "中文<&='")
@@ -270,5 +285,10 @@ class TrustedMetadataVerifierTest {
         )
         return candidates.firstOrNull(File::isFile)?.readBytes()
             ?: error("Production TUF root fixture is missing")
+    }
+
+    private companion object {
+        const val PRODUCTION_TIMESTAMP_V3 =
+            "{\"signatures\":[{\"keyid\":\"2147b24bd07dff1c3b1c863070575f2d65142942d81bc0102b40ac4e2348dc04\",\"sig\":\"MEQCIGtufeEl8vUfkmR96A8j5TLClpoz06oGh4+/8hC+FLWyAiAUBBRa7qKXiaeQBPHHUu/0fVAJ6CiWNEsHo7oIbOdFjw==\"}],\"signed\":{\"_type\":\"timestamp\",\"expires\":\"2026-11-13T23:18:01Z\",\"meta\":{\"snapshot.json\":{\"hashes\":{\"sha256\":\"b3c9d2be95d081d1eb582a9fc8619a89065dfc4835c21464d30a4a8817ae32ea\"},\"length\":433,\"version\":3}},\"specVersion\":\"1.0\",\"version\":3}}"
     }
 }
