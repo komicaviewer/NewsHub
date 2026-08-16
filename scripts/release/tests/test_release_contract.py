@@ -233,6 +233,33 @@ class ReleaseContractTest(unittest.TestCase):
         self.assertEqual(5, state["appReleaseJobs"])
         self.assertEqual(120, state["buildMinutes"])
 
+    def test_seventh_release_requires_exact_august_v0020_override(self) -> None:
+        exact_commit = "a" * 40
+        state = {
+            "month": "2026-08",
+            "buildMinutes": 140,
+            "appReleaseJobs": 6,
+            "repairJobs": 3,
+        }
+        result = reserve_release(
+            state,
+            now=datetime(2026, 8, 17, tzinfo=timezone.utc),
+            build_minutes=20,
+            monthly_build_limit=2_000,
+            monthly_release_limit=4,
+            release_tag="v0.0.20",
+            release_commit_sha=exact_commit,
+            emergency_approved=True,
+            emergency_month="2026-08",
+            emergency_max_releases=7,
+            emergency_tag="v0.0.20",
+            emergency_commit_sha=exact_commit,
+        )
+        self.assertEqual(7, result["appReleaseJobs"])
+        self.assertEqual(160, result["buildMinutes"])
+        self.assertEqual(6, state["appReleaseJobs"])
+        self.assertEqual(140, state["buildMinutes"])
+
     def test_emergency_override_rejects_mixed_tuple_other_month_tag_and_commit(self) -> None:
         exact_commit = "d" * 40
         base = {
@@ -293,7 +320,7 @@ class ReleaseContractTest(unittest.TestCase):
                 reserve_release(state, now=now, **(base | overrides))
             self.assertEqual(original, state)
 
-    def test_emergency_override_rejects_seventh_and_malformed_shas_without_mutation(self) -> None:
+    def test_emergency_override_rejects_eighth_and_malformed_shas_without_mutation(self) -> None:
         exact_commit = "f" * 40
         base = {
             "build_minutes": 20,
@@ -309,8 +336,12 @@ class ReleaseContractTest(unittest.TestCase):
         }
         cases = (
             (
-                {"month": "2026-08", "buildMinutes": 140, "appReleaseJobs": 6},
-                {},
+                {"month": "2026-08", "buildMinutes": 160, "appReleaseJobs": 7},
+                {
+                    "release_tag": "v0.0.20",
+                    "emergency_max_releases": 7,
+                    "emergency_tag": "v0.0.20",
+                },
             ),
             (
                 {"month": "2026-08", "buildMinutes": 120, "appReleaseJobs": 5},
