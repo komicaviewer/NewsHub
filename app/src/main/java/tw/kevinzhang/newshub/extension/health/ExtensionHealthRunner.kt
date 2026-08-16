@@ -24,6 +24,7 @@ class ExtensionHealthRunner(
     suspend fun run(
         profile: ExtensionHealthProfile,
         sources: Collection<Source>,
+        loadFailureClassesByPackage: Map<String, HealthFailureClass> = emptyMap(),
         authenticatedSessionSourceIds: Set<String> = emptySet(),
         captureEvidence: suspend (sourceId: String) -> String? = { null },
     ): ExtensionHealthReport {
@@ -49,7 +50,13 @@ class ExtensionHealthRunner(
             val steps = mutableListOf<HealthStepResult>()
             val source = sourceById[sourceProfile.sourceId]
             if (source == null) {
-                steps += failedStep(sourceProfile, "load_source", HealthFailureClass.HOST_RUNTIME, 0)
+                steps += failedStep(
+                    sourceProfile,
+                    "load_source",
+                    loadFailureClassesByPackage[sourceProfile.packageName]
+                        ?: HealthFailureClass.HOST_RUNTIME,
+                    0,
+                )
             } else {
                 val identityMatches = source.sourceIdentity?.let { identity ->
                     identity.packageName == sourceProfile.packageName &&
@@ -347,25 +354,7 @@ internal fun classifyFailure(error: Throwable): HealthFailureClass {
     }
     if (error is AuthenticationRequiredException) return HealthFailureClass.AUTH_REQUIRED
     if (error is SourceFailureException) {
-        return when (error.failure.code) {
-            SourceFailureCode.HOST_POLICY -> HealthFailureClass.HOST_POLICY
-            SourceFailureCode.ACCESS_CHALLENGE -> HealthFailureClass.ACCESS_CHALLENGE
-            SourceFailureCode.ACCESS_DENIED -> HealthFailureClass.ACCESS_DENIED
-            SourceFailureCode.AUTH_REQUIRED,
-            SourceFailureCode.AUTH_EXPIRED,
-            -> HealthFailureClass.AUTH_REQUIRED
-            SourceFailureCode.RATE_LIMITED,
-            SourceFailureCode.BACKPRESSURE,
-            -> HealthFailureClass.RATE_LIMITED
-            SourceFailureCode.SITE_UNAVAILABLE -> HealthFailureClass.SITE_UNAVAILABLE
-            SourceFailureCode.PARSER_CONTRACT -> HealthFailureClass.PARSER_CONTRACT
-            SourceFailureCode.TIMED_OUT -> HealthFailureClass.TIMEOUT
-            SourceFailureCode.EXTENSION_RUNTIME,
-            SourceFailureCode.TRUST_INACTIVE,
-            SourceFailureCode.INVALID_REQUEST,
-            SourceFailureCode.PAYLOAD_TOO_LARGE,
-            -> HealthFailureClass.HOST_RUNTIME
-        }
+        return classifySourceFailureCode(error.failure.code)
     }
     if (error is HostPolicyViolationException) return HealthFailureClass.HOST_POLICY
     if (error is DeadObjectException || error is SecurityException) return HealthFailureClass.HOST_RUNTIME
@@ -392,4 +381,36 @@ internal fun classifyFailure(error: Throwable): HealthFailureClass {
             HealthFailureClass.PARSER_CONTRACT
         else -> HealthFailureClass.UNKNOWN
     }
+}
+
+/** Recovers only the stable Binder failure code; arbitrary quarantine text stays private. */
+internal fun classifyQuarantinedLoadFailure(reason: String): HealthFailureClass {
+    val codeName = Regex("^Source operation failed: ([A-Z_]+)$")
+        .matchEntire(reason)
+        ?.groupValues
+        ?.get(1)
+        ?: return HealthFailureClass.HOST_RUNTIME
+    val code = runCatching { SourceFailureCode.valueOf(codeName) }.getOrNull()
+        ?: return HealthFailureClass.HOST_RUNTIME
+    return classifySourceFailureCode(code)
+}
+
+private fun classifySourceFailureCode(code: SourceFailureCode): HealthFailureClass = when (code) {
+    SourceFailureCode.HOST_POLICY -> HealthFailureClass.HOST_POLICY
+    SourceFailureCode.ACCESS_CHALLENGE -> HealthFailureClass.ACCESS_CHALLENGE
+    SourceFailureCode.ACCESS_DENIED -> HealthFailureClass.ACCESS_DENIED
+    SourceFailureCode.AUTH_REQUIRED,
+    SourceFailureCode.AUTH_EXPIRED,
+    -> HealthFailureClass.AUTH_REQUIRED
+    SourceFailureCode.RATE_LIMITED,
+    SourceFailureCode.BACKPRESSURE,
+    -> HealthFailureClass.RATE_LIMITED
+    SourceFailureCode.SITE_UNAVAILABLE -> HealthFailureClass.SITE_UNAVAILABLE
+    SourceFailureCode.PARSER_CONTRACT -> HealthFailureClass.PARSER_CONTRACT
+    SourceFailureCode.TIMED_OUT -> HealthFailureClass.TIMEOUT
+    SourceFailureCode.EXTENSION_RUNTIME,
+    SourceFailureCode.TRUST_INACTIVE,
+    SourceFailureCode.INVALID_REQUEST,
+    SourceFailureCode.PAYLOAD_TOO_LARGE,
+    -> HealthFailureClass.HOST_RUNTIME
 }

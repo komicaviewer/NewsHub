@@ -91,6 +91,31 @@ class ExtensionHealthRunnerTest {
     }
 
     @Test
+    fun quarantinedParserFailureRemainsParserFailureAtLoadBoundary() = runBlocking {
+        val report = ExtensionHealthRunner().run(
+            profile = loadProfile(),
+            sources = emptyList(),
+            loadFailureClassesByPackage = mapOf(
+                "test.extension" to classifyQuarantinedLoadFailure(
+                    "Source operation failed: PARSER_CONTRACT",
+                ),
+            ),
+        )
+
+        val failure = report.results.single().steps.single()
+        assertEquals("load_source", failure.operation)
+        assertEquals(HealthFailureClass.PARSER_CONTRACT, failure.failureClass)
+    }
+
+    @Test
+    fun arbitraryQuarantineReasonCannotEscapeAsParserEvidence() {
+        assertEquals(
+            HealthFailureClass.HOST_RUNTIME,
+            classifyQuarantinedLoadFailure("parser failed with cookie=secret"),
+        )
+    }
+
+    @Test
     fun profileRejectsCredentialBearingOrUntrustedBoardUrl() {
         val fixture = resource("profile-v1.json")
         val credentialBearing = fixture.replace(

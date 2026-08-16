@@ -25,6 +25,7 @@ import tw.kevinzhang.newshub.extension.health.HealthStatus
 import tw.kevinzhang.newshub.extension.health.SourceHealthProfile
 import tw.kevinzhang.newshub.extension.health.SourceHealthResult
 import tw.kevinzhang.newshub.extension.health.failureFingerprint
+import tw.kevinzhang.newshub.extension.health.classifyQuarantinedLoadFailure
 import tw.kevinzhang.extension_api.SourceIdentity
 import java.io.File
 import java.io.FileOutputStream
@@ -126,6 +127,10 @@ class ExtensionLiveHealthInstrumentedTest {
             ExtensionHealthRunner().run(
                 profile = profile,
                 sources = sources,
+                loadFailureClassesByPackage = entryPoint.manager().quarantinedExtensions.value
+                    .associate { quarantine ->
+                        quarantine.packageName to classifyQuarantinedLoadFailure(quarantine.reason)
+                    },
                 authenticatedSessionSourceIds = authenticatedSessionSourceIds,
                 captureEvidence = { sourceId ->
                     captureScreenshot(
