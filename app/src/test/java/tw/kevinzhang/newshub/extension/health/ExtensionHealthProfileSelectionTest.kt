@@ -70,6 +70,10 @@ class ExtensionHealthProfileSelectionTest {
             ),
             public.sources.first { it.sourceId == "tw.kevinzhang.eyny" }.authenticatedOperations,
         )
+        assertEquals(
+            setOf("eyny.com", "www.eyny.com", "www53.eyny.com"),
+            public.sources.first { it.sourceId == "tw.kevinzhang.eyny" }.allowedHosts.toSet(),
+        )
         assertEquals(35, public.maxRequests)
         assertEquals(ExtensionHealthProfileSelection.PUBLIC_RECURRING_PROFILE, public.profileId)
         assertEquals(true, selection.allowAuthPending)

@@ -8,7 +8,7 @@
     {
       "sourceId": "tw.kevinzhang.eyny",
       "packageName": "tw.kevinzhang.newshub.extension.eyny",
-      "allowedHosts": ["eyny.com", "www.eyny.com"],
+      "allowedHosts": ["eyny.com", "www.eyny.com", "www53.eyny.com"],
       "requireAuthenticatedSession": true,
       "authenticatedOperations": ["get_thread_summaries", "get_thread_page"]
     },

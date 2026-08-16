@@ -136,21 +136,33 @@ class SourceNetworkBrokerTest {
         )
     }
 
-    @Test fun `rejects cross-origin redirect without issuing a second request`() {
+    @Test fun `returns cross-origin redirect without following it`() {
         val request = sourceReadRequest("https://news.example/threads/start")
         val initial = authorizeSourceNetworkRequest(request, policy)
         var requestCount = 0
 
+        val response = followAuthorizedSourceRedirects(request, initial, policy) { _, _ ->
+            requestCount += 1
+            networkResponse(302, "https://other.example/threads/final")
+        }
+
+        assertEquals(1, requestCount)
+        assertEquals(302, response.code)
+        assertEquals("https://other.example/threads/final", response.headers["Location"])
+    }
+
+    @Test fun `rejects insecure cross-origin redirect`() {
+        val request = sourceReadRequest("https://news.example/threads/start")
+        val initial = authorizeSourceNetworkRequest(request, policy)
+
         val failure = captureSourceFailure {
             followAuthorizedSourceRedirects(request, initial, policy) { _, _ ->
-                requestCount += 1
-                networkResponse(302, "https://other.example/threads/final")
+                networkResponse(302, "http://other.example/threads/final")
             }
         }
 
         assertEquals(SourceFailureCode.HOST_POLICY, failure.failure.code)
         assertEquals("other.example", failure.failure.observedHost)
-        assertEquals(1, requestCount)
     }
 
     @Test fun `rejects redirect outside the authorized path`() {

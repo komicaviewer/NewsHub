@@ -572,8 +572,7 @@ internal fun followBoundedSameOriginRedirects(
         if (!redirectUrl.isHttps ||
             redirectUrl.port != 443 ||
             redirectUrl.username.isNotEmpty() ||
-            redirectUrl.password.isNotEmpty() ||
-            !redirectUrl.hasSameOrigin(initialUrl)
+            redirectUrl.password.isNotEmpty()
         ) {
             throwRedirectFailure(
                 code = SourceFailureCode.HOST_POLICY,
@@ -582,6 +581,11 @@ internal fun followBoundedSameOriginRedirects(
                 allowedHosts = listOf(initialUrl.host),
             )
         }
+
+        // A cross-origin redirect is never followed with the initial request's authority. Return
+        // the empty redirect response to the isolated Source instead. A Source with an explicit,
+        // reviewed redirect policy may issue a new request, which the broker authorizes afresh.
+        if (!redirectUrl.hasSameOrigin(initialUrl)) return response
 
         validateRedirect(redirectUrl)
         if (!visitedUrls.add(redirectUrl.toString()) || requestIndex == MAX_SOURCE_REDIRECTS) {
