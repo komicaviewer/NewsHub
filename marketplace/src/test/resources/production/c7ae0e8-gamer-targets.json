@@ -1,0 +1,101 @@
+{
+  "custom": {
+    "repository": {
+      "description": "Official extension repository for NewsHub",
+      "iconUrl": "https://avatars.githubusercontent.com/u/270819710",
+      "name": "NewsHub Extensions",
+      "website": "https://github.com/komicaviewer/extensions"
+    }
+  },
+  "targets": {
+    "apk/newshub-gamer-v0.0.9.apk": {
+      "custom": {
+        "apkSignerPins": [
+          "3df4717435423d5ba7adfed43a22a6e18bbeadc8d509d0bea94d82c7b0f2998d"
+        ],
+        "lang": "zh-TW",
+        "lineageRootSha256": "3df4717435423d5ba7adfed43a22a6e18bbeadc8d509d0bea94d82c7b0f2998d",
+        "name": "NewsHub: Gamer 巴哈姆特",
+        "packageName": "tw.kevinzhang.newshub.extension.gamer",
+        "sources": [
+          {
+            "baseUrl": "https://forum.gamer.com.tw",
+            "id": "tw.kevinzhang.newshub.extension.gamer",
+            "lang": "zh-TW",
+            "name": "Gamer 巴哈姆特",
+            "networkPolicy": {
+              "auth": {
+                "exactHosts": [
+                  "forum.gamer.com.tw",
+                  "user.gamer.com.tw",
+                  "www.gamer.com.tw"
+                ]
+              },
+              "external": {
+                "exactHosts": [
+                  "forum.gamer.com.tw"
+                ]
+              },
+              "namedCapabilities": [
+                "external_link",
+                "resource_read"
+              ],
+              "request": {
+                "rules": [
+                  {
+                    "exactHosts": [
+                      "api.gamer.com.tw"
+                    ],
+                    "operation": {
+                      "credentialed": false,
+                      "methods": [
+                        "GET"
+                      ],
+                      "name": "source_read",
+                      "pathPrefixes": [
+                        "/community/v1/",
+                        "/mobile_app/forum/v3/"
+                      ]
+                    }
+                  },
+                  {
+                    "exactHosts": [
+                      "forum.gamer.com.tw"
+                    ],
+                    "operation": {
+                      "credentialed": true,
+                      "methods": [
+                        "GET"
+                      ],
+                      "name": "source_read",
+                      "pathPrefixes": [
+                        "/B.php",
+                        "/C.php",
+                        "/ajax/"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "resource": {
+                "exactHosts": [
+                  "i2.bahamut.com.tw"
+                ]
+              },
+              "schemaVersion": 2
+            },
+            "policyHash": "d83562d39c756463f9e5d1ed8028cfde5ba53abb821d5f3c2e45ec71bcefc5dc",
+            "protocol": 1,
+            "service": "tw.kevinzhang.newshub.extension.gamer.GamerExtensionService"
+          }
+        ],
+        "versionCode": 9,
+        "versionName": "0.0.9"
+      },
+      "hashes": {
+        "sha256": "cb4b7cf7d0f999ce4e4f3d5b18241d61e77a7f1219aeaa3c7c2dae70bfb98eb6"
+      },
+      "length": 5032873
+    }
+  }
+}

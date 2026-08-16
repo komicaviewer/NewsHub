@@ -2,6 +2,7 @@ package tw.kevinzhang.marketplace
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -44,6 +45,42 @@ class TrustedRepositoryClientTest {
         val source = result.trust.policies.single().sources.getValue("source.test")
         assertEquals(policy, source.networkPolicy)
         assertEquals(policy.sha256(), source.policyHash)
+    }
+
+    @Test
+    fun `production c7ae0e8 Gamer policy v2 target remains readable`() {
+        val signed = javaClass.getResourceAsStream(
+            "/production/c7ae0e8-gamer-targets.json",
+        )?.bufferedReader()?.use { reader ->
+            JsonParser.parseReader(reader).asJsonObject
+        } ?: error("Production c7ae0e8 target fixture is missing")
+
+        val result = client.parseTargets(domain.baseUrl, signed, 1, 5, 99_000)
+
+        val extension = result.extensions.single()
+        assertEquals("tw.kevinzhang.newshub.extension.gamer", extension.id)
+        assertEquals(9L, extension.version)
+        assertEquals(5_032_873L, extension.targetLength)
+        val source = extension.sources.single()
+        assertEquals("tw.kevinzhang.newshub.extension.gamer", source.id)
+        assertEquals(
+            "d83562d39c756463f9e5d1ed8028cfde5ba53abb821d5f3c2e45ec71bcefc5dc",
+            source.policyHash,
+        )
+        val policy = requireNotNull(source.networkPolicy)
+        assertEquals(2, policy.policyVersion)
+        assertEquals(2, policy.requestRules.size)
+        assertEquals(
+            setOf("api.gamer.com.tw", "forum.gamer.com.tw"),
+            policy.requestRules.flatMapTo(linkedSetOf(), NetworkRequestRule::exactHosts),
+        )
+        assertEquals(setOf("i2.bahamut.com.tw"), policy.resourceExactHosts)
+        assertEquals(setOf("forum.gamer.com.tw"), policy.externalExactHosts)
+        assertEquals(
+            setOf("forum.gamer.com.tw", "user.gamer.com.tw", "www.gamer.com.tw"),
+            policy.authExactHosts,
+        )
+        assertEquals(source.policyHash, policy.sha256())
     }
 
     @Test
