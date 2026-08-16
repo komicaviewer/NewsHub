@@ -166,6 +166,19 @@ class ReleaseContractTest(unittest.TestCase):
                 monthly_release_limit=4,
             )
 
+    def test_fourth_release_uses_normal_monthly_limit_without_override(self) -> None:
+        result = reserve_release(
+            {"month": "2026-08", "buildMinutes": 60, "appReleaseJobs": 3},
+            now=datetime(2026, 8, 16, tzinfo=timezone.utc),
+            build_minutes=20,
+            monthly_build_limit=2_000,
+            monthly_release_limit=4,
+            release_tag="v9.9.9",
+            release_commit_sha="not-needed-for-normal-release",
+        )
+        self.assertEqual(4, result["appReleaseJobs"])
+        self.assertEqual(80, result["buildMinutes"])
+
     def test_fifth_release_requires_exact_august_v0017_override(self) -> None:
         exact_commit = "d" * 40
         state = {
@@ -193,7 +206,34 @@ class ReleaseContractTest(unittest.TestCase):
         self.assertEqual(4, state["appReleaseJobs"])
         self.assertEqual(100, state["buildMinutes"])
 
-    def test_emergency_override_rejects_other_month_tag_commit_and_sixth_release(self) -> None:
+    def test_sixth_release_requires_exact_august_v0019_override(self) -> None:
+        exact_commit = "e" * 40
+        state = {
+            "month": "2026-08",
+            "buildMinutes": 120,
+            "appReleaseJobs": 5,
+            "repairJobs": 3,
+        }
+        result = reserve_release(
+            state,
+            now=datetime(2026, 8, 16, tzinfo=timezone.utc),
+            build_minutes=20,
+            monthly_build_limit=2_000,
+            monthly_release_limit=4,
+            release_tag="v0.0.19",
+            release_commit_sha=exact_commit,
+            emergency_approved=True,
+            emergency_month="2026-08",
+            emergency_max_releases=6,
+            emergency_tag="v0.0.19",
+            emergency_commit_sha=exact_commit,
+        )
+        self.assertEqual(6, result["appReleaseJobs"])
+        self.assertEqual(140, result["buildMinutes"])
+        self.assertEqual(5, state["appReleaseJobs"])
+        self.assertEqual(120, state["buildMinutes"])
+
+    def test_emergency_override_rejects_mixed_tuple_other_month_tag_and_commit(self) -> None:
         exact_commit = "d" * 40
         base = {
             "build_minutes": 20,
@@ -226,12 +266,78 @@ class ReleaseContractTest(unittest.TestCase):
             (
                 {"month": "2026-08", "buildMinutes": 120, "appReleaseJobs": 5},
                 datetime(2026, 8, 16, tzinfo=timezone.utc),
+                {
+                    "release_tag": "v0.0.19",
+                    "emergency_max_releases": 6,
+                    "emergency_tag": "v0.0.17",
+                },
+            ),
+            (
+                {"month": "2026-08", "buildMinutes": 100, "appReleaseJobs": 4},
+                datetime(2026, 8, 16, tzinfo=timezone.utc),
+                {
+                    "release_tag": "v0.0.19",
+                    "emergency_max_releases": 6,
+                    "emergency_tag": "v0.0.19",
+                },
+            ),
+            (
+                {"month": "2026-08", "buildMinutes": 120, "appReleaseJobs": 5},
+                datetime(2026, 8, 16, tzinfo=timezone.utc),
                 {},
             ),
         )
         for state, now, overrides in cases:
+            original = dict(state)
             with self.subTest(state=state, overrides=overrides), self.assertRaises(CostReservationError):
                 reserve_release(state, now=now, **(base | overrides))
+            self.assertEqual(original, state)
+
+    def test_emergency_override_rejects_seventh_and_malformed_shas_without_mutation(self) -> None:
+        exact_commit = "f" * 40
+        base = {
+            "build_minutes": 20,
+            "monthly_build_limit": 2_000,
+            "monthly_release_limit": 4,
+            "release_tag": "v0.0.19",
+            "release_commit_sha": exact_commit,
+            "emergency_approved": True,
+            "emergency_month": "2026-08",
+            "emergency_max_releases": 6,
+            "emergency_tag": "v0.0.19",
+            "emergency_commit_sha": exact_commit,
+        }
+        cases = (
+            (
+                {"month": "2026-08", "buildMinutes": 140, "appReleaseJobs": 6},
+                {},
+            ),
+            (
+                {"month": "2026-08", "buildMinutes": 120, "appReleaseJobs": 5},
+                {"release_commit_sha": "F" * 40},
+            ),
+            (
+                {"month": "2026-08", "buildMinutes": 120, "appReleaseJobs": 5},
+                {"emergency_commit_sha": "F" * 40},
+            ),
+            (
+                {"month": "2026-08", "buildMinutes": 120, "appReleaseJobs": 5},
+                {"release_commit_sha": "F" * 40, "emergency_commit_sha": "F" * 40},
+            ),
+            (
+                {"month": "2026-08", "buildMinutes": 120, "appReleaseJobs": 5},
+                {"release_commit_sha": "f" * 39, "emergency_commit_sha": "f" * 39},
+            ),
+        )
+        for state, overrides in cases:
+            original = dict(state)
+            with self.subTest(state=state, overrides=overrides), self.assertRaises(CostReservationError):
+                reserve_release(
+                    state,
+                    now=datetime(2026, 8, 16, tzinfo=timezone.utc),
+                    **(base | overrides),
+                )
+            self.assertEqual(original, state)
 
     def test_monthly_release_limit_cannot_be_raised_to_five(self) -> None:
         with self.assertRaises(CostReservationError):

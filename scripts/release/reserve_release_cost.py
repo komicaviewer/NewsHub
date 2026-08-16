@@ -13,9 +13,12 @@ class CostReservationError(RuntimeError):
     pass
 
 
-EMERGENCY_MONTH = "2026-08"
-EMERGENCY_MAX_RELEASES = 5
-EMERGENCY_TAG = "v0.0.17"
+EMERGENCY_RELEASE_ALLOWLIST = frozenset(
+    {
+        ("2026-08", 5, "v0.0.17"),
+        ("2026-08", 6, "v0.0.19"),
+    }
+)
 COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -54,13 +57,13 @@ def reserve_release(
     if build_total > monthly_build_limit:
         raise CostReservationError("monthly Cloud Build budget is exhausted")
     if release_total > monthly_release_limit:
+        emergency_tuple = (emergency_month, emergency_max_releases, emergency_tag)
         if not (
             monthly_release_limit == 4
-            and release_total == EMERGENCY_MAX_RELEASES
             and emergency_approved
-            and emergency_month == EMERGENCY_MONTH
-            and emergency_max_releases == EMERGENCY_MAX_RELEASES
-            and emergency_tag == EMERGENCY_TAG
+            and emergency_tuple in EMERGENCY_RELEASE_ALLOWLIST
+            and release_total == emergency_max_releases
+            and COMMIT_SHA_PATTERN.fullmatch(release_commit_sha) is not None
             and COMMIT_SHA_PATTERN.fullmatch(emergency_commit_sha) is not None
             and month == emergency_month
             and release_tag == emergency_tag
