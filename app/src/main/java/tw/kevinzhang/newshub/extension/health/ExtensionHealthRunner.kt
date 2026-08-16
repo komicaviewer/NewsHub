@@ -50,11 +50,16 @@ class ExtensionHealthRunner(
             val steps = mutableListOf<HealthStepResult>()
             val source = sourceById[sourceProfile.sourceId]
             if (source == null) {
+                val loadFailure = loadFailureClassesByPackage[sourceProfile.packageName]
+                    ?: HealthFailureClass.HOST_RUNTIME
                 steps += failedStep(
                     sourceProfile,
-                    "load_source",
-                    loadFailureClassesByPackage[sourceProfile.packageName]
-                        ?: HealthFailureClass.HOST_RUNTIME,
+                    if (loadFailure == HealthFailureClass.PARSER_CONTRACT) {
+                        HealthProbeOperation.GET_BOARD_PAGE.wireName
+                    } else {
+                        "load_source"
+                    },
+                    loadFailure,
                     0,
                 )
             } else {

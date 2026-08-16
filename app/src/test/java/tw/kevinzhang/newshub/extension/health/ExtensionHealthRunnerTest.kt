@@ -103,7 +103,7 @@ class ExtensionHealthRunnerTest {
         )
 
         val failure = report.results.single().steps.single()
-        assertEquals("load_source", failure.operation)
+        assertEquals("get_board_page", failure.operation)
         assertEquals(HealthFailureClass.PARSER_CONTRACT, failure.failureClass)
     }
 
