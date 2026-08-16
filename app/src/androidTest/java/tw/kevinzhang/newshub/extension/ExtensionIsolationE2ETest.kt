@@ -31,6 +31,7 @@ class ExtensionIsolationE2ETest {
     @Test
     fun liveHealthFixtureMatchesPublishedV2NetworkPolicies() {
         assertTrue(SOURCE_POLICIES.all { it.policy.policyVersion == 2 })
+        assertTrue(SOURCE_POLICIES.all { it.policy.operations.isEmpty() })
         assertEquals(
             PUBLISHED_POLICY_HASHES,
             SOURCE_POLICIES.associate { it.sourceId to it.policy.sha256() },
@@ -235,9 +236,10 @@ class ExtensionIsolationE2ETest {
             ),
         ) = SourceNetworkPolicy(
             exactHosts = requestRules.flatMapTo(linkedSetOf(), NetworkRequestRule::exactHosts),
-            operations = mapOf(
-                NetworkOperations.SOURCE_READ to requestRules.first().operation,
-            ),
+            // Version 2 represents request authorization exclusively through requestRules.
+            // Keeping the legacy v1 operations map populated makes the loader reject the
+            // otherwise correctly hashed policy before any extension can bind.
+            operations = emptyMap(),
             namedCapabilities = namedCapabilities,
             policyVersion = 2,
             resourceExactHosts = resourceHosts,

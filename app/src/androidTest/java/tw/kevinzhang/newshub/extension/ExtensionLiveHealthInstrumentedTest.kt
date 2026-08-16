@@ -59,6 +59,7 @@ class ExtensionLiveHealthInstrumentedTest {
         File(stagingDirectory, reportName).delete()
         val screenshotDirectory = File(stagingDirectory, "screenshots").apply { mkdirs() }
         val startedAt = System.currentTimeMillis()
+        var bootstrapOperation = SESSION_CLEANUP_OPERATION
         val report = try {
             val entryPoint = EntryPointAccessors.fromApplication(
                 context,
@@ -97,6 +98,7 @@ class ExtensionLiveHealthInstrumentedTest {
             // This Host-owned test fixture binds exact installed package bytes to the signer observed
             // on that installed package. External CI separately pins the reviewed commit and APK SHA;
             // this dynamic fixture is not a replacement for production TUF metadata.
+            bootstrapOperation = TRUST_FIXTURE_OPERATION
             entryPoint.trustProvider().clear()
             entryPoint.trustProvider().installVerifiedSnapshot(
                 ExtensionIsolationE2ETest().snapshot(
@@ -108,6 +110,7 @@ class ExtensionLiveHealthInstrumentedTest {
                     pinInstalledSigner = true,
                 ),
             )
+            bootstrapOperation = EXTENSION_REFRESH_OPERATION
             entryPoint.manager().refreshAllExtensionsAndAwait()
             val expectedSourceIds = profile.sources.mapTo(linkedSetOf(), SourceHealthProfile::sourceId)
             withTimeoutOrNull(SOURCE_SETTLE_TIMEOUT_MS) {
@@ -119,6 +122,7 @@ class ExtensionLiveHealthInstrumentedTest {
             check(sources.mapTo(linkedSetOf()) { it.id }.all { it in expectedSourceIds }) {
                 "Unexpected Source escaped the health trust snapshot"
             }
+            bootstrapOperation = HEALTH_RUNNER_OPERATION
             ExtensionHealthRunner().run(
                 profile = profile,
                 sources = sources,
@@ -136,6 +140,7 @@ class ExtensionLiveHealthInstrumentedTest {
                 profile = profile,
                 startedAtEpochMs = startedAt,
                 finishedAtEpochMs = System.currentTimeMillis(),
+                operation = bootstrapOperation,
             )
         }
 
@@ -158,6 +163,7 @@ class ExtensionLiveHealthInstrumentedTest {
         profile: ExtensionHealthProfile,
         startedAtEpochMs: Long,
         finishedAtEpochMs: Long,
+        operation: String,
     ) = ExtensionHealthReport(
         profileId = profile.profileId,
         startedAtEpochMs = startedAtEpochMs,
@@ -172,13 +178,13 @@ class ExtensionLiveHealthInstrumentedTest {
                 durationMs = 0,
                 steps = listOf(
                     HealthStepResult(
-                        operation = HARNESS_BOOTSTRAP_OPERATION,
+                        operation = operation,
                         status = HealthStatus.FAIL,
                         durationMs = 0,
                         failureClass = HealthFailureClass.HOST_RUNTIME,
                         failureFingerprint = failureFingerprint(
                             sourceId = source.sourceId,
-                            operation = HARNESS_BOOTSTRAP_OPERATION,
+                            operation = operation,
                             failureClass = HealthFailureClass.HOST_RUNTIME,
                             packageName = source.packageName,
                         ),
@@ -286,7 +292,10 @@ class ExtensionLiveHealthInstrumentedTest {
         const val OUTPUT_ROOT_ARGUMENT = "extensionHealthOutputRoot"
         const val REPORT_NAME_ARGUMENT = "extensionHealthReportName"
         const val DEFAULT_REPORT_NAME = "health-report.json"
-        const val HARNESS_BOOTSTRAP_OPERATION = "harness_bootstrap"
+        const val SESSION_CLEANUP_OPERATION = "harness_session_cleanup"
+        const val TRUST_FIXTURE_OPERATION = "harness_trust_fixture"
+        const val EXTENSION_REFRESH_OPERATION = "harness_extension_refresh"
+        const val HEALTH_RUNNER_OPERATION = "harness_health_runner"
         const val SOURCE_SETTLE_TIMEOUT_MS = 2_000L
         const val SOURCE_SETTLE_POLL_MS = 25L
         const val MAX_SHELL_OUTPUT_CHARS = 16 * 1024
