@@ -17,6 +17,7 @@ EMERGENCY_RELEASE_ALLOWLIST = frozenset(
     {
         ("2026-08", 5, "v0.0.17"),
         ("2026-08", 6, "v0.0.19"),
+        ("2026-08", 7, "v0.0.20"),
     }
 )
 COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
