@@ -25,9 +25,9 @@ Choose one API dependency source:
    ```
 
 2. Set `newshubDir` in the starter's `gradle.properties` to that checkout
-3. For releases, remove `newshubDir` and set `newshubApiPin` to a reviewed commit SHA
+3. For releases, remove `newshubDir` and keep the reviewed `newshubApiPin`
 
-The JitPack coordinate uses `com.github.komicaviewer.NewsHub:extension-api:commit_sha_here`. Never pin `main`, a moving tag, or a version range. The placeholder intentionally fails until you replace it.
+The verified JitPack coordinate is `com.github.komicaviewer.NewsHub:extension-api:6a94c4879ebbf052007dc6fa6374deade2428e57`. Never pin `main`, a moving tag, or a version range.
 
 ## Change the extension identity
 
