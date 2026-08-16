@@ -13,9 +13,6 @@ data class ExtensionDescriptor(
     val lang: String,
     val baseUrl: String,
     val protocol: Int,
-    val needsLogin: Boolean,
-    val loginUrl: String?,
-    val loginHosts: Set<String>,
 )
 
 internal object ExtensionDescriptorValidator {
@@ -24,6 +21,11 @@ internal object ExtensionDescriptorValidator {
         require(metadata.getInt(ExtensionProtocol.META_PROTOCOL, -1) == ExtensionProtocol.VERSION) {
             "Unsupported extension protocol"
         }
+        require(
+            !metadata.containsKey(ExtensionProtocol.META_NEEDS_LOGIN) &&
+                !metadata.containsKey(ExtensionProtocol.META_LOGIN_URL) &&
+                !metadata.containsKey(ExtensionProtocol.META_LOGIN_HOSTS),
+        ) { "Protocol v2 forbids legacy login metadata; authentication is declared at runtime" }
         require(service.exported) { "Source service must be exported" }
         require(service.permission == ExtensionProtocol.BIND_PERMISSION) {
             "Source service must require ${ExtensionProtocol.BIND_PERMISSION}"
@@ -50,18 +52,6 @@ internal object ExtensionDescriptorValidator {
         require(parsedBase?.scheme == "https" && !parsedBase.host.isNullOrBlank()) {
             "Source base URL must be HTTPS"
         }
-        val needsLogin = metadata.getBoolean(ExtensionProtocol.META_NEEDS_LOGIN, false)
-        val loginUrl = metadata.getString(ExtensionProtocol.META_LOGIN_URL)?.trim()?.takeIf(String::isNotEmpty)
-        val loginHosts = metadata.getString(ExtensionProtocol.META_LOGIN_HOSTS)
-            .orEmpty()
-            .split(',')
-            .map(String::trim)
-            .filter(String::isNotEmpty)
-            .toSet()
-        require(!needsLogin || (loginUrl != null && loginHosts.isNotEmpty())) {
-            "Authenticated Source must declare login URL and exact hosts"
-        }
-
         return ExtensionDescriptor(
             packageName = service.packageName,
             serviceClassName = service.name,
@@ -71,9 +61,6 @@ internal object ExtensionDescriptorValidator {
             lang = required(ExtensionProtocol.META_SOURCE_LANG),
             baseUrl = baseUrl,
             protocol = metadata.getInt(ExtensionProtocol.META_PROTOCOL),
-            needsLogin = needsLogin,
-            loginUrl = loginUrl,
-            loginHosts = loginHosts,
         )
     }
 }

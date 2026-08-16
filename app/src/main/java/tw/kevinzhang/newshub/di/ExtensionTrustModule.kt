@@ -5,6 +5,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import tw.kevinzhang.extension_loader.ExtensionManager
+import tw.kevinzhang.extension_loader.AcceptedExtensionArtifact
 import tw.kevinzhang.extension_loader.ExpectedSourceService
 import tw.kevinzhang.extension_loader.ExtensionSigningPolicy
 import tw.kevinzhang.extension_loader.ExtensionTrustPolicyProvider
@@ -35,6 +36,13 @@ object ExtensionTrustModule {
                         expectedVersionCode = policy.expectedVersionCode,
                         targetLength = policy.targetLength,
                         targetSha256 = policy.targetSha256,
+                        acceptedArtifacts = policy.acceptedArtifacts.map { artifact ->
+                            AcceptedExtensionArtifact(
+                                versionCode = artifact.versionCode,
+                                length = artifact.length,
+                                sha256 = artifact.sha256,
+                            )
+                        },
                         lineageAnchorsSha256 = policy.lineageAnchorsSha256,
                         approvedCurrentSignersSha256 = policy.approvedCurrentSignersSha256,
                         repositoryDomainId = policy.repositoryDomainId,

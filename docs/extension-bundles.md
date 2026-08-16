@@ -1,16 +1,35 @@
-# Extension bundle contract
+---
+meta:
+  title: "What contract must a NewsHub extension APK follow?"
+  navLabel: "Extension Bundle Contract"
+  category: "Extensions"
+  contentType: "Reference"
+  contentPlan: "docs/plans/third-party-extension-docs-plan.md"
+---
 
-NewsHub uses a clean-break isolated-service extension contract. An APK may own
-multiple Sources, but every Source must have a separate Android Service,
-isolated UID, process, Binder session, and Host capability. Extension code is
-never loaded into the NewsHub process.
+# What contract must a NewsHub extension APK follow?
 
-## Manifest
+This reference defines the protocol v2 APK, service, runtime, and network contracts. Use it while reviewing an extension or diagnosing admission failures.
 
-Extension APKs declare no permissions. Every Source Service must be exported,
-use `android:isolatedProcess="true"`, require
-`tw.kevinzhang.newshub.permission.BIND_EXTENSION`, and use a unique private
-`android:process`. Discovery uses this fixed action:
+## APK contents and Android components
+
+An extension is an Android application package (APK) that contains one or more isolated Source services. NewsHub never loads extension classes into its own process.
+
+An extension APK must meet these rules:
+
+- Request no Android permissions
+- Declare no activities, receivers, providers, or instrumentation
+- Declare one service for each `Source`
+- Give every service a distinct private `android:process`
+- Set `android:exported="true"` and `android:isolatedProcess="true"`
+- Require `tw.kevinzhang.newshub.permission.BIND_EXTENSION`
+- Omit `android:externalService` or set it to `false`
+
+The old application marker, class-name metadata, JSON registry asset, `QUERY_ALL_PACKAGES`, and in-process class loading are forbidden.
+
+## Source service manifest contract
+
+Each service declares the fixed discovery action and five metadata values. These values must match the signed repository target.
 
 ```xml
 <service
@@ -18,56 +37,87 @@ use `android:isolatedProcess="true"`, require
     android:exported="true"
     android:isolatedProcess="true"
     android:permission="tw.kevinzhang.newshub.permission.BIND_EXTENSION"
-    android:process=":source_example">
+    android:process=":example_source">
     <intent-filter>
         <action android:name="tw.kevinzhang.newshub.extension.SERVICE" />
     </intent-filter>
-    <meta-data android:name="newshub.extension.protocol" android:value="1" />
-    <meta-data android:name="newshub.extension.source_id" android:value="example" />
-    <meta-data android:name="newshub.extension.source_name" android:value="Example" />
+    <meta-data android:name="newshub.extension.protocol" android:value="2" />
+    <meta-data android:name="newshub.extension.source_id" android:value="com.example.news" />
+    <meta-data android:name="newshub.extension.source_name" android:value="Example News" />
     <meta-data android:name="newshub.extension.source_lang" android:value="en" />
-    <meta-data android:name="newshub.extension.source_base_url" android:value="https://example.com" />
+    <meta-data android:name="newshub.extension.source_base_url" android:value="https://api.example.com" />
 </service>
 ```
 
-The Host verifies the official package and signing lineage, permission owner,
-Service flags, action, protocol, and destination-owned Source metadata before
-an explicit bind. Duplicate Source ownership quarantines the conflicting set.
-The old application marker, class name metadata, registry asset,
-`QUERY_ALL_PACKAGES`, and in-process class loading are forbidden.
+Do not duplicate login fields in the manifest. Protocol v2 obtains authentication behavior from the runtime descriptor.
 
-## Runtime boundary
+## Runtime descriptor contract
 
-`IsolatedSourceService` exposes bounded asynchronous AIDL operations. Payloads
-use one-shot pipes with byte and deadline limits. Each bind receives a
-source-scoped Host broker capability; the extension never receives an ambient
-socket client, raw cookies, filesystem paths, or another Source's session.
+NewsHub requests `OP_RUNTIME_DESCRIPTOR` immediately after binding. The service returns a `SourceRuntimeDescriptor` derived from its `Source` implementation.
 
-Network requests are limited by Host policy to named operations, exact HTTPS
-hosts, allowed methods and path prefixes, safe headers, globally routable DNS,
-bounded response size, concurrency, and timeouts. Credentials are injected by
-the Host only after policy validation and are never returned over IPC.
+The Host checks these fields before any content operation:
 
-Media URLs returned by an extension are replaced with unguessable,
-session-generation-bound `newshub-resource` handles. Coil resolves only valid
-handles through the same broker; naked URL, file, content, external-link, and
-video sinks fail closed.
+- `protocolVersion`
+- `sourceId`, `name`, `language`, and `sourceVersion`
+- `iconUrl`
+- `supportsCommentPagination` and `alwaysUseRawImage`
+- `needsLogin`
+- The complete web-cookie authentication descriptor
+- `webLoginUserAgent`
 
-## Pagination
+Implement `AuthenticatedSource` to declare `AuthSpec.WebCookie`. Implement `WebLoginUserAgentProvider` when the website binds cookies to a browser User-Agent value. NewsHub rejects a descriptor that conflicts with the signed policy or manifest identity.
 
-`Source.getThreadPage(summary, pageToken)` owns its opaque `nextPageToken`.
-NewsHub passes it back unchanged. `ThreadPage.posts` contains only the fetched
-page and preserves stable post IDs. The default adapter supports only a null
-token; paginated Sources override the method.
+Set `needsLogin` to `true` only when ordinary content cannot be used anonymously. An optional-login Source still implements `AuthenticatedSource` but leaves `needsLogin` false. In both cases the Source must validate protected responses and throw `AuthenticationRequiredException`; the flag is not a security boundary.
 
-## Distribution
+## Host broker boundary
 
-The destination repository owns the exact seven-package/thirteen-Source
-metadata and a signer pin set per package. Admission rejects legacy registry
-assets, source metadata drift, foreign signers, downgrades, same-version APK
-replacement, or incomplete distributions. Empty production pins deliberately
-block publishing until the per-package key ceremony is complete.
+The isolated process receives `SourceRuntime.network` for source-scoped requests. It does not receive raw sockets, a cookie jar, filesystem paths, or another Source's session.
 
-Remote Marketplace installation remains disabled until threshold-authenticated
-repository metadata with expiry, rollback, and freeze protection is embedded.
-An APK hash supplied by the same unsigned index is not a trust anchor.
+Every request must use `source_read`. The signed network policy limits exact Hypertext Transfer Protocol Secure (HTTPS) hosts, `GET` or `HEAD`, path prefixes, and credentials. NewsHub separately enforces response-size, concurrency, and deadline bounds. Wildcards, Internet Protocol (IP) literals, and undeclared destinations fail closed; redirects are evaluated hop by hop against the same signed policy.
+
+The v2 policy separates four scopes:
+
+- `request`: brokered requests made by Source code
+- `resource`: image and media destinations resolved by NewsHub
+- `external`: browser destinations opened by direct user actions
+- `auth`: login page and cookie origins
+
+The canonical policy hash is SHA-256 over UTF-8 JSON with sorted object keys, no insignificant whitespace, and unchanged array order. Use `newshub-extension-repo publish`; do not calculate `policyHash` by hand.
+
+## Pagination and stable identifiers
+
+`Source.getThreadPage(summary, pageToken)` owns its opaque `nextPageToken`. NewsHub returns the token unchanged.
+
+`ThreadPage.posts` contains one fetched page. Keep post IDs stable across refreshes. The default bridge accepts only a null token and calls `getThread`.
+
+If `supportsCommentPagination` is `true`, return comments through `getComments`. Otherwise, include every fetched comment in each `Post.comments` value.
+
+## Repository authorization contract
+
+The repository signs every APK identity and Source policy. NewsHub verifies these values before installation and binding:
+
+- Target path, byte length, and SHA-256 digest
+- Package name, `versionCode`, and `versionName`
+- Current signer pins and signing-lineage root
+- Exact service set and manifest metadata
+- Full network policy and canonical `policyHash`
+- Optional `acceptedArtifacts` compatibility window
+
+`acceptedArtifacts` contains at most two previous APKs. Each entry has exactly `versionCode`, `length`, and `sha256`. The version must be lower than the current target version. Omitting an old artifact revokes it immediately.
+
+NewsHub quarantines duplicate Source ownership, signer drift, same-version replacement, rollback, expired metadata, and contract drift.
+
+## Repository layout
+
+NewsHub reads this exact layout:
+
+```text
+metadata/root.json
+metadata/2.root.json
+metadata/timestamp.json
+metadata/4.snapshot.json
+metadata/7.targets.json
+targets/apk/com.example.extension-v1.0.0.apk
+```
+
+`repo.json`, `index.json`, `apk/` at the repository root, and JSON registries inside APKs are unsupported legacy formats.

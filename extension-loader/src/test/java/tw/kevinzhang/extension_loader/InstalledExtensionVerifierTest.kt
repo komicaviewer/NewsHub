@@ -6,6 +6,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.nio.file.Files
 import java.security.MessageDigest
+import tw.kevinzhang.extension_api.ExtensionProtocol
 
 class InstalledExtensionVerifierTest {
     @get:Rule val temporaryFolder = TemporaryFolder()
@@ -38,22 +39,71 @@ class InstalledExtensionVerifierTest {
         }
     }
 
-    @Test fun `rejects extension packages requesting shared storage permissions`() {
-        val apk = temporaryFolder.newFile("storage-extension.apk").toPath()
+    @Test fun `accepts only an exact older artifact explicitly signed by current targets`() {
+        val oldApk = temporaryFolder.newFile("old-extension.apk").toPath()
+        Files.write(oldApk, "old-trusted-apk".toByteArray())
+        val current = temporaryFolder.newFile("current-extension.apk").toPath()
+        Files.write(current, "current-trusted-apk".toByteArray())
+        val accepted = AcceptedExtensionArtifact(
+            versionCode = 8,
+            length = Files.size(oldApk),
+            sha256 = sha256(Files.readAllBytes(oldApk)),
+        )
+        val policy = policy(Files.size(current), sha256(Files.readAllBytes(current))).copy(
+            acceptedArtifacts = listOf(accepted),
+        )
+
+        val result = verifyInstalledPackageArtifact(
+            InstalledPackageArtifact(versionCode = 8, sourcePath = oldApk, splitSourcePaths = emptyList()),
+            policy,
+        )
+        assertTrue(result == accepted)
+        assertTrue(
+            runCatching {
+                verifyInstalledPackageArtifact(
+                    InstalledPackageArtifact(versionCode = 7, sourcePath = oldApk, splitSourcePaths = emptyList()),
+                    policy,
+                )
+            }.isFailure,
+        )
+        assertTrue(
+            runCatching {
+                verifyInstalledPackageArtifact(
+                    InstalledPackageArtifact(versionCode = 8, sourcePath = current, splitSourcePaths = emptyList()),
+                    policy,
+                )
+            }.isFailure,
+        )
+        assertTrue(
+            runCatching {
+                policy.copy(acceptedArtifacts = listOf(accepted.copy(sha256 = "D".repeat(64))))
+            }.isFailure,
+        )
+        // Hash reuse across two different, explicitly listed versions is not an implicit wildcard.
+        policy.copy(
+            acceptedArtifacts = listOf(
+                accepted,
+                accepted.copy(versionCode = 7),
+            ),
+        )
+    }
+
+    @Test fun `rejects every requested Android permission`() {
+        val apk = temporaryFolder.newFile("permissioned-extension.apk").toPath()
         Files.write(apk, "trusted-apk".toByteArray())
         val policy = policy(Files.size(apk), sha256(Files.readAllBytes(apk)))
         val artifact = InstalledPackageArtifact(
             versionCode = 9,
             sourcePath = apk,
             splitSourcePaths = emptyList(),
-            requestedPermissions = listOf("android.permission.READ_MEDIA_IMAGES"),
+            requestedPermissions = listOf("android.permission.INTERNET"),
         )
 
         try {
             verifyInstalledPackageArtifact(artifact, policy)
-            throw AssertionError("Expected forbidden storage permission rejection")
+            throw AssertionError("Expected requested permission rejection")
         } catch (expected: IllegalArgumentException) {
-            assertTrue(expected.message.orEmpty().contains("storage"))
+            assertTrue(expected.message.orEmpty().contains("must not request Android permissions"))
         }
     }
 
@@ -123,7 +173,7 @@ class InstalledExtensionVerifierTest {
                 name = "Example",
                 lang = "en",
                 baseUrl = "https://example.com",
-                protocol = 1,
+                protocol = ExtensionProtocol.VERSION,
                 policyHash = "b".repeat(64),
             ),
         ),
@@ -137,10 +187,7 @@ class InstalledExtensionVerifierTest {
         name = "Example",
         lang = "en",
         baseUrl = "https://example.com",
-        protocol = 1,
-        needsLogin = false,
-        loginUrl = null,
-        loginHosts = emptySet(),
+        protocol = ExtensionProtocol.VERSION,
     )
 
     private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")

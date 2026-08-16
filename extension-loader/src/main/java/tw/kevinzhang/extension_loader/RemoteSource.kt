@@ -23,7 +23,6 @@ import tw.kevinzhang.extension_api.BoardWebUrlRequest
 import tw.kevinzhang.extension_api.CommentPageRequest
 import tw.kevinzhang.extension_api.ExtensionProtocol
 import tw.kevinzhang.extension_api.ExtensionWireJson
-import tw.kevinzhang.extension_api.HostBrokerProvider
 import tw.kevinzhang.extension_api.HostResourceProvider
 import tw.kevinzhang.extension_api.IHostBroker
 import tw.kevinzhang.extension_api.ISourceCallback
@@ -36,9 +35,11 @@ import tw.kevinzhang.extension_api.SourceFailureException
 import tw.kevinzhang.extension_api.SourceFailureWire
 import tw.kevinzhang.extension_api.SourceIdentity
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
+import tw.kevinzhang.extension_api.SourceRuntimeDescriptor
 import tw.kevinzhang.extension_api.ThreadPageRequest
 import tw.kevinzhang.extension_api.ThreadSummariesRequest
 import tw.kevinzhang.extension_api.WebUrlRequest
+import tw.kevinzhang.extension_api.WebLoginUserAgentProvider
 import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.BoardCategory
 import tw.kevinzhang.extension_api.model.BoardPage
@@ -63,6 +64,7 @@ internal class RemoteSourceConnection(
     private val component = ComponentName(descriptor.packageName, descriptor.serviceClassName)
     private val service = MutableStateFlow<ISourceService?>(null)
     private var bound = false
+    private val requestIds = AtomicLong()
 
     fun bind(): Boolean {
         if (bound) return true
@@ -77,6 +79,80 @@ internal class RemoteSourceConnection(
     suspend fun awaitService(): ISourceService = withTimeout(ExtensionProtocol.REQUEST_TIMEOUT_MS) {
         service.filterNotNull().first()
     }
+
+    suspend inline fun <reified Request, reified Response> call(
+        operation: Int,
+        request: Request,
+        broker: IHostBroker,
+        maxResultBytes: Int = ExtensionProtocol.MAX_RESULT_BYTES,
+    ): Response {
+        val requestId = requestIds.incrementAndGet()
+        val remoteService = awaitService()
+        val requestJson = ExtensionWireJson.encode(request)
+        require(requestJson.toByteArray(Charsets.UTF_8).size <= ExtensionProtocol.MAX_CONTROL_BYTES) {
+            "Extension request is too large"
+        }
+        val pipe = PipePayload.writeUtf8(requestJson)
+        return try {
+            try {
+                withTimeout(ExtensionProtocol.REQUEST_TIMEOUT_MS) {
+                    suspendCancellableCoroutine { continuation ->
+                        val callback = object : ISourceCallback.Stub() {
+                            override fun onResult(id: Long, status: Int, payload: ParcelFileDescriptor) {
+                                if (id != requestId || !continuation.isActive) {
+                                    runCatching { payload.close() }
+                                    return
+                                }
+                                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                                    runCatching {
+                                        val result = PipePayload.readUtf8(payload, maxResultBytes)
+                                        when (status) {
+                                            ExtensionProtocol.STATUS_OK -> ExtensionWireJson.decode<Response>(result)
+                                            ExtensionProtocol.STATUS_SOURCE_FAILURE ->
+                                                throw SourceFailureException(SourceFailureWire.decode(result))
+                                            ExtensionProtocol.STATUS_PAYLOAD_TOO_LARGE -> throw SourceFailureException(
+                                                SourceFailure(SourceFailureCode.PAYLOAD_TOO_LARGE),
+                                            )
+                                            ExtensionProtocol.STATUS_CANCELLED ->
+                                                throw kotlinx.coroutines.CancellationException("cancelled")
+                                            ExtensionProtocol.STATUS_INVALID_REQUEST -> throw SourceFailureException(
+                                                SourceFailure(SourceFailureCode.INVALID_REQUEST),
+                                            )
+                                            else -> throw SourceFailureException(
+                                                SourceFailure(SourceFailureCode.EXTENSION_RUNTIME),
+                                            )
+                                        }
+                                    }.onSuccess(continuation::resume)
+                                        .onFailure(continuation::resumeWithException)
+                                }
+                            }
+                        }
+                        continuation.invokeOnCancellation { runCatching { remoteService.cancel(requestId) } }
+                        runCatching { remoteService.execute(requestId, operation, pipe, callback, broker) }
+                            .onFailure(continuation::resumeWithException)
+                    }
+                }
+            } catch (_: TimeoutCancellationException) {
+                throw SourceFailureException(
+                    SourceFailure(
+                        SourceFailureCode.TIMED_OUT,
+                        operation = remoteOperationName(operation),
+                        retryable = true,
+                    ),
+                )
+            }
+        } finally {
+            runCatching { pipe.close() }
+        }
+    }
+
+    suspend fun runtimeDescriptor(broker: IHostBroker): SourceRuntimeDescriptor =
+        call<Unit, SourceRuntimeDescriptor>(
+            ExtensionProtocol.OP_RUNTIME_DESCRIPTOR,
+            Unit,
+            broker,
+            ExtensionProtocol.MAX_DESCRIPTOR_BYTES,
+        )
 
     fun close() {
         service.value?.close()
@@ -108,24 +184,23 @@ internal class RemoteSourceConnection(
 
 internal open class RemoteSource(
     protected val descriptor: ExtensionDescriptor,
+    protected val runtimeDescriptor: ValidatedSourceRuntimeDescriptor,
     final override val sourceIdentity: SourceIdentity,
     private val policy: SourceNetworkPolicy,
     private val connection: RemoteSourceConnection,
-    brokerProvider: HostBrokerProvider,
+    private val broker: IHostBroker,
     private val resourceProvider: HostResourceProvider,
 ) : Source {
-    private val requestIds = AtomicLong()
     private val networkPolicy = policy
-    private val broker: IHostBroker = brokerProvider.brokerFor(sourceIdentity, networkPolicy)
 
     final override val id: String = descriptor.sourceId
     final override val name: String = descriptor.name
     final override val language: String = descriptor.lang
-    final override val version: Int = ExtensionProtocol.VERSION
-    final override val iconUrl: String? = null
-    final override val supportsCommentPagination: Boolean = true
-    final override val alwaysUseRawImage: Boolean = false
-    final override val needsLogin: Boolean = descriptor.needsLogin
+    final override val version: Int = runtimeDescriptor.sourceVersion
+    final override val iconUrl: String? = runtimeDescriptor.iconUrl?.let(::resourceModel)
+    final override val supportsCommentPagination: Boolean = runtimeDescriptor.supportsCommentPagination
+    final override val alwaysUseRawImage: Boolean = runtimeDescriptor.alwaysUseRawImage
+    final override val needsLogin: Boolean = runtimeDescriptor.needsLogin
 
     override suspend fun getBoardCategories(): List<BoardCategory> =
         call(ExtensionProtocol.OP_BOARD_CATEGORIES, Unit)
@@ -170,66 +245,7 @@ internal open class RemoteSource(
     protected suspend inline fun <reified Request, reified Response> call(
         operation: Int,
         request: Request,
-    ): Response {
-        val requestId = requestIds.incrementAndGet()
-        val service = connection.awaitService()
-        val requestJson = ExtensionWireJson.encode(request)
-        require(requestJson.toByteArray().size <= ExtensionProtocol.MAX_CONTROL_BYTES) {
-            "Extension request is too large"
-        }
-        val pipe = PipePayload.writeUtf8(requestJson)
-        return try {
-            try {
-                withTimeout(ExtensionProtocol.REQUEST_TIMEOUT_MS) {
-                    suspendCancellableCoroutine { continuation ->
-                    val callback = object : ISourceCallback.Stub() {
-                        override fun onResult(id: Long, status: Int, payload: ParcelFileDescriptor) {
-                            if (id != requestId || !continuation.isActive) {
-                                runCatching { payload.close() }
-                                return
-                            }
-                            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                                runCatching {
-                                    val result = PipePayload.readUtf8(payload, ExtensionProtocol.MAX_RESULT_BYTES)
-                                    when (status) {
-                                        ExtensionProtocol.STATUS_OK -> ExtensionWireJson.decode<Response>(result)
-                                        ExtensionProtocol.STATUS_SOURCE_FAILURE ->
-                                            throw SourceFailureException(SourceFailureWire.decode(result))
-                                        ExtensionProtocol.STATUS_PAYLOAD_TOO_LARGE -> throw SourceFailureException(
-                                            SourceFailure(SourceFailureCode.PAYLOAD_TOO_LARGE),
-                                        )
-                                        ExtensionProtocol.STATUS_CANCELLED ->
-                                            throw kotlinx.coroutines.CancellationException("cancelled")
-                                        ExtensionProtocol.STATUS_INVALID_REQUEST -> throw SourceFailureException(
-                                            SourceFailure(SourceFailureCode.INVALID_REQUEST),
-                                        )
-                                        else -> throw SourceFailureException(
-                                            SourceFailure(SourceFailureCode.EXTENSION_RUNTIME),
-                                        )
-                                    }
-                                }.onSuccess(continuation::resume)
-                                    .onFailure(continuation::resumeWithException)
-                            }
-                        }
-                    }
-                    continuation.invokeOnCancellation { runCatching { service.cancel(requestId) } }
-                    runCatching { service.execute(requestId, operation, pipe, callback, broker) }
-                        .onFailure(continuation::resumeWithException)
-                    }
-                }
-            } catch (_: TimeoutCancellationException) {
-                throw SourceFailureException(
-                    SourceFailure(
-                        SourceFailureCode.TIMED_OUT,
-                        operation = remoteOperationName(operation),
-                        retryable = true,
-                    ),
-                )
-            }
-        } finally {
-            runCatching { pipe.close() }
-        }
-    }
+    ): Response = connection.call(operation, request, broker)
 
     private fun protect(thread: Thread): Thread = thread.copy(
         url = thread.url?.let(::linkModel),
@@ -298,30 +314,49 @@ private fun remoteOperationName(operation: Int): String = when (operation) {
     ExtensionProtocol.OP_WEB_URL -> "web_url"
     ExtensionProtocol.OP_VALIDATE_SESSION -> "validate_session"
     ExtensionProtocol.OP_BOARD_WEB_URL -> "board_web_url"
+    ExtensionProtocol.OP_RUNTIME_DESCRIPTOR -> "runtime_descriptor"
     else -> "unknown"
 }
 
-internal class RemoteAuthenticatedSource(
+internal open class RemoteAuthenticatedSource(
     descriptor: ExtensionDescriptor,
+    runtimeDescriptor: ValidatedSourceRuntimeDescriptor,
     sourceIdentity: SourceIdentity,
     policy: SourceNetworkPolicy,
     connection: RemoteSourceConnection,
-    brokerProvider: HostBrokerProvider,
+    broker: IHostBroker,
     resourceProvider: HostResourceProvider,
 ) : RemoteSource(
     descriptor,
+    runtimeDescriptor,
     sourceIdentity,
     policy,
     connection,
-    brokerProvider,
+    broker,
     resourceProvider,
 ), AuthenticatedSource {
-    override val authSpec: AuthSpec = AuthSpec.WebCookie(
-        loginUrl = requireNotNull(descriptor.loginUrl),
-        allowedHosts = descriptor.loginHosts,
-        cookieOrigins = descriptor.loginHosts.mapTo(linkedSetOf()) { "https://$it/" },
-    )
+    final override val authSpec: AuthSpec = requireNotNull(runtimeDescriptor.authSpec)
 
     override suspend fun validateSession(): Boolean =
         call<Unit, Boolean>(ExtensionProtocol.OP_VALIDATE_SESSION, Unit)
+}
+
+internal class RemoteAuthenticatedSourceWithUserAgent(
+    descriptor: ExtensionDescriptor,
+    runtimeDescriptor: ValidatedSourceRuntimeDescriptor,
+    sourceIdentity: SourceIdentity,
+    policy: SourceNetworkPolicy,
+    connection: RemoteSourceConnection,
+    broker: IHostBroker,
+    resourceProvider: HostResourceProvider,
+) : RemoteAuthenticatedSource(
+    descriptor,
+    runtimeDescriptor,
+    sourceIdentity,
+    policy,
+    connection,
+    broker,
+    resourceProvider,
+), WebLoginUserAgentProvider {
+    override val webLoginUserAgent: String = requireNotNull(runtimeDescriptor.webLoginUserAgent)
 }

@@ -170,7 +170,7 @@ class ExtensionManager @Inject constructor(
         false
     }
 
-    private fun scanInstalledExtensions(): ScanResult {
+    private suspend fun scanInstalledExtensions(): ScanResult {
         verifyHostBindPermission()
         val candidateServices = querySourceServices().mapNotNull(ResolveInfo::serviceInfo)
         val quarantined = mutableListOf<QuarantinedExtension>()
@@ -180,7 +180,7 @@ class ExtensionManager @Inject constructor(
                     "No current threshold-verified package policy"
                 }
                 val info = packageInfo(packageName)
-                verifyInstalledPackageArtifact(info.toInstalledArtifact(), signingPolicy)
+                val artifactAuthorization = verifyInstalledPackageArtifact(info.toInstalledArtifact(), signingPolicy)
                 val descriptors = services.map(ExtensionDescriptorValidator::fromServiceInfo)
                 verifyExpectedServiceSet(descriptors, signingPolicy)
                 val signingIdentity = verifiedSigningIdentity(packageName, info, signingPolicy)
@@ -194,7 +194,14 @@ class ExtensionManager @Inject constructor(
                         "Signed target does not contain a full Source network policy"
                     }
                     verifyExpectedNetworkPolicyHash(expectedService.policyHash, policy)
-                    Candidate(descriptor, policy, signingPolicy, signingIdentity, packageMarker)
+                    Candidate(
+                        descriptor,
+                        policy,
+                        signingPolicy,
+                        signingIdentity,
+                        packageMarker,
+                        artifactAuthorization,
+                    )
                 }
             }.onFailure { error ->
                 services.forEach { service ->
@@ -264,7 +271,27 @@ class ExtensionManager @Inject constructor(
                         bindFailure = unchangedAfterBind.exceptionOrNull()?.message.orEmpty()
                         break
                     }
-                    bound += BoundCandidate(candidate, identity, connection)
+                    val broker = brokerProvider.brokerFor(identity, candidate.policy)
+                    val runtimeDescriptor = runCatching {
+                        validateSourceRuntimeDescriptor(
+                            connection.runtimeDescriptor(broker),
+                            candidate.descriptor,
+                            candidate.policy,
+                        )
+                    }
+                    if (runtimeDescriptor.isFailure) {
+                        connection.close()
+                        resourceProvider.revoke(identity)
+                        bindFailure = runtimeDescriptor.exceptionOrNull()?.message.orEmpty()
+                        break
+                    }
+                    bound += BoundCandidate(
+                        candidate,
+                        identity,
+                        connection,
+                        broker,
+                        runtimeDescriptor.getOrThrow(),
+                    )
                 }
 
                 if (bindFailure != null || bound.size != packageCandidates.size) {
@@ -287,22 +314,36 @@ class ExtensionManager @Inject constructor(
                     identities += bound.map(BoundCandidate::identity)
                     bound.map { item ->
                         val candidate = item.candidate
-                        val source = if (candidate.descriptor.needsLogin) {
-                            RemoteAuthenticatedSource(
-                                candidate.descriptor,
-                                item.identity,
-                                candidate.policy,
-                                item.connection,
-                                brokerProvider,
-                                resourceProvider,
-                            )
+                        val source = if (item.runtimeDescriptor.authSpec != null) {
+                            if (item.runtimeDescriptor.webLoginUserAgent != null) {
+                                RemoteAuthenticatedSourceWithUserAgent(
+                                    candidate.descriptor,
+                                    item.runtimeDescriptor,
+                                    item.identity,
+                                    candidate.policy,
+                                    item.connection,
+                                    item.broker,
+                                    resourceProvider,
+                                )
+                            } else {
+                                RemoteAuthenticatedSource(
+                                    candidate.descriptor,
+                                    item.runtimeDescriptor,
+                                    item.identity,
+                                    candidate.policy,
+                                    item.connection,
+                                    item.broker,
+                                    resourceProvider,
+                                )
+                            }
                         } else {
                             RemoteSource(
                                 candidate.descriptor,
+                                item.runtimeDescriptor,
                                 item.identity,
                                 candidate.policy,
                                 item.connection,
-                                brokerProvider,
+                                item.broker,
                                 resourceProvider,
                             )
                         }
@@ -324,8 +365,8 @@ class ExtensionManager @Inject constructor(
                 provenance = InstalledExtensionProvenance(
                     repositoryDomainId = packageCandidate.signingPolicy.repositoryDomainId,
                     packageName = packageName,
-                    targetSha256 = packageCandidate.signingPolicy.targetSha256,
-                    targetLength = packageCandidate.signingPolicy.targetLength,
+                    targetSha256 = packageCandidate.artifactAuthorization.sha256,
+                    targetLength = packageCandidate.artifactAuthorization.length,
                     lineageAnchorSha256 = packageCandidate.signingIdentity.lineageAnchorSha256,
                     currentSignerSha256 = packageCandidate.signingIdentity.currentSignerSha256,
                     sources = loadedSources.map { loaded ->
@@ -444,6 +485,7 @@ class ExtensionManager @Inject constructor(
         val signingPolicy: ExtensionSigningPolicy,
         val signingIdentity: VerifiedSigningIdentity,
         val packageMarker: InstalledPackageMarker,
+        val artifactAuthorization: AcceptedExtensionArtifact,
     )
 
     private data class LoadedSource(
@@ -455,6 +497,8 @@ class ExtensionManager @Inject constructor(
         val candidate: Candidate,
         val identity: SourceIdentity,
         val connection: RemoteSourceConnection,
+        val broker: tw.kevinzhang.extension_api.IHostBroker,
+        val runtimeDescriptor: ValidatedSourceRuntimeDescriptor,
     )
 
     private data class VerifiedSigningIdentity(

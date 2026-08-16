@@ -15,6 +15,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import tw.kevinzhang.marketplace.data.AvailableSource
+import tw.kevinzhang.marketplace.data.AcceptedArtifact
 import tw.kevinzhang.marketplace.data.ExtensionInfo
 import tw.kevinzhang.marketplace.data.RepoMetadata
 import tw.kevinzhang.extension_api.ExtensionProtocol
@@ -334,10 +335,39 @@ internal class TrustedRepositoryClient(
             if (length !in 1..MAX_APK_BYTES) throw TrustedMetadataException("APK size outside safety bounds")
             val sha256 = target.requiredObject("hashes").requiredString("sha256").lowercase(Locale.ROOT)
             if (!sha256.matches(SHA256_PATTERN)) throw TrustedMetadataException("Invalid APK hash")
+            val versionCode = metadata.requiredPositiveLong("versionCode")
+            val acceptedArtifacts = metadata.get("acceptedArtifacts")?.let { element ->
+                val array = runCatching { element.asJsonArray }
+                    .getOrElse { throw TrustedMetadataException("Invalid accepted artifact list", it) }
+                if (array.size() > MAX_ACCEPTED_ARTIFACTS) {
+                    throw TrustedMetadataException("Too many accepted artifacts")
+                }
+                array.map { acceptedElement ->
+                    val accepted = runCatching { acceptedElement.asJsonObject }
+                        .getOrElse { throw TrustedMetadataException("Invalid accepted artifact", it) }
+                    accepted.requireExactKeys(
+                        setOf("versionCode", "length", "sha256"),
+                        "accepted artifact",
+                    )
+                    val acceptedVersion = accepted.requiredPositiveLong("versionCode")
+                    val acceptedLength = accepted.requiredPositiveLong("length")
+                    val acceptedSha256 = accepted.requiredString("sha256")
+                    if (acceptedVersion >= versionCode || acceptedLength !in 1..MAX_APK_BYTES ||
+                        !acceptedSha256.matches(SHA256_PATTERN)
+                    ) {
+                        throw TrustedMetadataException("Invalid accepted artifact contract")
+                    }
+                    AcceptedArtifact(acceptedVersion, acceptedLength, acceptedSha256)
+                }.also { artifacts ->
+                    if (artifacts.map(AcceptedArtifact::versionCode).distinct().size != artifacts.size ||
+                        artifacts.distinct().size != artifacts.size
+                    ) throw TrustedMetadataException("Duplicate accepted artifact")
+                }
+            }.orEmpty()
             ExtensionInfo(
                 id = packageName,
                 name = metadata.requiredString("name"),
-                version = metadata.requiredPositiveLong("versionCode"),
+                version = versionCode,
                 versionName = metadata.requiredString("versionName"),
                 language = metadata.optionalString("lang") ?: "und",
                 iconUrl = null,
@@ -346,6 +376,7 @@ internal class TrustedRepositoryClient(
                 targetLength = length,
                 lineageRootSha256 = lineageRoot,
                 signerPins = signerPins,
+                acceptedArtifacts = acceptedArtifacts,
                 sources = sources,
                 repositoryDomainId = domain.id,
             )
@@ -363,6 +394,13 @@ internal class TrustedRepositoryClient(
                 expectedVersionCode = extension.version,
                 targetLength = extension.targetLength,
                 targetSha256 = extension.sha256,
+                acceptedArtifacts = extension.acceptedArtifacts.map { artifact ->
+                    RepositoryAcceptedArtifact(
+                        versionCode = artifact.versionCode,
+                        length = artifact.length,
+                        sha256 = artifact.sha256,
+                    )
+                },
                 lineageAnchorsSha256 = setOf(extension.lineageRootSha256),
                 approvedCurrentSignersSha256 = extension.signerPins,
                 sources = extension.sources.associate { source ->
@@ -691,7 +729,10 @@ internal class TrustedRepositoryClient(
                 metadata.getString(ExtensionProtocol.META_SOURCE_ID) != expected.id ||
                 metadata.getString(ExtensionProtocol.META_SOURCE_NAME) != expected.name ||
                 metadata.getString(ExtensionProtocol.META_SOURCE_LANG) != expected.lang ||
-                metadata.getString(ExtensionProtocol.META_SOURCE_BASE_URL) != expected.baseUrl
+                metadata.getString(ExtensionProtocol.META_SOURCE_BASE_URL) != expected.baseUrl ||
+                metadata.containsKey(ExtensionProtocol.META_NEEDS_LOGIN) ||
+                metadata.containsKey(ExtensionProtocol.META_LOGIN_URL) ||
+                metadata.containsKey(ExtensionProtocol.META_LOGIN_HOSTS)
             ) {
                 throw TrustedMetadataException("Source service contract does not match targets metadata")
             }
@@ -720,6 +761,7 @@ internal class TrustedRepositoryClient(
         const val MAX_POLICY_CAPABILITIES = 16
         const val MAX_METADATA_BYTES = 4L * 1024 * 1024
         const val MAX_APK_BYTES = 64L * 1024 * 1024
+        const val MAX_ACCEPTED_ARTIFACTS = 2
         val PACKAGE_PATTERN = Regex("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+")
         val SHA256_PATTERN = Regex("[a-f0-9]{64}")
         val KNOWN_CAPABILITIES = setOf(

@@ -26,9 +26,17 @@ data class ExtensionInfo(
     /** Stable first certificate in the approved Android signing lineage. */
     val lineageRootSha256: String,
     val signerPins: Set<String>,
+    /** Older APK bytes still explicitly authorized by the current signed targets metadata. */
+    val acceptedArtifacts: List<AcceptedArtifact> = emptyList(),
     /** Sources bundled in this extension. */
     val sources: List<AvailableSource> = emptyList(),
     val repositoryDomainId: String = RepositoryTrustDomains.OFFICIAL_ID,
+)
+
+data class AcceptedArtifact(
+    val versionCode: Long,
+    val length: Long,
+    val sha256: String,
 )
 
 /** Metadata for a single Source inside an extension, as declared in index.min.json. */

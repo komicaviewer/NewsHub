@@ -14,18 +14,6 @@ internal data class InstalledPackageArtifact(
     val requestedPermissions: List<String> = emptyList(),
 )
 
-private val FORBIDDEN_EXTENSION_STORAGE_PERMISSIONS = setOf(
-    "android.permission.READ_EXTERNAL_STORAGE",
-    "android.permission.WRITE_EXTERNAL_STORAGE",
-    "android.permission.MANAGE_EXTERNAL_STORAGE",
-    "android.permission.MANAGE_MEDIA",
-    "android.permission.ACCESS_MEDIA_LOCATION",
-    "android.permission.READ_MEDIA_IMAGES",
-    "android.permission.READ_MEDIA_VIDEO",
-    "android.permission.READ_MEDIA_AUDIO",
-    "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
-)
-
 internal data class InstalledPackageMarker(
     val versionCode: Long,
     val sourceDir: String,
@@ -46,18 +34,22 @@ internal fun verifyPackageUnchangedAfterBind(
 internal fun verifyInstalledPackageArtifact(
     artifact: InstalledPackageArtifact,
     policy: ExtensionSigningPolicy,
-) {
-    require(artifact.versionCode == policy.expectedVersionCode) {
-        "Installed extension version does not match signed target"
+): AcceptedExtensionArtifact {
+    val authorizedArtifact = if (artifact.versionCode == policy.expectedVersionCode) {
+        AcceptedExtensionArtifact(policy.expectedVersionCode, policy.targetLength, policy.targetSha256)
+    } else {
+        requireNotNull(policy.acceptedArtifacts.singleOrNull { it.versionCode == artifact.versionCode }) {
+            "Installed extension version is not accepted by signed targets"
+        }
     }
     require(artifact.splitSourcePaths.isEmpty()) { "Split extension APKs are not supported" }
-    require(artifact.requestedPermissions.none { it in FORBIDDEN_EXTENSION_STORAGE_PERMISSIONS }) {
-        "Extension package requests forbidden storage access"
+    require(artifact.requestedPermissions.isEmpty()) {
+        "Extension package must not request Android permissions"
     }
     require(Files.isRegularFile(artifact.sourcePath, LinkOption.NOFOLLOW_LINKS)) {
         "Installed extension base APK is not a regular file"
     }
-    require(Files.size(artifact.sourcePath) == policy.targetLength) {
+    require(Files.size(artifact.sourcePath) == authorizedArtifact.length) {
         "Installed extension APK length does not match signed target"
     }
     val installedSha256 = Files.newInputStream(artifact.sourcePath).use { input ->
@@ -68,21 +60,22 @@ internal fun verifyInstalledPackageArtifact(
             val read = input.read(buffer)
             if (read < 0) break
             totalBytes += read
-            require(totalBytes <= policy.targetLength) {
+            require(totalBytes <= authorizedArtifact.length) {
                 "Installed extension APK grew during verification"
             }
             digest.update(buffer, 0, read)
         }
-        require(totalBytes == policy.targetLength) {
+        require(totalBytes == authorizedArtifact.length) {
             "Installed extension APK changed during verification"
         }
         digest.digest().joinToString("") { byte ->
             (byte.toInt() and 0xff).toString(16).padStart(2, '0')
         }
     }
-    require(MessageDigest.isEqual(installedSha256.toByteArray(), policy.targetSha256.toByteArray())) {
+    require(MessageDigest.isEqual(installedSha256.toByteArray(), authorizedArtifact.sha256.toByteArray())) {
         "Installed extension APK hash does not match signed target"
     }
+    return authorizedArtifact
 }
 
 internal fun verifyExpectedServiceSet(

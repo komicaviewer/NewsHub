@@ -61,6 +61,8 @@ data class ExtensionSigningPolicy(
     val expectedVersionCode: Long,
     val targetLength: Long,
     val targetSha256: String,
+    /** Older exact APK triples explicitly covered by the current verified targets metadata. */
+    val acceptedArtifacts: List<AcceptedExtensionArtifact> = emptyList(),
     val lineageAnchorsSha256: Set<String>,
     val approvedCurrentSignersSha256: Set<String>,
     val sources: Map<String, ExpectedSourceService>,
@@ -73,12 +75,26 @@ data class ExtensionSigningPolicy(
         require(targetLength in 1..MAX_EXTENSION_APK_BYTES)
         require(lineageAnchorsSha256.isNotEmpty() && approvedCurrentSignersSha256.isNotEmpty())
         require((lineageAnchorsSha256 + approvedCurrentSignersSha256 + targetSha256).all(::isSha256))
+        require(acceptedArtifacts.size <= MAX_ACCEPTED_ARTIFACTS)
+        require(acceptedArtifacts.all { artifact ->
+            artifact.versionCode in 1 until expectedVersionCode &&
+                artifact.length in 1..MAX_EXTENSION_APK_BYTES && isSha256(artifact.sha256) &&
+                artifact.sha256 == artifact.sha256.lowercase(Locale.ROOT)
+        })
+        require(acceptedArtifacts.map(AcceptedExtensionArtifact::versionCode).distinct().size == acceptedArtifacts.size)
+        require(acceptedArtifacts.distinct().size == acceptedArtifacts.size)
         require(sources.isNotEmpty() && sources.keys.all { it.matches(Regex("[A-Za-z0-9._-]{1,160}")) })
         require(sources.values.all { it.repositoryDomainId == repositoryDomainId }) {
             "Source trust domain does not match package trust domain"
         }
     }
 }
+
+data class AcceptedExtensionArtifact(
+    val versionCode: Long,
+    val length: Long,
+    val sha256: String,
+)
 
 data class VerifiedExtensionTrustSnapshot(
     val rootVersion: Long,
@@ -292,6 +308,9 @@ class ExtensionTrustPolicyProvider @Inject constructor() {
                 approvedCurrentSignersSha256 = policy.approvedCurrentSignersSha256
                     .mapTo(linkedSetOf()) { it.lowercase(Locale.ROOT) },
                 targetSha256 = policy.targetSha256.lowercase(Locale.ROOT),
+                acceptedArtifacts = policy.acceptedArtifacts.map { artifact ->
+                    artifact.copy(sha256 = artifact.sha256.lowercase(Locale.ROOT))
+                },
                 sources = policy.sources.mapValues { (_, source) ->
                     source.copy(policyHash = source.policyHash.lowercase(Locale.ROOT))
                 },
@@ -395,3 +414,4 @@ private const val MAX_EXTENSION_APK_BYTES = 64L * 1024 * 1024
 private const val MAX_EXACT_HOSTS = 32
 private const val MAX_PATH_PREFIXES = 32
 private const val MAX_REQUEST_RULES = 32
+private const val MAX_ACCEPTED_ARTIFACTS = 2

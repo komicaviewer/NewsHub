@@ -7,10 +7,17 @@ data class RepositorySigningPolicy(
     val expectedVersionCode: Long,
     val targetLength: Long,
     val targetSha256: String,
+    val acceptedArtifacts: List<RepositoryAcceptedArtifact> = emptyList(),
     val lineageAnchorsSha256: Set<String>,
     val approvedCurrentSignersSha256: Set<String>,
     val sources: Map<String, RepositorySourceService>,
     val repositoryDomainId: String = RepositoryTrustDomains.OFFICIAL_ID,
+)
+
+data class RepositoryAcceptedArtifact(
+    val versionCode: Long,
+    val length: Long,
+    val sha256: String,
 )
 
 data class RepositorySourceService(

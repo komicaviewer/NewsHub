@@ -2,8 +2,6 @@
 
 一個整合多個討論板的 Android 閱讀器，讓你在同一個地方瀏覽 Komica、巴哈姆特等論壇的最新貼文。
 
----
-
 ## 功能介紹
 
 ### 訂閱你喜歡的板塊
@@ -24,8 +22,6 @@
 
 除了內建支援的論壇，你也可以從擴充套件商城安裝社群提供的第三方來源，擴充 NewsHub 支援的論壇範圍。
 
----
-
 ## 支援的論壇
 
 | 來源           | 板塊            |
@@ -33,8 +29,6 @@
 | Komica       | 綜合、twocat 等多個板塊 |
 | 巴哈姆特 (Gamer) | 多個哈啦板         |
 | 第三方擴充套件      | 透過擴充套件商城安裝    |
-
----
 
 ## 安裝方式
 
@@ -52,22 +46,16 @@ Release。Trigger 預設停用，只有簽章、成本與 IAM preflight 通過�
 第三方 extension 的定期健康檢查、修復、候選驗證、獨立審核與發佈則由 GCP 上的
 `extension-ops`／Cloud Build 控制面負責，與 NewsHub app tag release 分離。
 
----
-
 ## 開始使用
 
-1. **建立收藏集** — 開啟側邊選單，點擊右上方的 + 號，新增一個 Collection，並在其中加入 Boards。
-2. **開始閱讀** — 在收藏集的時間軸上瀏覽所有訂閱板塊的最新貼文
-
----
+1. **建立收藏集**：開啟側邊選單，點擊右上方的 + 號，新增一個 Collection，並在其中加入 Boards。
+2. **開始閱讀**：在收藏集的時間軸上瀏覽所有訂閱板塊的最新貼文
 
 ## Roadmap
 
 - 搜尋文章
 - 閱讀歷史
 - 收藏貼文、資料備份與還原
-
----
 
 ## 開發者資訊
 
@@ -95,11 +83,19 @@ graph TD
 | `:extension-api`    | 公開介面：`Source`、資料模型（`Board`、`ThreadSummary`、`Post`、`Paragraph` 等） |
 | `:extension-loader` | 載入 APK 形式的擴充套件，提供 `ExtensionLoader`                              |
 | `:collection`       | Room 資料庫，管理使用者定義的收藏集與板塊訂閱                                        |
-| `:marketplace`      | 以 GitHub 為基礎的擴充套件商城：索引抓取、APK 下載、安裝狀態追蹤                           |
+| `:marketplace`      | 驗證 threshold-signed repository metadata、下載並核對 APK、追蹤安裝狀態              |
 | `:app`              | UI（Jetpack Compose）、導航、Hilt 依賴注入                                 |
 
 </details>
 
-第三方擴充 APK可以包含多個 `Source`，並透過 APK內的 JSON registry 宣告。
-Manifest、registry schema、驗證規則與發佈索引關係請參閱
-[Extension bundle contract](docs/extension-bundles.md)。
+第三方擴充 APK 可以包含多個 `Source`。每個 `Source` 透過獨立的 isolated service 執行，所有網路請求由 NewsHub Host broker 依簽署政策授權。
+
+第三方開發請依任務選擇文件：
+
+- [建立第三方 extension](docs/third-party-extension.md)
+- [自架可信 extension repository](docs/self-host-extension-repository.md)
+- [維護信任與輪替金鑰](docs/extension-trust-and-key-rotation.md)
+- [查閱 extension bundle contract](docs/extension-bundles.md)
+- [排解 extension 與 repository 問題](docs/extension-troubleshooting.md)
+
+可直接複製的專案位於 [`samples/extension-starter`](samples/extension-starter)。Repository publisher 位於 [`tools/extension-repo`](tools/extension-repo)。`repo.json`、`index.json` 與 APK 內 JSON registry 均為不支援的舊格式。

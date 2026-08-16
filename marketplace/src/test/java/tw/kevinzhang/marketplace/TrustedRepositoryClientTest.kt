@@ -133,6 +133,49 @@ class TrustedRepositoryClientTest {
     }
 
     @Test
+    fun `accepted artifact compatibility window is explicit bounded and signed`() {
+        val signed = targets(validPolicy()).apply {
+            val custom = getAsJsonObject("targets").getAsJsonObject("apk/test.apk").getAsJsonObject("custom")
+            custom.addProperty("versionCode", 3)
+            custom.add("acceptedArtifacts", JsonArray().apply {
+                add(JsonObject().apply {
+                    addProperty("versionCode", 2)
+                    addProperty("length", 123)
+                    addProperty("sha256", "d".repeat(64))
+                })
+            })
+        }
+        val result = client.parseTargets(domain.baseUrl, signed, 3, 7, 99_000)
+        val accepted = result.trust.policies.single().acceptedArtifacts.single()
+        assertEquals(2L, accepted.versionCode)
+        assertEquals(123L, accepted.length)
+        assertEquals("d".repeat(64), accepted.sha256)
+
+        listOf(
+            signed.deepCopy().apply {
+                getAsJsonObject("targets").getAsJsonObject("apk/test.apk").getAsJsonObject("custom")
+                    .getAsJsonArray("acceptedArtifacts")[0].asJsonObject.addProperty("versionCode", 3)
+            },
+            signed.deepCopy().apply {
+                getAsJsonObject("targets").getAsJsonObject("apk/test.apk").getAsJsonObject("custom")
+                    .getAsJsonArray("acceptedArtifacts")[0].asJsonObject.addProperty("sha256", "invalid")
+            },
+            signed.deepCopy().apply {
+                getAsJsonObject("targets").getAsJsonObject("apk/test.apk").getAsJsonObject("custom")
+                    .getAsJsonArray("acceptedArtifacts")[0].asJsonObject.addProperty("sha256", "D".repeat(64))
+            },
+            signed.deepCopy().apply {
+                getAsJsonObject("targets").getAsJsonObject("apk/test.apk").getAsJsonObject("custom")
+                    .getAsJsonArray("acceptedArtifacts")[0].asJsonObject.addProperty("unexpected", true)
+            },
+        ).forEach { invalid ->
+            assertThrows(TrustedMetadataException::class.java) {
+                client.parseTargets(domain.baseUrl, invalid, 3, 7, 99_000)
+            }
+        }
+    }
+
+    @Test
     fun `unknown network policy field fails closed`() {
         val policyObject = policyObject(validPolicy()).apply { addProperty("allowCookies", true) }
         val error = assertThrows(TrustedMetadataException::class.java) {

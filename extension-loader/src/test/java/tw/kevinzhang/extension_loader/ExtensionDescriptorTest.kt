@@ -42,7 +42,23 @@ class ExtensionDescriptorTest {
     @Test
     fun `rejects legacy or future protocol instead of negotiating fallback`() {
         assertInvalid(validService().apply { metaData.putInt(ExtensionProtocol.META_PROTOCOL, 0) })
-        assertInvalid(validService().apply { metaData.putInt(ExtensionProtocol.META_PROTOCOL, 2) })
+        assertInvalid(validService().apply { metaData.putInt(ExtensionProtocol.META_PROTOCOL, 3) })
+    }
+
+    @Test
+    fun `protocol v2 rejects every legacy manifest login field`() {
+        listOf(
+            ExtensionProtocol.META_NEEDS_LOGIN to true,
+            ExtensionProtocol.META_LOGIN_URL to "https://login.example.com",
+            ExtensionProtocol.META_LOGIN_HOSTS to "login.example.com",
+        ).forEach { (key, value) ->
+            assertInvalid(validService().apply {
+                when (value) {
+                    is Boolean -> metaData.putBoolean(key, value)
+                    is String -> metaData.putString(key, value)
+                }
+            })
+        }
     }
 
     @Test

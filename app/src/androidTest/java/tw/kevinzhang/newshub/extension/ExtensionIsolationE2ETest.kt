@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -14,12 +15,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import tw.kevinzhang.extension_api.NamedHostCapabilities
+import tw.kevinzhang.extension_api.AuthSpec
+import tw.kevinzhang.extension_api.AuthenticatedSource
 import tw.kevinzhang.extension_api.ExtensionProtocol
 import tw.kevinzhang.extension_api.NetworkOperationPolicy
 import tw.kevinzhang.extension_api.NetworkOperations
 import tw.kevinzhang.extension_api.NetworkRequestRule
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
+import tw.kevinzhang.extension_api.WebLoginUserAgentProvider
 import tw.kevinzhang.extension_api.sha256
+import tw.kevinzhang.extension_loader.AcceptedExtensionArtifact
 import tw.kevinzhang.extension_loader.ExpectedSourceService
 import tw.kevinzhang.extension_loader.ExtensionSigningPolicy
 import tw.kevinzhang.extension_loader.VerifiedExtensionTrustSnapshot
@@ -80,6 +85,8 @@ class ExtensionIsolationE2ETest {
     @Test
     fun wrongSignersAreQuarantinedThenThresholdTrustedServicesBindAndExecute() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        val allowDisposableTestSigner =
+            InstrumentationRegistry.getArguments().getString(ALLOW_DISPOSABLE_TEST_SIGNER) == "true"
         val entryPoint = EntryPointAccessors.fromApplication(
             context,
             ExtensionManagementEntryPoint::class.java,
@@ -99,11 +106,22 @@ class ExtensionIsolationE2ETest {
             snapshot(context, targetsVersion = 2, validPins = true, validContent = false),
         )
         entryPoint.manager().refreshAllExtensionsAndAwait()
+        withTimeout(15_000) {
+            while (entryPoint.manager().quarantinedExtensions.value.size < SOURCE_POLICIES.size) delay(50)
+        }
         assertTrue(entryPoint.manager().installedExtensions.value.isEmpty())
         assertEquals(SOURCE_POLICIES.size, entryPoint.manager().quarantinedExtensions.value.size)
 
         entryPoint.trustProvider().installVerifiedSnapshot(
-            snapshot(context, targetsVersion = 3, validPins = true, validContent = true),
+            snapshot(
+                context,
+                targetsVersion = 3,
+                validPins = true,
+                validContent = true,
+                // Local disposable emulators build protocol-v2 APKs with the Android debug key.
+                // Production/default runs keep the reviewed signer pins below.
+                pinInstalledSigner = allowDisposableTestSigner,
+            ),
         )
         entryPoint.manager().refreshAllExtensionsAndAwait()
         withTimeout(20_000) {
@@ -115,6 +133,32 @@ class ExtensionIsolationE2ETest {
         assertEquals(SOURCE_POLICIES.size, installed.sumOf { it.sources.size })
         assertTrue(entryPoint.manager().quarantinedExtensions.value.isEmpty())
 
+        val loadedSources = entryPoint.loader().sourcesFlow.value
+        assertTrue(loadedSources.none { it.supportsCommentPagination })
+        assertTrue(loadedSources.any { it.alwaysUseRawImage })
+        assertTrue(loadedSources.any { !it.alwaysUseRawImage })
+        val authenticated = loadedSources.filterIsInstance<AuthenticatedSource>()
+        assertEquals(
+            setOf(
+                "tw.kevinzhang.eyny",
+                "tw.kevinzhang.newshub.extension.gamer",
+                "tw.kevinzhang.newshub.extension.ptt",
+            ),
+            authenticated.mapTo(linkedSetOf()) { it.id },
+        )
+        assertTrue(
+            authenticated.joinToString { "${it.id}:needsLogin=${it.needsLogin}" },
+            authenticated.none { it.needsLogin },
+        )
+        authenticated.forEach { source ->
+            val auth = source.authSpec as AuthSpec.WebCookie
+            assertTrue(auth.allowedHosts.isNotEmpty())
+            assertTrue(auth.cookieOrigins.isNotEmpty())
+            assertTrue(auth.cookieDomains.isNotEmpty())
+        }
+        val eyny = authenticated.single { it.id == "tw.kevinzhang.eyny" }
+        assertTrue((eyny as WebLoginUserAgentProvider).webLoginUserAgent.isNotBlank())
+
         // Sora categories are in-memory constants. A successful response proves the explicit
         // Binder/PFD protocol executed extension code without relying on external network state.
         val sora = entryPoint.loader().getSource("tw.kevinzhang.komica.sora")
@@ -122,6 +166,44 @@ class ExtensionIsolationE2ETest {
         val categories = withTimeout(10_000) { sora.getBoardCategories() }
         assertTrue(categories.isNotEmpty())
         assertEquals("tw.kevinzhang.newshub.extension.komica", sora.sourceIdentity?.packageName)
+
+        // A newly published target may explicitly keep the exact installed artifact usable while
+        // Android waits for user-confirmed installation of the update.
+        entryPoint.trustProvider().installVerifiedSnapshot(
+            snapshot(
+                context,
+                targetsVersion = 4,
+                validPins = true,
+                validContent = true,
+                pinInstalledSigner = allowDisposableTestSigner,
+                expectedVersionDelta = 1,
+                acceptInstalledArtifact = true,
+            ),
+        )
+        entryPoint.manager().refreshAllExtensionsAndAwait()
+        withTimeout(20_000) {
+            while (entryPoint.loader().sourcesFlow.value.size != SOURCE_POLICIES.size) delay(50)
+        }
+        assertTrue(entryPoint.manager().quarantinedExtensions.value.isEmpty())
+
+        // Omitting that exact compatibility triple in the next signed targets version is an
+        // immediate revocation, not an implicit grace period from locally cached metadata.
+        entryPoint.trustProvider().installVerifiedSnapshot(
+            snapshot(
+                context,
+                targetsVersion = 5,
+                validPins = true,
+                validContent = true,
+                pinInstalledSigner = allowDisposableTestSigner,
+                expectedVersionDelta = 1,
+            ),
+        )
+        entryPoint.manager().refreshAllExtensionsAndAwait()
+        withTimeout(15_000) {
+            while (entryPoint.manager().quarantinedExtensions.value.size < SOURCE_POLICIES.size) delay(50)
+        }
+        assertTrue(entryPoint.manager().installedExtensions.value.isEmpty())
+        assertEquals(SOURCE_POLICIES.size, entryPoint.manager().quarantinedExtensions.value.size)
     }
 
     @Suppress("DEPRECATION")
@@ -132,6 +214,8 @@ class ExtensionIsolationE2ETest {
         validContent: Boolean,
         sourceIds: Set<String> = SOURCE_POLICIES.mapTo(linkedSetOf()) { it.sourceId },
         pinInstalledSigner: Boolean = false,
+        expectedVersionDelta: Long = 0,
+        acceptInstalledArtifact: Boolean = false,
     ): VerifiedExtensionTrustSnapshot {
         val selectedPolicies = SOURCE_POLICIES.filter { it.sourceId in sourceIds }
         require(selectedPolicies.mapTo(linkedSetOf()) { it.sourceId } == sourceIds) {
@@ -146,6 +230,8 @@ class ExtensionIsolationE2ETest {
             val baseApk = File(requireNotNull(packageInfo.applicationInfo).sourceDir)
             val packageServices = requireNotNull(packageInfo.services)
             val installedSigner = installedSignerSha256(packageInfo)
+            val installedVersion = PackageInfoCompat.getLongVersionCode(packageInfo)
+            val installedSha256 = baseApk.sha256()
             val pin = if (validPins) {
                 if (pinInstalledSigner) installedSigner else SIGNER_PINS.getValue(packageName)
             } else {
@@ -153,9 +239,18 @@ class ExtensionIsolationE2ETest {
             }
             ExtensionSigningPolicy(
                 packageName = packageName,
-                expectedVersionCode = PackageInfoCompat.getLongVersionCode(packageInfo),
+                expectedVersionCode = installedVersion + expectedVersionDelta,
                 targetLength = baseApk.length(),
-                targetSha256 = if (validContent) baseApk.sha256() else "0".repeat(64),
+                targetSha256 = when {
+                    !validContent -> "0".repeat(64)
+                    expectedVersionDelta == 0L -> installedSha256
+                    else -> "1".repeat(64)
+                },
+                acceptedArtifacts = if (acceptInstalledArtifact) {
+                    listOf(AcceptedExtensionArtifact(installedVersion, baseApk.length(), installedSha256))
+                } else {
+                    emptyList()
+                },
                 lineageAnchorsSha256 = setOf(pin),
                 approvedCurrentSignersSha256 = setOf(pin),
                 sources = sources.associate { source ->
@@ -432,6 +527,7 @@ class ExtensionIsolationE2ETest {
 
         private const val PRODUCTION_EXTENSION_SIGNER_SHA256 =
             "3df4717435423d5ba7adfed43a22a6e18bbeadc8d509d0bea94d82c7b0f2998d"
+        private const val ALLOW_DISPOSABLE_TEST_SIGNER = "newshub.allowDisposableTestSigner"
 
         // The published distribution currently maintains upgrade compatibility through one
         // production signer. Keep this as an explicit pin: the live fixture must never infer

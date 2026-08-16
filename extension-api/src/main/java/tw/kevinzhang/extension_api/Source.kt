@@ -39,8 +39,11 @@ interface Source {
     val alwaysUseRawImage: Boolean
 
     /**
-     * Legacy login indicator. New extensions should implement [AuthenticatedSource] instead.
-     * The host never infers an Activity name from this value.
+     * True when normal content use requires an authenticated session. Authentication capability
+     * is declared independently by implementing [AuthenticatedSource]; optional-login Sources
+     * implement that interface and leave this false. Sources must still identify unauthenticated
+     * responses and throw [AuthenticationRequiredException] rather than treating this UI hint as
+     * an authorization boundary.
      */
     val needsLogin: Boolean
 

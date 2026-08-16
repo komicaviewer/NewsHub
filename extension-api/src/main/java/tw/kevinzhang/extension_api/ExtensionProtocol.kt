@@ -49,7 +49,7 @@ import kotlin.coroutines.resumeWithException
 
 /** Current, breaking extension protocol. There is deliberately no legacy fallback. */
 object ExtensionProtocol {
-    const val VERSION = 1
+    const val VERSION = 2
     const val SERVICE_ACTION = "tw.kevinzhang.newshub.extension.SERVICE"
     const val BIND_PERMISSION = "tw.kevinzhang.newshub.permission.BIND_EXTENSION"
 
@@ -71,6 +71,8 @@ object ExtensionProtocol {
     const val OP_WEB_URL = 7
     const val OP_VALIDATE_SESSION = 8
     const val OP_BOARD_WEB_URL = 9
+    /** First operation after binding. The Host refuses every Source until this succeeds. */
+    const val OP_RUNTIME_DESCRIPTOR = 10
 
     const val STATUS_OK = 0
     const val STATUS_INVALID_REQUEST = 1
@@ -83,6 +85,7 @@ object ExtensionProtocol {
     const val COOKIE_OP_EYNY_CHALLENGE_PROOF = 2
 
     const val MAX_CONTROL_BYTES = 64 * 1024
+    const val MAX_DESCRIPTOR_BYTES = 32 * 1024
     const val MAX_RESULT_BYTES = 4 * 1024 * 1024
     const val MAX_NETWORK_REQUEST_BYTES = 2 * 1024 * 1024
     const val MAX_NETWORK_RESPONSE_BYTES = 8 * 1024 * 1024
@@ -145,6 +148,31 @@ data class ThreadPageRequest(val summary: ThreadSummary, val pageToken: String?)
 data class CommentPageRequest(val post: Post, val page: Int)
 data class WebUrlRequest(val summary: ThreadSummary)
 data class BoardWebUrlRequest(val board: Board)
+
+/** Bounded, versioned capability description returned by an isolated Source after binding. */
+data class SourceRuntimeDescriptor(
+    val protocolVersion: Int,
+    val sourceId: String,
+    val name: String,
+    val language: String,
+    val sourceVersion: Int,
+    val iconUrl: String?,
+    val supportsCommentPagination: Boolean,
+    val alwaysUseRawImage: Boolean,
+    /** Source behavior flag. Authentication capability is independently derived from [webCookieAuth]. */
+    val needsLogin: Boolean,
+    val webCookieAuth: WebCookieAuthDescriptor?,
+    val webLoginUserAgent: String?,
+)
+
+/** Wire representation of every field in [AuthSpec.WebCookie]. */
+data class WebCookieAuthDescriptor(
+    val loginUrl: String,
+    val allowedHosts: Set<String>,
+    val cookieOrigins: Set<String>,
+    val cookieDomains: Set<String>,
+    val javaScriptEnabled: Boolean,
+)
 
 /**
  * Base class used directly by extension APK services. Every concrete service supplies exactly
@@ -231,6 +259,14 @@ abstract class IsolatedSourceService : Service() {
 
 private suspend fun executeSourceOperation(source: Source, operation: Int, request: String): String =
     when (operation) {
+        ExtensionProtocol.OP_RUNTIME_DESCRIPTOR -> {
+            ExtensionWireJson.decode<Unit>(request)
+            ExtensionWireJson.encode(source.toRuntimeDescriptor()).also { descriptor ->
+                require(descriptor.toByteArray(Charsets.UTF_8).size <= ExtensionProtocol.MAX_DESCRIPTOR_BYTES) {
+                    "Runtime descriptor is too large"
+                }
+            }
+        }
         ExtensionProtocol.OP_BOARD_CATEGORIES -> ExtensionWireJson.encode(source.getBoardCategories())
         ExtensionProtocol.OP_BOARD_PAGE -> ExtensionWireJson.encode(
             source.getBoardPage(ExtensionWireJson.decode<BoardPageRequest>(request)),
@@ -261,6 +297,32 @@ private suspend fun executeSourceOperation(source: Source, operation: Int, reque
         }
         else -> throw IllegalArgumentException("Unknown operation: $operation")
     }
+
+internal fun Source.toRuntimeDescriptor(): SourceRuntimeDescriptor {
+    val webCookie = when (val spec = (this as? AuthenticatedSource)?.authSpec) {
+        null, AuthSpec.None -> null
+        is AuthSpec.WebCookie -> WebCookieAuthDescriptor(
+            loginUrl = spec.loginUrl,
+            allowedHosts = spec.allowedHosts,
+            cookieOrigins = spec.cookieOrigins,
+            cookieDomains = spec.cookieDomains,
+            javaScriptEnabled = spec.javaScriptEnabled,
+        )
+    }
+    return SourceRuntimeDescriptor(
+        protocolVersion = ExtensionProtocol.VERSION,
+        sourceId = id,
+        name = name,
+        language = language,
+        sourceVersion = version,
+        iconUrl = iconUrl,
+        supportsCommentPagination = supportsCommentPagination,
+        alwaysUseRawImage = alwaysUseRawImage,
+        needsLogin = needsLogin,
+        webCookieAuth = webCookie,
+        webLoginUserAgent = (this as? WebLoginUserAgentProvider)?.webLoginUserAgent,
+    )
+}
 
 private class BrokerRuntime(broker: IHostBroker) : SourceRuntime {
     override val network: SourceNetwork = BinderSourceNetwork(broker)
@@ -455,5 +517,6 @@ internal fun operationName(operation: Int): String = when (operation) {
     ExtensionProtocol.OP_WEB_URL -> "web_url"
     ExtensionProtocol.OP_VALIDATE_SESSION -> "validate_session"
     ExtensionProtocol.OP_BOARD_WEB_URL -> "board_web_url"
+    ExtensionProtocol.OP_RUNTIME_DESCRIPTOR -> "runtime_descriptor"
     else -> "unknown"
 }
