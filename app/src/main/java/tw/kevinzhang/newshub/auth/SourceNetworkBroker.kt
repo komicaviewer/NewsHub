@@ -75,6 +75,7 @@ private const val EYNY_COOKIE_DOMAIN = "eyny.com"
 private const val EYNY_PROOF_TTL_MILLIS = 24L * 60L * 60L * 1_000L
 internal const val MAX_RESOURCE_RANGE_BYTES = 512 * 1_024
 private const val MAX_PENDING_BROKER_REQUESTS = 8
+internal const val MAX_SOURCE_REDIRECTS = 5
 
 /** Source-scoped Binder capability. The immutable identity and policy never come from IPC. */
 internal class SourceNetworkBroker(
@@ -120,12 +121,18 @@ internal class SourceNetworkBroker(
                         val payload = PipePayload.readUtf8(request, ExtensionProtocol.MAX_NETWORK_REQUEST_BYTES)
                         val networkRequest = ExtensionWireJson.decode<SourceNetworkRequest>(payload)
                         val authorized = authorizeSourceNetworkRequest(networkRequest, policy)
-                        val response = perform(
-                            requestId = requestId,
-                            networkRequest = networkRequest,
-                            url = authorized.url,
-                            credentialed = authorized.rule.operation.credentialed,
-                        )
+                        val response = followAuthorizedSourceRedirects(
+                            request = networkRequest,
+                            initial = authorized,
+                            policy = policy,
+                        ) { redirectUrl, credentialed ->
+                            perform(
+                                requestId = requestId,
+                                networkRequest = networkRequest.copy(url = redirectUrl.toString()),
+                                url = redirectUrl,
+                                credentialed = credentialed,
+                            )
+                        }
                         respond(
                             requestId,
                             ExtensionProtocol.STATUS_OK,
@@ -226,11 +233,20 @@ internal class SourceNetworkBroker(
             concurrency.withPermit {
                 val request = SourceNetworkRequest(NetworkOperations.SOURCE_READ, "GET", url)
                 val validated = validateResourceUrl(url, policy)
-                val response = perform(
-                    requestId = resourceRequestIds.incrementAndGet(),
-                    networkRequest = request,
-                    url = validated,
-                    credentialed = false,
+                val response = followBoundedSameOriginRedirects(
+                    initialUrl = validated,
+                    operation = request.operation,
+                    validateRedirect = { redirectUrl ->
+                        validateResourceUrl(redirectUrl.toString(), policy)
+                    },
+                    execute = { redirectUrl ->
+                        perform(
+                            requestId = resourceRequestIds.incrementAndGet(),
+                            networkRequest = request.copy(url = redirectUrl.toString()),
+                            url = redirectUrl,
+                            credentialed = false,
+                        )
+                    },
                 )
                 require(response.code in 200..299) { "Resource fetch failed: HTTP ${response.code}" }
                 ResourcePayload(response.body, response.headers.entries
@@ -250,13 +266,22 @@ internal class SourceNetworkBroker(
                 concurrency.withPermit {
                 val request = SourceNetworkRequest(NetworkOperations.SOURCE_READ, "GET", url)
                 val validated = validateResourceUrl(url, policy)
-                val response = perform(
-                    requestId = resourceRequestIds.incrementAndGet(),
-                    networkRequest = request,
-                    url = validated,
-                    credentialed = false,
-                    hostHeaders = mapOf("Range" to "bytes=$offset-${offset + length - 1L}"),
-                    responseLimit = length,
+                val response = followBoundedSameOriginRedirects(
+                    initialUrl = validated,
+                    operation = request.operation,
+                    validateRedirect = { redirectUrl ->
+                        validateResourceUrl(redirectUrl.toString(), policy)
+                    },
+                    execute = { redirectUrl ->
+                        perform(
+                            requestId = resourceRequestIds.incrementAndGet(),
+                            networkRequest = request.copy(url = redirectUrl.toString()),
+                            url = redirectUrl,
+                            credentialed = false,
+                            hostHeaders = mapOf("Range" to "bytes=$offset-${offset + length - 1L}"),
+                            responseLimit = length,
+                        )
+                    },
                 )
                 require(response.code == 200 || response.code == 206) {
                     "Resource range failed: HTTP ${response.code}"
@@ -326,7 +351,11 @@ internal class SourceNetworkBroker(
                 SourceNetworkResponse(
                     code = response.code,
                     headers = responseHeaders,
-                    body = response.body.readBounded(responseLimit),
+                    body = if (response.code in REDIRECT_STATUS_CODES) {
+                        ByteArray(0)
+                    } else {
+                        response.body.readBounded(responseLimit)
+                    },
                 )
             }
         } finally {
@@ -486,6 +515,101 @@ internal fun authorizeSourceNetworkRequest(
     if (matchingRules.size != 1) reject(SourceFailureCode.HOST_POLICY, observedHost)
     return AuthorizedNetworkRequest(url, matchingRules.single())
 }
+
+/**
+ * Follows only bounded, same-origin redirects in the Host process. The extension receives the
+ * terminal response but never gains ambient OkHttp redirect authority.
+ */
+internal fun followAuthorizedSourceRedirects(
+    request: SourceNetworkRequest,
+    initial: AuthorizedNetworkRequest,
+    policy: SourceNetworkPolicy,
+    execute: (url: HttpUrl, credentialed: Boolean) -> SourceNetworkResponse,
+): SourceNetworkResponse {
+    val credentialed = initial.rule.operation.credentialed
+    return followBoundedSameOriginRedirects(
+        initialUrl = initial.url,
+        operation = request.operation,
+        validateRedirect = { redirectUrl ->
+            val redirected = authorizeSourceNetworkRequest(
+                request.copy(url = redirectUrl.toString()),
+                policy,
+            )
+            // Never let a server redirect move a request across a cookie-authority boundary.
+            if (redirected.rule.operation.credentialed != credentialed) {
+                throwRedirectFailure(
+                    code = SourceFailureCode.HOST_POLICY,
+                    operation = request.operation,
+                    observedHost = redirectUrl.host,
+                    allowedHosts = listOf(initial.url.host),
+                )
+            }
+        },
+        execute = { redirectUrl -> execute(redirectUrl, credentialed) },
+    )
+}
+
+internal fun followBoundedSameOriginRedirects(
+    initialUrl: HttpUrl,
+    operation: String,
+    validateRedirect: (HttpUrl) -> Unit,
+    execute: (HttpUrl) -> SourceNetworkResponse,
+): SourceNetworkResponse {
+    var currentUrl = initialUrl
+    val visitedUrls = linkedSetOf(initialUrl.toString())
+
+    repeat(MAX_SOURCE_REDIRECTS + 1) { requestIndex ->
+        val response = execute(currentUrl)
+        if (response.code !in REDIRECT_STATUS_CODES) return response
+
+        val location = response.headers.entries
+            .firstOrNull { (name, _) -> name.equals("location", ignoreCase = true) }
+            ?.value
+        val redirectUrl = location
+            ?.let { value -> runCatching { currentUrl.resolve(value) }.getOrNull() }
+            ?: throwRedirectFailure(SourceFailureCode.SITE_UNAVAILABLE, operation)
+
+        if (!redirectUrl.isHttps ||
+            redirectUrl.port != 443 ||
+            redirectUrl.username.isNotEmpty() ||
+            redirectUrl.password.isNotEmpty() ||
+            !redirectUrl.hasSameOrigin(initialUrl)
+        ) {
+            throwRedirectFailure(
+                code = SourceFailureCode.HOST_POLICY,
+                operation = operation,
+                observedHost = redirectUrl.host,
+                allowedHosts = listOf(initialUrl.host),
+            )
+        }
+
+        validateRedirect(redirectUrl)
+        if (!visitedUrls.add(redirectUrl.toString()) || requestIndex == MAX_SOURCE_REDIRECTS) {
+            throwRedirectFailure(SourceFailureCode.SITE_UNAVAILABLE, operation)
+        }
+        currentUrl = redirectUrl
+    }
+    throwRedirectFailure(SourceFailureCode.SITE_UNAVAILABLE, operation)
+}
+
+private val REDIRECT_STATUS_CODES = setOf(301, 302, 303, 307, 308)
+
+private fun HttpUrl.hasSameOrigin(other: HttpUrl): Boolean =
+    scheme == other.scheme && host == other.host && port == other.port
+
+private fun throwRedirectFailure(
+    code: SourceFailureCode,
+    operation: String,
+    observedHost: String? = null,
+    allowedHosts: List<String> = emptyList(),
+): Nothing = throw SourceFailureException(
+    SourceFailure(
+        code = code,
+        operation = operation,
+        observedHost = observedHost,
+        allowedHosts = allowedHosts,
+    ).sanitized(),
+)
 
 private object GlobalOnlyDns : Dns {
     override fun lookup(hostname: String): List<InetAddress> {

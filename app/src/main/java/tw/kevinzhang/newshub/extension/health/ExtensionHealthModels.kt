@@ -57,7 +57,7 @@ data class SourceHealthProfile(
     internal fun validate() {
         require(sourceId.matches(SAFE_NAME)) { "Invalid source id" }
         require(packageName.matches(SAFE_NAME)) { "Invalid package name" }
-        require(allowedHosts.isNotEmpty() && allowedHosts.size <= 10) { "Invalid host allowlist" }
+        require(allowedHosts.isNotEmpty() && allowedHosts.size <= 32) { "Invalid host allowlist" }
         require(allowedHosts.all { it.matches(HOST) && it == it.lowercase() }) {
             "Hosts must be exact lower-case names"
         }

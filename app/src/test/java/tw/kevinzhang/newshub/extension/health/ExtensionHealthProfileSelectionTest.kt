@@ -88,6 +88,22 @@ class ExtensionHealthProfileSelectionTest {
     }
 
     @Test
+    fun officialProfileCoversReviewedMultiHostBoardCatalogsAndPinsPublicPttBoard() {
+        val sources = officialProfile().sources.associateBy(SourceHealthProfile::sourceId)
+
+        assertEquals(
+            setOf("eclair.nagatoyuki.org", "selene.zawarudo.org", "www.gomiga.org"),
+            sources.getValue("tw.kevinzhang.nagatoyuki").allowedHosts,
+        )
+        assertEquals(
+            setOf("kemono.wtako.net", "rthost.win", "www.karlsland.net"),
+            sources.getValue("tw.kevinzhang.wtako").allowedHosts,
+        )
+        assertEquals("Stock", sources.getValue("tw.kevinzhang.newshub.extension.ptt").boardQuery)
+        assertEquals("Stock", sources.getValue("tw.kevinzhang.newshub.extension.ptt").boardNameContains)
+    }
+
+    @Test
     fun profileRejectsAnAuthenticatedBoardDirectoryOrUnsafeDependencyGap() {
         val source = officialProfile().sources.first()
 

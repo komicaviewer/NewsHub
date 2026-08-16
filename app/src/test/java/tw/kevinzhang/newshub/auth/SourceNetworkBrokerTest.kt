@@ -10,6 +10,7 @@ import tw.kevinzhang.extension_api.NetworkOperations
 import tw.kevinzhang.extension_api.NetworkRequestRule
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.SourceNetworkRequest
+import tw.kevinzhang.extension_api.SourceNetworkResponse
 import tw.kevinzhang.extension_api.SourceIdentity
 import tw.kevinzhang.extension_api.SourceFailureCode
 import tw.kevinzhang.extension_api.SourceFailureException
@@ -85,6 +86,182 @@ class SourceNetworkBrokerTest {
         assertEquals(listOf("news.example"), error.failure.allowedHosts)
         assertFalse(error.toString().contains("private"))
         assertFalse(error.toString().contains("secret"))
+    }
+
+    @Test fun `follows each supported same-origin redirect status`() {
+        listOf(301, 302, 307, 308).forEach { redirectStatus ->
+            val request = sourceReadRequest("https://news.example/threads/start")
+            val initial = authorizeSourceNetworkRequest(request, policy)
+            val requestedUrls = mutableListOf<String>()
+
+            val response = followAuthorizedSourceRedirects(request, initial, policy) { url, credentialed ->
+                assertTrue(credentialed)
+                requestedUrls += url.toString()
+                if (requestedUrls.size == 1) {
+                    networkResponse(redirectStatus, "/threads/final")
+                } else {
+                    networkResponse(200)
+                }
+            }
+
+            assertEquals(200, response.code)
+            assertEquals(
+                listOf(
+                    "https://news.example/threads/start",
+                    "https://news.example/threads/final",
+                ),
+                requestedUrls,
+            )
+        }
+    }
+
+    @Test fun `resolves protocol-relative redirect on the same origin`() {
+        val request = sourceReadRequest("https://news.example/threads/start")
+        val initial = authorizeSourceNetworkRequest(request, policy)
+        val requestedUrls = mutableListOf<String>()
+
+        val response = followAuthorizedSourceRedirects(request, initial, policy) { url, _ ->
+            requestedUrls += url.toString()
+            if (requestedUrls.size == 1) {
+                networkResponse(302, "//news.example/threads/final?generation=2")
+            } else {
+                networkResponse(200)
+            }
+        }
+
+        assertEquals(200, response.code)
+        assertEquals(
+            "https://news.example/threads/final?generation=2",
+            requestedUrls.last(),
+        )
+    }
+
+    @Test fun `rejects cross-origin redirect without issuing a second request`() {
+        val request = sourceReadRequest("https://news.example/threads/start")
+        val initial = authorizeSourceNetworkRequest(request, policy)
+        var requestCount = 0
+
+        val failure = captureSourceFailure {
+            followAuthorizedSourceRedirects(request, initial, policy) { _, _ ->
+                requestCount += 1
+                networkResponse(302, "https://other.example/threads/final")
+            }
+        }
+
+        assertEquals(SourceFailureCode.HOST_POLICY, failure.failure.code)
+        assertEquals("other.example", failure.failure.observedHost)
+        assertEquals(1, requestCount)
+    }
+
+    @Test fun `rejects redirect outside the authorized path`() {
+        val request = sourceReadRequest("https://news.example/threads/start")
+        val initial = authorizeSourceNetworkRequest(request, policy)
+        var requestCount = 0
+
+        val failure = captureSourceFailure {
+            followAuthorizedSourceRedirects(request, initial, policy) { _, _ ->
+                requestCount += 1
+                networkResponse(301, "/delete-account")
+            }
+        }
+
+        assertEquals(SourceFailureCode.HOST_POLICY, failure.failure.code)
+        assertEquals(1, requestCount)
+    }
+
+    @Test fun `stops a redirect loop without leaking the URL`() {
+        val request = sourceReadRequest("https://news.example/threads/start")
+        val initial = authorizeSourceNetworkRequest(request, policy)
+        var requestCount = 0
+
+        val failure = captureSourceFailure {
+            followAuthorizedSourceRedirects(request, initial, policy) { _, _ ->
+                requestCount += 1
+                when (requestCount) {
+                    1 -> networkResponse(302, "/threads/next")
+                    else -> networkResponse(302, "/threads/start")
+                }
+            }
+        }
+
+        assertEquals(SourceFailureCode.SITE_UNAVAILABLE, failure.failure.code)
+        assertEquals(2, requestCount)
+        assertFalse(failure.toString().contains("threads"))
+    }
+
+    @Test fun `missing or malformed redirect location is site unavailable`() {
+        listOf<String?>(null, "https://[invalid").forEach { location ->
+            val request = sourceReadRequest("https://news.example/threads/start")
+            val initial = authorizeSourceNetworkRequest(request, policy)
+            var requestCount = 0
+
+            val failure = captureSourceFailure {
+                followAuthorizedSourceRedirects(request, initial, policy) { _, _ ->
+                    requestCount += 1
+                    networkResponse(302, location)
+                }
+            }
+
+            assertEquals(SourceFailureCode.SITE_UNAVAILABLE, failure.failure.code)
+            assertEquals(1, requestCount)
+        }
+    }
+
+    @Test fun `stops before issuing a sixth redirected request`() {
+        val request = sourceReadRequest("https://news.example/threads/start")
+        val initial = authorizeSourceNetworkRequest(request, policy)
+        var requestCount = 0
+
+        val failure = captureSourceFailure {
+            followAuthorizedSourceRedirects(request, initial, policy) { _, _ ->
+                requestCount += 1
+                networkResponse(302, "/threads/hop-$requestCount")
+            }
+        }
+
+        assertEquals(SourceFailureCode.SITE_UNAVAILABLE, failure.failure.code)
+        assertEquals(MAX_SOURCE_REDIRECTS + 1, requestCount)
+    }
+
+    @Test fun `redirect cannot cross into a credentialed request rule`() {
+        val publicRule = NetworkRequestRule(
+            exactHosts = setOf("news.example"),
+            operation = NetworkOperationPolicy(
+                name = NetworkOperations.SOURCE_READ,
+                methods = setOf("GET"),
+                pathPrefixes = setOf("/public/"),
+                credentialed = false,
+            ),
+        )
+        val privateRule = NetworkRequestRule(
+            exactHosts = setOf("news.example"),
+            operation = NetworkOperationPolicy(
+                name = NetworkOperations.SOURCE_READ,
+                methods = setOf("GET"),
+                pathPrefixes = setOf("/private/"),
+                credentialed = true,
+            ),
+        )
+        val scopedPolicy = SourceNetworkPolicy(
+            exactHosts = setOf("news.example"),
+            operations = emptyMap(),
+            policyVersion = 2,
+            requestRules = listOf(publicRule, privateRule),
+        )
+        val request = sourceReadRequest("https://news.example/public/start")
+        val initial = authorizeSourceNetworkRequest(request, scopedPolicy)
+        var requestCount = 0
+
+        val failure = captureSourceFailure {
+            followAuthorizedSourceRedirects(request, initial, scopedPolicy) { _, credentialed ->
+                assertFalse(credentialed)
+                requestCount += 1
+                networkResponse(302, "/private/account")
+            }
+        }
+
+        assertEquals(SourceFailureCode.HOST_POLICY, failure.failure.code)
+        assertEquals(1, requestCount)
     }
 
     @Test fun `PTT capability reveals only the fixed consent predicate`() {
@@ -352,6 +529,26 @@ class SourceNetworkBrokerTest {
         } catch (_: SourceFailureException) {
             // expected
         }
+    }
+
+    private fun sourceReadRequest(url: String) = SourceNetworkRequest(
+        operation = NetworkOperations.SOURCE_READ,
+        method = "GET",
+        url = url,
+    )
+
+    private fun networkResponse(code: Int, location: String? = null) = SourceNetworkResponse(
+        code = code,
+        headers = location?.let { mapOf("Location" to it) }.orEmpty(),
+        body = ByteArray(0),
+    )
+
+    private fun captureSourceFailure(block: () -> Unit): SourceFailureException {
+        val error = runCatching(block).exceptionOrNull()
+        if (error !is SourceFailureException) {
+            fail("Expected SourceFailureException, got ${error?.javaClass?.simpleName}")
+        }
+        return error as SourceFailureException
     }
 
     private fun assertNamedRejected(block: () -> Unit) {

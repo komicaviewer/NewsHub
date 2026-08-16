@@ -27,12 +27,12 @@
     {
       "sourceId": "tw.kevinzhang.komica.twocat",
       "packageName": "tw.kevinzhang.newshub.extension.komica",
-      "allowedHosts": ["2cat.org"]
+      "allowedHosts": ["2cat.org", "cat.2nyan.org", "eclair.nagatoyuki.org", "www.gomiga.org"]
     },
     {
       "sourceId": "tw.kevinzhang.komica.sora",
       "packageName": "tw.kevinzhang.newshub.extension.komica",
-      "allowedHosts": ["komica1.org", "gaia.komica1.org", "gita.komica1.org", "iris.komica1.org"]
+      "allowedHosts": ["fenrisulfr.org", "gaia.komica1.org", "gita.komica1.org", "iris.komica1.org", "komica.dbfoxtw.me", "msgirls.boguspix.com", "pixmicat.alica.idv.tw", "sister.boguspix.com", "storysol.boguspix.com", "travel.voidfactory.com", "www.karlsland.net"]
     },
     {
       "sourceId": "tw.kevinzhang.akraft",
@@ -42,12 +42,12 @@
     {
       "sourceId": "tw.kevinzhang.nagatoyuki",
       "packageName": "tw.kevinzhang.newshub.extension.komica",
-      "allowedHosts": ["eclair.nagatoyuki.org"]
+      "allowedHosts": ["eclair.nagatoyuki.org", "selene.zawarudo.org", "www.gomiga.org"]
     },
     {
       "sourceId": "tw.kevinzhang.wtako",
       "packageName": "tw.kevinzhang.newshub.extension.komica",
-      "allowedHosts": ["kemono.wtako.net"]
+      "allowedHosts": ["kemono.wtako.net", "rthost.win", "www.karlsland.net"]
     },
     {
       "sourceId": "tw.kevinzhang.komica2.twocat",
@@ -72,7 +72,9 @@
     {
       "sourceId": "tw.kevinzhang.newshub.extension.ptt",
       "packageName": "tw.kevinzhang.newshub.extension.ptt",
-      "allowedHosts": ["www.ptt.cc"]
+      "allowedHosts": ["www.ptt.cc"],
+      "boardQuery": "Stock",
+      "boardNameContains": "Stock"
     }
   ]
 }
