@@ -177,6 +177,27 @@ class ExtensionHealthRunnerTest {
     }
 
     @Test
+    fun typedAccessFailuresRemainDistinctAndSanitizedInHealthReport() = runBlocking {
+        for ((code, expected) in listOf(
+            SourceFailureCode.ACCESS_CHALLENGE to HealthFailureClass.ACCESS_CHALLENGE,
+            SourceFailureCode.ACCESS_DENIED to HealthFailureClass.ACCESS_DENIED,
+        )) {
+            val source = FakeSource(
+                boardFailure = SourceFailureException(
+                    SourceFailure(code, operation = "thread_summaries"),
+                ),
+            )
+
+            val report = ExtensionHealthRunner().run(loadProfile(), listOf(source))
+            val json = ExtensionHealthJson.encodeReport(report)
+
+            assertEquals(expected, report.results.single().steps.single().failureClass)
+            assertFalse(json.contains("https://"))
+            assertFalse(json.contains("cookie", ignoreCase = true))
+        }
+    }
+
+    @Test
     fun slowOperationStopsAtConfiguredTimeout() = runBlocking {
         val profile = loadProfile().copy(operationTimeoutMs = 1_000)
 

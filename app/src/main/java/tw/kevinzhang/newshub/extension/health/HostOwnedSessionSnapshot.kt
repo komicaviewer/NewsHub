@@ -40,7 +40,12 @@ class HostOwnedSessionSnapshot private constructor(
             Policy(
                 sourceId = "tw.kevinzhang.eyny",
                 packageName = "tw.kevinzhang.newshub.extension.eyny",
-                origins = setOf("https://eyny.com", "https://www.eyny.com"),
+                origins = setOf(
+                    "https://eyny.com",
+                    "https://www.eyny.com",
+                    "https://www52.eyny.com",
+                    "https://www53.eyny.com",
+                ),
                 parentDomains = setOf("eyny.com"),
                 userAgentProfileId = "eyny-android14-chrome120-v1",
             ),

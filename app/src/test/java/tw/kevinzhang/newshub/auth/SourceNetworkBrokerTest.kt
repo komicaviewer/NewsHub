@@ -471,7 +471,7 @@ class SourceNetworkBrokerTest {
         val jar = RecordingCookieJar()
         val now = 1_800_000_000_000L
         val proof = EynyChallengeProof(
-            host = "www.eyny.com",
+            host = "www52.eyny.com",
             cookiePrefix = "9bd3f9c",
             nonce = 119_310,
             timestamp = "1784585056",
@@ -484,9 +484,10 @@ class SourceNetworkBrokerTest {
                 "tw.kevinzhang.eyny",
             ),
             policy = SourceNetworkPolicy(
-                exactHosts = setOf("eyny.com", "www.eyny.com"),
+                exactHosts = setOf("eyny.com", "www.eyny.com", "www52.eyny.com", "www53.eyny.com"),
                 operations = emptyMap(),
                 namedCapabilities = setOf(NamedHostCapabilities.EYNY_CHALLENGE_PROOF),
+                authExactHosts = setOf("eyny.com", "www.eyny.com", "www52.eyny.com", "www53.eyny.com"),
             ),
             cookieJar = jar,
             operation = ExtensionProtocol.COOKIE_OP_EYNY_CHALLENGE_PROOF,
@@ -499,7 +500,7 @@ class SourceNetworkBrokerTest {
             setOf("9bd3f9c_n", "9bd3f9c_ts", "9bd3f9c_ch"),
             jar.saved.mapTo(linkedSetOf()) { it.name },
         )
-        assertEquals(setOf("www.eyny.com", "eyny.com"), jar.saved.mapTo(linkedSetOf()) { it.domain })
+        assertEquals(setOf("www52.eyny.com", "eyny.com"), jar.saved.mapTo(linkedSetOf()) { it.domain })
         assertTrue(jar.saved.all { it.path == "/" && it.secure })
         assertTrue(jar.saved.all { it.expiresAt == now + 86_400_000L })
         assertFalse(jar.saved.any { it.name == "session" || it.name == "auth" })
@@ -514,9 +515,10 @@ class SourceNetworkBrokerTest {
                 "tw.kevinzhang.eyny",
             ),
             policy = SourceNetworkPolicy(
-                exactHosts = setOf("eyny.com", "www.eyny.com"),
+                exactHosts = setOf("eyny.com", "www.eyny.com", "www52.eyny.com", "www53.eyny.com"),
                 operations = emptyMap(),
                 namedCapabilities = setOf(NamedHostCapabilities.EYNY_CHALLENGE_PROOF),
+                authExactHosts = setOf("eyny.com", "www.eyny.com", "www52.eyny.com", "www53.eyny.com"),
             ),
             cookieJar = jar,
             operation = ExtensionProtocol.COOKIE_OP_EYNY_CHALLENGE_PROOF,

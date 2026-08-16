@@ -53,4 +53,17 @@ class SourceFailureTest {
         assertEquals("board_page", failure.operation)
         assertFalse(SourceFailureWire.encode(failure).contains("private server text"))
     }
+
+    @Test
+    fun `access failures cross wire using only stable typed evidence`() {
+        for (code in listOf(SourceFailureCode.ACCESS_CHALLENGE, SourceFailureCode.ACCESS_DENIED)) {
+            val encoded = SourceFailureWire.encode(SourceFailure(code, operation = "thread_summaries"))
+            val decoded = SourceFailureWire.decode(encoded)
+
+            assertEquals(code, decoded.code)
+            assertEquals("thread_summaries", decoded.operation)
+            assertFalse(encoded.contains("https://"))
+            assertFalse(encoded.contains("cookie", ignoreCase = true))
+        }
+    }
 }

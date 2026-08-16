@@ -256,11 +256,11 @@ class ExtensionIsolationE2ETest {
                 "tw.kevinzhang.eyny",
                 policy(
                     requestRules = listOf(
-                        requestRule("eyny.com", "www.eyny.com", "www53.eyny.com", credentialed = true),
+                        requestRule("eyny.com", "www.eyny.com", "www52.eyny.com", "www53.eyny.com", credentialed = true),
                     ),
-                    resourceHosts = hosts("eyny.com", "www.eyny.com", "www53.eyny.com"),
-                    externalHosts = hosts("eyny.com", "www.eyny.com", "www53.eyny.com"),
-                    authHosts = hosts("eyny.com", "www.eyny.com", "www53.eyny.com"),
+                    resourceHosts = hosts("eyny.com", "www.eyny.com", "www52.eyny.com", "www53.eyny.com"),
+                    externalHosts = hosts("eyny.com", "www.eyny.com", "www52.eyny.com", "www53.eyny.com"),
+                    authHosts = hosts("eyny.com", "www.eyny.com", "www52.eyny.com", "www53.eyny.com"),
                     namedCapabilities = setOf(
                         NamedHostCapabilities.RESOURCE_READ,
                         NamedHostCapabilities.EXTERNAL_LINK,
@@ -441,7 +441,7 @@ class ExtensionIsolationE2ETest {
         }
 
         val PUBLISHED_POLICY_HASHES = mapOf(
-            "tw.kevinzhang.eyny" to "4e5ea185423a9c166ff220d802b6d90ec72900608eb501e7a2755765fc68aae0",
+            "tw.kevinzhang.eyny" to "9cbfa85fd151858f5443d64b2a9d2762879d30cd54ebf4bbd3d775ac26f4839c",
             "tw.kevinzhang.newshub.extension.gamer" to "d83562d39c756463f9e5d1ed8028cfde5ba53abb821d5f3c2e45ec71bcefc5dc",
             "tw.kevinzhang.newshub.extension.hackernews" to "87ecb81f9a175c91143a1400997454dbe552f83c437154c5cc89558209654c24",
             "tw.kevinzhang.komica.twocat" to "950e16defa0919fd7aa9eca0ac7929c12a28734bb3b36d6676205bdfe8bcf762",

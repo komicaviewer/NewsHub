@@ -342,6 +342,8 @@ internal fun classifyFailure(error: Throwable): HealthFailureClass {
     if (error is SourceFailureException) {
         return when (error.failure.code) {
             SourceFailureCode.HOST_POLICY -> HealthFailureClass.HOST_POLICY
+            SourceFailureCode.ACCESS_CHALLENGE -> HealthFailureClass.ACCESS_CHALLENGE
+            SourceFailureCode.ACCESS_DENIED -> HealthFailureClass.ACCESS_DENIED
             SourceFailureCode.AUTH_REQUIRED,
             SourceFailureCode.AUTH_EXPIRED,
             -> HealthFailureClass.AUTH_REQUIRED
@@ -365,11 +367,15 @@ internal fun classifyFailure(error: Throwable): HealthFailureClass {
         .mapNotNull { it.message?.lowercase() }
         .joinToString(" ")
     return when {
+        Regex("cloudflare|cf-mitigated|bot.?challenge|captcha|just a moment").containsMatchIn(privateMessage) ->
+            HealthFailureClass.ACCESS_CHALLENGE
+        Regex("access denied|forbidden").containsMatchIn(privateMessage) ->
+            HealthFailureClass.ACCESS_DENIED
         Regex("(?:http\\s*)?429\\b|rate.?limit|too many requests").containsMatchIn(privateMessage) ->
             HealthFailureClass.RATE_LIMITED
         Regex("(?:http\\s*)?(401|403)\\b|auth|login|sign[ -]?in|session").containsMatchIn(privateMessage) ->
             HealthFailureClass.AUTH_REQUIRED
-        Regex("(?:http\\s*)?5\\d\\d\\b|unavailable|challenge|connection|network|dns").containsMatchIn(privateMessage) ->
+        Regex("(?:http\\s*)?5\\d\\d\\b|unavailable|connection|network|dns").containsMatchIn(privateMessage) ->
             HealthFailureClass.SITE_UNAVAILABLE
         Regex("parse|parser|structure|missing|invalid document|contract").containsMatchIn(privateMessage) ->
             HealthFailureClass.PARSER_CONTRACT

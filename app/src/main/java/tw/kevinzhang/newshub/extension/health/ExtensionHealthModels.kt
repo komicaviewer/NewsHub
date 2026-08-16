@@ -107,6 +107,8 @@ enum class HealthProbeOperation(val wireName: String) {
 enum class HealthStatus { PASS, AUTH_PENDING, PARTIAL_AUTH_PENDING, FAIL }
 
 enum class HealthFailureClass {
+    ACCESS_CHALLENGE,
+    ACCESS_DENIED,
     AUTH_REQUIRED,
     RATE_LIMITED,
     SITE_UNAVAILABLE,

@@ -149,13 +149,20 @@ data class EynyChallengeProof(
     val challenge: String,
 ) {
     init {
-        require(host == "eyny.com" || host == "www.eyny.com") { "Unsupported EYNY host" }
+        require(host in EYNY_CHALLENGE_HOSTS) { "Unsupported EYNY host" }
         require(cookiePrefix.matches(Regex("[a-f0-9]{6,16}"))) { "Invalid EYNY cookie prefix" }
         require(nonce in 0..2_000_000L) { "Invalid EYNY nonce" }
         require(timestamp.matches(Regex("[0-9]{6,20}"))) { "Invalid EYNY timestamp" }
         require(challenge.matches(Regex("[a-fA-F0-9]{16,128}"))) { "Invalid EYNY challenge" }
     }
 }
+
+private val EYNY_CHALLENGE_HOSTS = setOf(
+    "eyny.com",
+    "www.eyny.com",
+    "www52.eyny.com",
+    "www53.eyny.com",
+)
 
 interface NamedCookieCapability {
     /** Reveals only whether the exact PTT consent cookie would be sent to www.ptt.cc. */

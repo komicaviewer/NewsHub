@@ -45,6 +45,14 @@ class HostOwnedSessionSnapshotTest {
         assertFalse(error.message.orEmpty().contains(secret))
     }
 
+    @Test
+    fun eynySnapshotAcceptsOnlyReviewedRotatingOrigins() {
+        val snapshot = decode(eynySnapshot("www52.eyny.com"))
+
+        assertEquals("www52.eyny.com", snapshot.sessions.single().cookies.single().domain)
+        assertInvalid(eynySnapshot("www54.eyny.com"))
+    }
+
     private fun assertInvalid(raw: String) {
         assertThrows(IllegalArgumentException::class.java) { decode(raw) }
     }
@@ -55,8 +63,36 @@ class HostOwnedSessionSnapshotTest {
         expectedSignerByPackage = mapOf(
             "tw.kevinzhang.newshub.extension.gamer" to
                 "bdf003b9cd64a049d4f4e3ebba52ebe804bbd7dab559d82e69fdb659c4c10ad0",
+            "tw.kevinzhang.newshub.extension.eyny" to
+                "adf003b9cd64a049d4f4e3ebba52ebe804bbd7dab559d82e69fdb659c4c10ad1",
         ),
     )
+
+    private fun eynySnapshot(host: String): String = """
+        {
+          "schemaVersion": 1,
+          "sessions": [{
+            "sourceId": "tw.kevinzhang.eyny",
+            "packageName": "tw.kevinzhang.newshub.extension.eyny",
+            "signerSha256": "adf003b9cd64a049d4f4e3ebba52ebe804bbd7dab559d82e69fdb659c4c10ad1",
+            "profileId": "official-live-v1",
+            "issuedAtEpochMs": $now,
+            "expiresAtEpochMs": ${now + 60_000},
+            "userAgentProfileId": "eyny-android14-chrome120-v1",
+            "cookies": [{
+              "origin": "https://$host",
+              "name": "session",
+              "value": "session-value",
+              "domain": "$host",
+              "path": "/",
+              "secure": true,
+              "httpOnly": true,
+              "hostOnly": true,
+              "expiresAtEpochMs": ${now + 120_000}
+            }]
+          }]
+        }
+    """.trimIndent()
 
     private fun validSnapshot(value: String = "session-value"): String = """
         {

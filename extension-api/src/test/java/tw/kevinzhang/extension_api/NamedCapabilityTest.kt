@@ -189,7 +189,11 @@ class NamedCapabilityTest {
         )
         assertEquals("9bd3f9c", proof.cookiePrefix)
 
+        assertEquals("www52.eyny.com", proof.copy(host = "www52.eyny.com").host)
+        assertEquals("www53.eyny.com", proof.copy(host = "www53.eyny.com").host)
+
         assertInvalid { proof.copy(host = "attacker.example") }
+        assertInvalid { proof.copy(host = "www54.eyny.com") }
         assertInvalid { proof.copy(cookiePrefix = "session") }
         assertInvalid { proof.copy(cookiePrefix = "9bd3f9c; Domain=attacker.example") }
         assertInvalid { proof.copy(nonce = 2_000_001) }

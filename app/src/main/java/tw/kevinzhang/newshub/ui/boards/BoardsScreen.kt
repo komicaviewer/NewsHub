@@ -416,6 +416,8 @@ internal enum class SourceBoardFailureAction { RETRY, LOGIN }
 
 internal fun sourceBoardFailureMessage(code: SourceFailureCode): String = when (code) {
     SourceFailureCode.HOST_POLICY -> "網站權限設定不完整"
+    SourceFailureCode.ACCESS_CHALLENGE -> "網站要求額外的人機驗證"
+    SourceFailureCode.ACCESS_DENIED -> "網站拒絕目前的存取方式"
     SourceFailureCode.AUTH_REQUIRED -> "需要登入才能載入看板"
     SourceFailureCode.AUTH_EXPIRED -> "登入已過期，請重新登入"
     SourceFailureCode.RATE_LIMITED -> "網站請求過於頻繁，請稍後重試"

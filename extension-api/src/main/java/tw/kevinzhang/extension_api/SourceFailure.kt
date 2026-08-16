@@ -8,6 +8,8 @@ import java.util.Locale
 /** Stable failure taxonomy shared by the Host and isolated extension processes. */
 enum class SourceFailureCode {
     HOST_POLICY,
+    ACCESS_CHALLENGE,
+    ACCESS_DENIED,
     AUTH_REQUIRED,
     AUTH_EXPIRED,
     RATE_LIMITED,
@@ -45,7 +47,7 @@ data class SourceFailure(
 }
 
 /** Exception whose message is deliberately derived only from the stable failure code. */
-class SourceFailureException(
+open class SourceFailureException(
     val failure: SourceFailure,
 ) : IOException("Source operation failed: ${failure.code.name}")
 
@@ -97,6 +99,7 @@ private fun String.safeHost(): String? = lowercase(Locale.ROOT)
     }
 
 private fun defaultRetryable(code: SourceFailureCode): Boolean = when (code) {
+    SourceFailureCode.ACCESS_CHALLENGE,
     SourceFailureCode.RATE_LIMITED,
     SourceFailureCode.SITE_UNAVAILABLE,
     SourceFailureCode.TIMED_OUT,
