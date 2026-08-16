@@ -274,6 +274,7 @@ class ExtensionHealthRunnerTest {
     @Test
     fun publicProbeCallsBoardDirectoryBeforeMarkingOnlyProtectedOperationsPending() = runBlocking {
         val source = FakeAuthenticatedSource()
+        var evidenceCalls = 0
         val profile = loadProfile().copy(
             maxRequests = 1,
             sources = loadProfile().sources.map {
@@ -286,11 +287,20 @@ class ExtensionHealthRunnerTest {
             },
         )
 
-        val report = ExtensionHealthRunner().run(profile, listOf(source))
+        val report = ExtensionHealthRunner().run(
+            profile = profile,
+            sources = listOf(source),
+            captureEvidence = {
+                evidenceCalls += 1
+                "screenshots/test-source.png"
+            },
+        )
 
         assertEquals(HealthStatus.PARTIAL_AUTH_PENDING, report.status)
         assertEquals(1, report.requestCount)
         assertEquals(1, source.calls)
+        assertEquals(1, evidenceCalls)
+        assertEquals("screenshots/test-source.png", report.results.single().evidenceScreenshot)
         assertEquals(
             listOf(
                 HealthProbeOperation.GET_BOARD_PAGE.wireName to HealthStatus.PASS,

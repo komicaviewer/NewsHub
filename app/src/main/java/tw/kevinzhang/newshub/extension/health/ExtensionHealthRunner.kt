@@ -228,7 +228,14 @@ class ExtensionHealthRunner(
                 } && steps.any { it.status == HealthStatus.AUTH_PENDING } -> HealthStatus.AUTH_PENDING
                 else -> HealthStatus.FAIL
             }
-            val evidenceScreenshot = if (status == HealthStatus.PASS) {
+            val publicBoardPassed = steps.any {
+                it.operation == HealthProbeOperation.GET_BOARD_PAGE.wireName &&
+                    it.status == HealthStatus.PASS
+            }
+            val evidenceScreenshot = if (
+                status == HealthStatus.PASS ||
+                (status == HealthStatus.AUTH_PENDING && publicBoardPassed)
+            ) {
                 try {
                     captureEvidence(sourceProfile.sourceId)
                 } catch (error: CancellationException) {
