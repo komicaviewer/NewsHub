@@ -26,6 +26,7 @@ import tw.kevinzhang.data.CollectionRepository
 import tw.kevinzhang.data.ReadingHistoryRepository
 import tw.kevinzhang.data.SourceIdentityRepository
 import tw.kevinzhang.data.domain.BoardSubscriptionRecord
+import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.ThreadSummary
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.newshub.auth.SourceSessionManager
@@ -168,15 +169,20 @@ class CollectionTimelineViewModel @Inject constructor(
         combine(
             subscriptions.filterNotNull(),
             effectiveSelectedSourceId,
-        ) { currentSubscriptions, selectedSourceId ->
-            filterSubscriptionsBySource(currentSubscriptions, selectedSourceId)
+            extensionLoader.sourcesFlow,
+        ) { currentSubscriptions, selectedSourceId, sources ->
+            createTimelinePagerInput(
+                subscriptions = currentSubscriptions,
+                selectedSourceId = selectedSourceId,
+                sources = sources,
+            )
         }
             .distinctUntilChanged()
-            .flatMapLatest { subs ->
+            .flatMapLatest { input ->
                 Pager(PagingConfig(pageSize = 20, enablePlaceholders = false)) {
                     MergedTimelinePagingSource(
-                        subscriptions = subs,
-                        sourceResolver = { extensionLoader.getSource(it) },
+                        subscriptions = input.subscriptions,
+                        sourceResolver = input::resolveSource,
                         onAuthenticationRequired = sessionManager::notifyAuthenticationRequired,
                         onSourceLoadFailures = { failures -> _sourceLoadFailures.value = failures },
                     )
@@ -202,6 +208,22 @@ class CollectionTimelineViewModel @Inject constructor(
 private data class SourceSelection(
     val savedSourceId: String?,
     val availableSourceIds: Set<String>?,
+)
+
+internal data class TimelinePagerInput(
+    val subscriptions: List<BoardSubscriptionRecord>,
+    private val sourcesById: Map<String, Source>,
+) {
+    fun resolveSource(sourceId: String): Source? = sourcesById[sourceId]
+}
+
+internal fun createTimelinePagerInput(
+    subscriptions: List<BoardSubscriptionRecord>,
+    selectedSourceId: String?,
+    sources: List<Source>,
+): TimelinePagerInput = TimelinePagerInput(
+    subscriptions = filterSubscriptionsBySource(subscriptions, selectedSourceId),
+    sourcesById = sources.associateBy(Source::id),
 )
 
 /** Returns the effective filter. A null available set means subscriptions are still loading. */
