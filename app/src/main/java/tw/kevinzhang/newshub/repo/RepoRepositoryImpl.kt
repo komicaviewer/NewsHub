@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import tw.kevinzhang.marketplace.MarketplaceRepository
+import tw.kevinzhang.marketplace.RepositoryAccessDescriptor
+import tw.kevinzhang.marketplace.RepositoryAccessKind
+import tw.kevinzhang.marketplace.RepositoryCredentialStore
 import tw.kevinzhang.marketplace.RepositoryDomainState
 import tw.kevinzhang.marketplace.RepositoryTrustDomain
 import tw.kevinzhang.marketplace.RepositoryTrustDomains
@@ -30,6 +33,7 @@ class RepoRepositoryImpl @Inject constructor(
     @Named("repoDataStore") private val dataStore: DataStore<Preferences>,
     @ApplicationScope private val applicationScope: CoroutineScope,
     private val marketplaceRepository: MarketplaceRepository,
+    private val credentialStore: RepositoryCredentialStore,
 ) : RepoRepository {
     private val officialDomain: RepositoryTrustDomain
         get() = marketplaceRepository.officialRepositoryDomain
@@ -72,6 +76,9 @@ class RepoRepositoryImpl @Inject constructor(
 
     override suspend fun setRepositoryDomainState(domainId: String, state: RepositoryDomainState) {
         require(state != RepositoryDomainState.EXPIRED) { "Expiry is derived from repository metadata" }
+        // A revoked repository can never be restored. Delete its credential before persisting the
+        // revocation so a storage failure cannot leave a revoked secret behind.
+        if (state == RepositoryDomainState.REVOKED) credentialStore.deleteCredential(domainId)
         var updated: RepositoryTrustDomain? = null
         dataStore.edit { preferences ->
             val current = currentDomains(preferences)
@@ -138,6 +145,8 @@ internal fun encodeRepositoryDomains(domains: Collection<RepositoryTrustDomain>)
                 add("rootKeyFingerprints", JsonArray().apply {
                     domain.rootKeyFingerprints.sorted().forEach(::add)
                 })
+                addProperty("accessKind", domain.access.kind.name)
+                domain.access.revision?.let { addProperty("accessRevision", it) }
             })
         }
     }.toString()
@@ -155,6 +164,12 @@ internal fun decodeRepositoryDomains(value: String): List<RepositoryTrustDomain>
             rootThreshold = item.get("rootThreshold").asInt,
             rootKeyFingerprints = item.getAsJsonArray("rootKeyFingerprints")
                 .mapTo(linkedSetOf()) { it.asString },
+            access = RepositoryAccessDescriptor(
+                kind = item.get("accessKind")?.asString
+                    ?.let(RepositoryAccessKind::valueOf)
+                    ?: RepositoryAccessKind.PUBLIC_HTTPS,
+                revision = item.get("accessRevision")?.asString,
+            ),
         )
     }
     require(domains.map(RepositoryTrustDomain::id).distinct().size == domains.size) {

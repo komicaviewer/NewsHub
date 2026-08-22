@@ -12,8 +12,6 @@ import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
 import tw.kevinzhang.marketplace.data.AvailableSource
 import tw.kevinzhang.marketplace.data.AcceptedArtifact
 import tw.kevinzhang.marketplace.data.ExtensionInfo
@@ -26,10 +24,8 @@ import tw.kevinzhang.extension_api.NetworkOperations
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.canonicalJson
 import tw.kevinzhang.extension_api.sha256
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
-import java.net.Proxy
 import java.net.IDN
 import java.net.URI
 import java.security.MessageDigest
@@ -118,6 +114,7 @@ internal class TrustedRepositoryClient(
     private val stateStore: RepositoryStateStore,
     private val domain: RepositoryTrustDomain = RepositoryTrustDomains.official(embeddedRoot),
     private val now: () -> Instant = Instant::now,
+    credentialProvider: suspend () -> RepositoryAccessCredential? = { null },
 ) {
     init {
         // The trust-domain descriptor is itself pinned to the exact bootstrap root shown to or
@@ -131,12 +128,13 @@ internal class TrustedRepositoryClient(
         }
     }
 
-    private val client = baseClient.newBuilder()
-        .followRedirects(false)
-        .followSslRedirects(false)
-        .proxy(Proxy.NO_PROXY)
-        .cache(null)
-        .build()
+    private val transport = RepositoryContentTransport(
+        baseClient = baseClient,
+        canonicalBaseUrl = domain.canonicalBaseUrl,
+        access = domain.access,
+        domainId = domain.id,
+        credentialProvider = credentialProvider,
+    )
     private val mutex = Mutex()
 
     fun loadPersistedSnapshot(): RepositorySnapshot? {
@@ -430,37 +428,11 @@ internal class TrustedRepositoryClient(
         )
     }
 
-    private fun fetchRequired(url: HttpUrl, maxBytes: Long = MAX_METADATA_BYTES): ByteArray =
-        execute(url, maxBytes).use { response ->
-            if (!response.isSuccessful) throw IOException("Fetch failed: HTTP ${response.code} for $url")
-            response.body?.boundedBytes(maxBytes) ?: throw IOException("Empty response for $url")
-        }
+    private suspend fun fetchRequired(url: HttpUrl, maxBytes: Long = MAX_METADATA_BYTES): ByteArray =
+        transport.fetchRequired(url, maxBytes)
 
-    private fun fetchOptional(url: HttpUrl): ByteArray? = execute(url, MAX_METADATA_BYTES).use { response ->
-        when {
-            response.code == 404 -> null
-            !response.isSuccessful -> throw IOException("Fetch failed: HTTP ${response.code} for $url")
-            else -> response.body?.boundedBytes(MAX_METADATA_BYTES)
-                ?: throw IOException("Empty response for $url")
-        }
-    }
-
-    private fun execute(url: HttpUrl, maxBytes: Long): Response {
-        if (!isWithinDomain(url)) {
-            throw TrustedMetadataException("Repository URL escaped its trust domain")
-        }
-        return client.newCall(Request.Builder().url(url).get().build()).execute().also { response ->
-            if (response.request.url != url) {
-                response.close()
-                throw TrustedMetadataException("Repository request URL changed")
-            }
-            val declaredLength = response.body?.contentLength() ?: -1
-            if (declaredLength > maxBytes) {
-                response.close()
-                throw TrustedMetadataException("Repository response exceeds size limit")
-            }
-        }
-    }
+    private suspend fun fetchOptional(url: HttpUrl): ByteArray? =
+        transport.fetchOptional(url, MAX_METADATA_BYTES)
 
     private fun repositoryBaseUrl(value: String): HttpUrl {
         val normalized = value.trimEnd('/')
@@ -478,16 +450,12 @@ internal class TrustedRepositoryClient(
             .getOrElse { throw TrustedMetadataException("Invalid APK target URL", it) }
         val targetPrefix = domain.baseUrl.resolve("targets/apk/")
             ?: throw TrustedMetadataException("Invalid repository target base")
-        if (!isWithinDomain(url) || !url.encodedPath.startsWith(targetPrefix.encodedPath)) {
+        if (!isWithinRepositoryBase(domain.baseUrl, url) ||
+            !url.encodedPath.startsWith(targetPrefix.encodedPath)
+        ) {
             throw TrustedMetadataException("APK URL is outside signed target origin")
         }
         return url
-    }
-
-    private fun isWithinDomain(url: HttpUrl): Boolean {
-        val base = domain.baseUrl
-        return url.scheme == base.scheme && url.host == base.host && url.port == base.port &&
-            url.encodedPath.startsWith(base.encodedPath)
     }
 
     private fun requireDomainActive() {
@@ -770,22 +738,6 @@ internal class TrustedRepositoryClient(
             NamedHostCapabilities.PTT_ADULT_CONSENT_STATUS,
             NamedHostCapabilities.EYNY_CHALLENGE_PROOF,
         )
-    }
-}
-
-private fun okhttp3.ResponseBody.boundedBytes(limit: Long): ByteArray {
-    byteStream().use { input ->
-        val output = ByteArrayOutputStream(minOf(limit, 8192).toInt())
-        val buffer = ByteArray(8192)
-        var total = 0L
-        while (true) {
-            val read = input.read(buffer)
-            if (read < 0) break
-            total += read
-            if (total > limit) throw TrustedMetadataException("Repository response exceeds size limit")
-            output.write(buffer, 0, read)
-        }
-        return output.toByteArray()
     }
 }
 

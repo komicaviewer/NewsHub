@@ -25,4 +25,41 @@ class RepositoryTrustDomainTest {
             assertThrows(TrustedMetadataException::class.java) { canonicalRepositoryBaseUrl(value) }
         }
     }
+
+    @Test
+    fun `GitHub access requires an exact repository URL and a safe revision`() {
+        val access = RepositoryAccessDescriptor.githubContents("release/stable")
+        RepositoryTrustDomain(
+            id = "55555555-5555-4555-8555-555555555555",
+            canonicalBaseUrl = "https://github.com/acme/extensions",
+            trustMode = RepositoryTrustMode.USER_PINNED,
+            state = RepositoryDomainState.ACTIVE,
+            rootThreshold = 1,
+            rootKeyFingerprints = setOf("a".repeat(64)),
+            access = access,
+        )
+
+        listOf(
+            "https://github.com/acme",
+            "https://github.com/acme/extensions/extra",
+            "https://raw.githubusercontent.com/acme/extensions/main",
+        ).forEach { invalid ->
+            assertThrows(TrustedMetadataException::class.java) {
+                RepositoryTrustDomain(
+                    id = "55555555-5555-4555-8555-555555555555",
+                    canonicalBaseUrl = invalid,
+                    trustMode = RepositoryTrustMode.USER_PINNED,
+                    state = RepositoryDomainState.ACTIVE,
+                    rootThreshold = 1,
+                    rootKeyFingerprints = setOf("a".repeat(64)),
+                    access = access,
+                )
+            }
+        }
+        listOf("", "../main", "/main", "main?raw=1").forEach { revision ->
+            assertThrows(IllegalArgumentException::class.java) {
+                RepositoryAccessDescriptor.githubContents(revision)
+            }
+        }
+    }
 }

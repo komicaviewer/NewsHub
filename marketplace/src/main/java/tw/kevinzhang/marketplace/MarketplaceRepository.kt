@@ -11,11 +11,25 @@ interface MarketplaceRepository {
     /** Download and self-verify only root.json. This does not persist trust. */
     suspend fun inspectRepositoryRoot(repoUrl: String): RepositoryRootPreview
 
+    /** Inspect through a non-secret access draft and a process-local credential. */
+    suspend fun inspectRepositoryRoot(
+        draft: RepositoryAccessDraft,
+        credential: RepositoryAccessCredential?,
+    ): RepositoryRootPreview = inspectRepositoryRoot(draft.repositoryUrl)
+
     /** Explicit TOFU confirmation. A fresh UUID is generated only inside this operation. */
     suspend fun confirmRepositoryRoot(confirmationToken: String): RepositoryTrustDomain
 
     /** Forget a process-local preview. No domain or metadata has been written at this point. */
     fun cancelRepositoryRootInspection(confirmationToken: String)
+
+    /** Verify replacement access without persisting it. */
+    suspend fun verifyRepositoryAccess(
+        domainId: String,
+        credential: RepositoryAccessCredential,
+    ) {
+        throw UnsupportedOperationException("Repository access verification is not supported")
+    }
 
     /** Restore persisted domain descriptors when the app starts. */
     fun registerRepositoryDomains(domains: Collection<RepositoryTrustDomain>)

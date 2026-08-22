@@ -18,6 +18,7 @@ data class RepositoryTrustDomain(
     val state: RepositoryDomainState,
     val rootThreshold: Int,
     val rootKeyFingerprints: Set<String>,
+    val access: RepositoryAccessDescriptor = RepositoryAccessDescriptor.publicHttps(),
 ) {
     init {
         require(UUID.fromString(id).toString() == id) { "Repository domain id must be a canonical UUID" }
@@ -26,6 +27,9 @@ data class RepositoryTrustDomain(
         }
         require(rootThreshold in 1..rootKeyFingerprints.size) { "Invalid root signature threshold" }
         require(rootKeyFingerprints.all { it.matches(SHA256_PATTERN) }) { "Invalid root key fingerprint" }
+        if (access.kind == RepositoryAccessKind.GITHUB_CONTENTS) {
+            requireGithubRepositoryBaseUrl(canonicalBaseUrl)
+        }
     }
 
     val baseUrl: HttpUrl get() = "$canonicalBaseUrl/".toHttpUrlOrNull()
@@ -47,6 +51,7 @@ data class RepositoryRootPreview(
     val canonicalBaseUrl: String,
     val rootThreshold: Int,
     val rootKeyFingerprints: Set<String>,
+    val access: RepositoryAccessDescriptor = RepositoryAccessDescriptor.publicHttps(),
 )
 
 internal fun inspectTrustedRoot(rootBytes: ByteArray): RootTrustInspection {

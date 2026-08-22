@@ -10,14 +10,10 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import tw.kevinzhang.marketplace.data.ExtensionInfo
 import tw.kevinzhang.marketplace.data.InstallState
 import tw.kevinzhang.marketplace.data.RepoMetadata
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.IOException
-import java.net.Proxy
 import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
@@ -26,6 +22,7 @@ class MarketplaceRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     okHttpClient: OkHttpClient,
     private val trustConsumer: VerifiedRepositoryTrustConsumer,
+    private val credentialStore: RepositoryCredentialStore,
 ) : MarketplaceRepository {
     private val refreshMutex = Mutex()
     private val embeddedRoot by lazy { context.assets.open(EMBEDDED_ROOT_ASSET).use { it.readBytes() } }
@@ -33,12 +30,6 @@ class MarketplaceRepositoryImpl @Inject constructor(
         RepositoryTrustDomains.official(embeddedRoot)
     }
     private val trustDirectory by lazy { File(context.filesDir, "extension-trust") }
-    private val inspectionClient = okHttpClient.newBuilder()
-        .followRedirects(false)
-        .followSslRedirects(false)
-        .proxy(Proxy.NO_PROXY)
-        .cache(null)
-        .build()
     private val baseClient = okHttpClient
     private val pendingInspections = linkedMapOf<String, PendingInspection>()
     private val runtimes = linkedMapOf<String, DomainRuntime>()
@@ -53,56 +44,51 @@ class MarketplaceRepositoryImpl @Inject constructor(
     }
 
     override suspend fun inspectRepositoryRoot(repoUrl: String): RepositoryRootPreview =
+        inspectRepositoryRoot(RepositoryAccessDraft(repoUrl), credential = null)
+
+    override suspend fun inspectRepositoryRoot(
+        draft: RepositoryAccessDraft,
+        credential: RepositoryAccessCredential?,
+    ): RepositoryRootPreview =
         withContext(Dispatchers.IO) {
-            val canonical = canonicalRepositoryBaseUrl(repoUrl).toString().trimEnd('/')
+            val canonical = canonicalRepositoryBaseUrl(draft.repositoryUrl).toString().trimEnd('/')
+            if (draft.access.kind == RepositoryAccessKind.GITHUB_CONTENTS) {
+                requireGithubRepositoryBaseUrl(canonical)
+            }
             synchronized(runtimes) {
                 if (runtimes.values.any { it.domain.canonicalBaseUrl == canonical }) {
                     throw TrustedMetadataException("Repository source is already trusted")
                 }
             }
             val rootUrl = repositoryRootUrl(canonical)
-            val bytes = inspectionClient.newCall(Request.Builder().url(rootUrl).get().build())
-                .execute()
-                .use { response ->
-                    if (response.request.url != rootUrl || response.isRedirect) {
-                        throw TrustedMetadataException("Repository root redirected outside the approved address")
-                    }
-                    if (!response.isSuccessful) {
-                        throw IOException("Root metadata fetch failed: HTTP ${response.code}")
-                    }
-                    val declaredLength = response.body?.contentLength() ?: -1L
-                    if (declaredLength > MAX_BOOTSTRAP_ROOT_BYTES) {
-                        throw TrustedMetadataException("Repository root is too large")
-                    }
-                    response.body?.byteStream()?.use { input ->
-                        val output = ByteArrayOutputStream()
-                        val buffer = ByteArray(8 * 1024)
-                        var total = 0L
-                        while (true) {
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            total += read
-                            if (total > MAX_BOOTSTRAP_ROOT_BYTES) {
-                                throw TrustedMetadataException("Repository root is too large")
-                            }
-                            output.write(buffer, 0, read)
-                        }
-                        output.toByteArray()
-                    } ?: throw IOException("Repository root response is empty")
-                }
+            val transport = RepositoryContentTransport(
+                baseClient = baseClient,
+                canonicalBaseUrl = canonical,
+                access = draft.access,
+                domainId = null,
+                credentialProvider = { credential },
+            )
+            val bytes = transport.fetchRequired(rootUrl, MAX_BOOTSTRAP_ROOT_BYTES)
             // Constructor verification proves that the downloaded root meets its own root role
             // threshold before the user is shown fingerprints.
             TrustedMetadataVerifier(bytes, Instant::now)
             val inspection = inspectTrustedRoot(bytes)
             val token = UUID.randomUUID().toString()
             synchronized(pendingInspections) {
-                pendingInspections[token] = PendingInspection(canonical, bytes, inspection)
+                pendingInspections[token] = PendingInspection(
+                    canonicalBaseUrl = canonical,
+                    rootBytes = bytes,
+                    inspection = inspection,
+                    access = draft.access,
+                    credential = credential,
+                )
             }
             RepositoryRootPreview(
                 confirmationToken = token,
                 canonicalBaseUrl = canonical,
                 rootThreshold = inspection.threshold,
                 rootKeyFingerprints = inspection.keyFingerprints,
+                access = draft.access,
             )
         }
 
@@ -117,9 +103,19 @@ class MarketplaceRepositoryImpl @Inject constructor(
             state = RepositoryDomainState.ACTIVE,
             rootThreshold = pending.inspection.threshold,
             rootKeyFingerprints = pending.inspection.keyFingerprints,
+            access = pending.access,
         )
         val store = RepositoryTrustDomainStore(trustDirectory, domain.id)
+        var credentialSaved = false
         return try {
+            if (domain.access.kind == RepositoryAccessKind.GITHUB_CONTENTS) {
+                val credential = pending.credential ?: throw RepositoryAccessRequiredException(
+                    domain.id,
+                    RepositoryAccessFailureReason.MISSING_CREDENTIAL,
+                )
+                credentialStore.saveCredential(domain.id, credential)
+                credentialSaved = true
+            }
             store.saveBootstrapRoot(pending.rootBytes)
             val runtime = newRuntime(domain, pending.rootBytes, store)
             val snapshot = withContext(Dispatchers.IO) {
@@ -136,12 +132,32 @@ class MarketplaceRepositoryImpl @Inject constructor(
             domain
         } catch (error: Exception) {
             store.deleteUncommittedDomain()
+            if (credentialSaved) runCatching { credentialStore.deleteCredential(domain.id) }
             throw error
         }
     }
 
     override fun cancelRepositoryRootInspection(confirmationToken: String) {
         synchronized(pendingInspections) { pendingInspections.remove(confirmationToken) }
+    }
+
+    override suspend fun verifyRepositoryAccess(
+        domainId: String,
+        credential: RepositoryAccessCredential,
+    ) {
+        val runtime = synchronized(runtimes) { runtimes[domainId] }
+            ?: throw TrustedMetadataException("Unknown repository trust domain")
+        if (runtime.domain.access.kind != RepositoryAccessKind.GITHUB_CONTENTS) {
+            throw TrustedMetadataException("Repository does not use authenticated GitHub access")
+        }
+        val verifier = TrustedRepositoryClient(
+            baseClient = baseClient,
+            embeddedRoot = runtime.bootstrapRoot,
+            stateStore = NonPersistingRepositoryStateStore(runtime.store),
+            domain = runtime.domain,
+            credentialProvider = { credential },
+        )
+        withContext(Dispatchers.IO) { verifier.refresh(runtime.domain.canonicalBaseUrl) }
     }
 
     override fun registerRepositoryDomains(domains: Collection<RepositoryTrustDomain>) {
@@ -259,6 +275,13 @@ class MarketplaceRepositoryImpl @Inject constructor(
             embeddedRoot = bootstrapRoot,
             stateStore = store,
             domain = domain,
+            credentialProvider = {
+                if (domain.access.kind == RepositoryAccessKind.GITHUB_CONTENTS) {
+                    credentialStore.getCredential(domain.id)
+                } else {
+                    null
+                }
+            },
         ),
     )
 
@@ -281,6 +304,8 @@ class MarketplaceRepositoryImpl @Inject constructor(
         val canonicalBaseUrl: String,
         val rootBytes: ByteArray,
         val inspection: RootTrustInspection,
+        val access: RepositoryAccessDescriptor,
+        val credential: RepositoryAccessCredential?,
     )
 
     private data class DomainRuntime(
@@ -305,6 +330,22 @@ class MarketplaceRepositoryImpl @Inject constructor(
         const val MEMORY_CACHE_MILLIS = 30_000L
         const val MAX_BOOTSTRAP_ROOT_BYTES = 1_048_576L
     }
+}
+
+private class NonPersistingRepositoryStateStore(
+    private val delegate: RepositoryStateStore,
+) : RepositoryStateStore {
+    override fun loadVersions(): RepositoryVersions = delegate.loadVersions()
+    override fun loadRoot(): ByteArray? = delegate.loadRoot()
+    override fun loadTargets(): ByteArray? = delegate.loadTargets()
+
+    override fun save(
+        root: ByteArray,
+        timestamp: ByteArray,
+        snapshot: ByteArray,
+        targets: ByteArray,
+        versions: RepositoryVersions,
+    ) = Unit
 }
 
 private fun ByteArray.sha256Hex(): String = java.security.MessageDigest.getInstance("SHA-256")

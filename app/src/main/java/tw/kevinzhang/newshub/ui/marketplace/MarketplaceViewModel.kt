@@ -8,16 +8,19 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_loader.ExtensionManager
 import tw.kevinzhang.marketplace.MarketplaceRepository
+import tw.kevinzhang.marketplace.RepositoryAccessRequiredException
 import tw.kevinzhang.marketplace.data.ExtensionInfo
 import tw.kevinzhang.marketplace.data.InstallState
 import tw.kevinzhang.marketplace.data.InstallStep
 import tw.kevinzhang.marketplace.data.RepoMetadata
 import tw.kevinzhang.newshub.repo.RepoRepository
+import tw.kevinzhang.newshub.repo.RepositoryAccessStatusStore
 import javax.inject.Inject
 
 data class RepoGroup(
@@ -31,6 +34,7 @@ class MarketplaceViewModel @Inject constructor(
     private val marketplaceRepository: MarketplaceRepository,
     private val repoRepository: RepoRepository,
     private val extensionManager: ExtensionManager,
+    private val accessStatusStore: RepositoryAccessStatusStore,
 ) : ViewModel() {
 
     val repoUrls = repoRepository.getRepoUrls()
@@ -71,9 +75,14 @@ class MarketplaceViewModel @Inject constructor(
                     try {
                         val metadata = marketplaceRepository.fetchRepoMetadata(url)
                         val extensions = marketplaceRepository.fetchExtensions(url)
+                        domainIdFor(url)?.let(accessStatusStore::clear)
                         RepoGroup(repoUrl = url, metadata = metadata, extensions = extensions)
                     } catch (e: CancellationException) {
                         throw e
+                    } catch (e: RepositoryAccessRequiredException) {
+                        (e.domainId ?: domainIdFor(url))?.let(accessStatusStore::requireAccess)
+                        _error.value = "私人來源需要重新授權，請前往管理來源更新 token。"
+                        null
                     } catch (e: Exception) {
                         _error.value = "Failed to load $url: ${e.message}"
                         null
@@ -104,6 +113,10 @@ class MarketplaceViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 setStep(info.id, InstallStep.IDLE)
                 throw e
+            } catch (e: RepositoryAccessRequiredException) {
+                e.domainId?.let(accessStatusStore::requireAccess)
+                setStep(info.id, InstallStep.ERROR)
+                _error.value = "私人來源需要重新授權，請前往管理來源更新 token。"
             } catch (e: Exception) {
                 setStep(info.id, InstallStep.ERROR)
                 _error.value = "Failed to install ${info.name}: ${e.message}"
@@ -137,4 +150,9 @@ class MarketplaceViewModel @Inject constructor(
     private fun setStep(pkg: String, step: InstallStep) {
         _installSteps.update { it + (pkg to step) }
     }
+
+    private suspend fun domainIdFor(repoUrl: String): String? =
+        repoRepository.getRepositoryDomains().first()
+            .singleOrNull { it.canonicalBaseUrl == repoUrl }
+            ?.id
 }

@@ -3,6 +3,7 @@ package tw.kevinzhang.newshub.ui.marketplace
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import tw.kevinzhang.marketplace.RepositoryDomainState
+import tw.kevinzhang.marketplace.RepositoryAccessDescriptor
 import tw.kevinzhang.marketplace.RepositoryTrustDomain
 import tw.kevinzhang.marketplace.RepositoryTrustMode
 
@@ -22,5 +23,13 @@ class ManageReposScreenTest {
         assertEquals("已過期", domain.copy(state = RepositoryDomainState.EXPIRED).stateLabel())
         assertEquals("已暫停", domain.copy(state = RepositoryDomainState.SUSPENDED).stateLabel())
         assertEquals("已撤銷", domain.copy(state = RepositoryDomainState.REVOKED).stateLabel())
+        assertEquals("公開 HTTPS", domain.accessLabel())
+        assertEquals(
+            "GitHub private (main)",
+            domain.copy(
+                canonicalBaseUrl = "https://github.com/example/private-extensions",
+                access = RepositoryAccessDescriptor.githubContents(),
+            ).accessLabel(),
+        )
     }
 }

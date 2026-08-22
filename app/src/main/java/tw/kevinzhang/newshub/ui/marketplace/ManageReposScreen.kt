@@ -18,6 +18,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,11 +37,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tw.kevinzhang.marketplace.RepositoryDomainState
+import tw.kevinzhang.marketplace.RepositoryAccessKind
 import tw.kevinzhang.marketplace.RepositoryRootPreview
 import tw.kevinzhang.marketplace.RepositoryTrustDomain
 import tw.kevinzhang.marketplace.RepositoryTrustMode
@@ -53,8 +56,32 @@ fun ManageReposScreen(
 ) {
     val domains by viewModel.repositoryDomains.collectAsStateWithLifecycle()
     val addRepoUrl by viewModel.addRepoUrl.collectAsStateWithLifecycle()
+    val accessKind by viewModel.accessKind.collectAsStateWithLifecycle()
+    val githubToken by viewModel.githubToken.collectAsStateWithLifecycle()
     val validationState by viewModel.validationState.collectAsStateWithLifecycle()
+    val accessRequiredDomainIds by viewModel.accessRequiredDomainIds.collectAsStateWithLifecycle()
+    val reauthorizationState by viewModel.reauthorizationState.collectAsStateWithLifecycle()
     var revokeCandidate by remember { mutableStateOf<RepositoryTrustDomain?>(null) }
+
+    when (val reauth = reauthorizationState) {
+        RepositoryReauthorizationState.Idle -> Unit
+        is RepositoryReauthorizationState.Editing -> ReauthorizationDialog(
+            token = reauth.token,
+            errorMessage = reauth.errorMessage,
+            isVerifying = false,
+            onTokenChanged = viewModel::onReplacementTokenChanged,
+            onConfirm = viewModel::confirmReauthorization,
+            onDismiss = viewModel::cancelReauthorization,
+        )
+        is RepositoryReauthorizationState.Verifying -> ReauthorizationDialog(
+            token = "",
+            errorMessage = null,
+            isVerifying = true,
+            onTokenChanged = {},
+            onConfirm = {},
+            onDismiss = {},
+        )
+    }
 
     revokeCandidate?.let { domain ->
         AlertDialog(
@@ -89,8 +116,12 @@ fun ManageReposScreen(
             item {
                 AddRepoSection(
                     url = addRepoUrl,
+                    accessKind = accessKind,
+                    githubToken = githubToken,
                     state = validationState,
                     onUrlChanged = viewModel::onAddRepoUrlChanged,
+                    onAccessKindChanged = viewModel::onAccessKindChanged,
+                    onGithubTokenChanged = viewModel::onGithubTokenChanged,
                     onInspect = viewModel::inspectNow,
                     onConfirm = viewModel::confirmTrust,
                     onCancel = viewModel::cancelTrustConfirmation,
@@ -111,6 +142,8 @@ fun ManageReposScreen(
                     onSuspend = { viewModel.suspendRepository(domain.id) },
                     onResume = { viewModel.resumeRepository(domain.id) },
                     onRevoke = { revokeCandidate = domain },
+                    accessRequired = domain.id in accessRequiredDomainIds,
+                    onReauthorize = { viewModel.beginReauthorization(domain.id) },
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 16.dp))
             }
@@ -121,8 +154,12 @@ fun ManageReposScreen(
 @Composable
 private fun AddRepoSection(
     url: String,
+    accessKind: RepositoryAccessKind,
+    githubToken: String,
     state: AddRepoValidationState,
     onUrlChanged: (String) -> Unit,
+    onAccessKindChanged: (RepositoryAccessKind) -> Unit,
+    onGithubTokenChanged: (String) -> Unit,
     onInspect: () -> Unit,
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
@@ -132,25 +169,61 @@ private fun AddRepoSection(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("新增 HTTPS 來源", style = MaterialTheme.typography.titleMedium)
+        Text("新增 extensions repo", style = MaterialTheme.typography.titleMedium)
         Text(
-            "NewsHub 會先顯示來源的金鑰指紋，只有你確認後才會建立信任。",
+            "公開來源或你有權存取的 GitHub private repository 都會先顯示根金鑰指紋。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = accessKind == RepositoryAccessKind.PUBLIC_HTTPS,
+                onClick = { onAccessKindChanged(RepositoryAccessKind.PUBLIC_HTTPS) },
+                label = { Text("公開 HTTPS") },
+                enabled = !busy,
+            )
+            FilterChip(
+                selected = accessKind == RepositoryAccessKind.GITHUB_CONTENTS,
+                onClick = { onAccessKindChanged(RepositoryAccessKind.GITHUB_CONTENTS) },
+                label = { Text("GitHub private") },
+                enabled = !busy,
+            )
+        }
         OutlinedTextField(
             value = url,
             onValueChange = onUrlChanged,
-            label = { Text("固定 HTTPS 網址") },
-            placeholder = { Text("https://example.org/extensions") },
+            label = { Text(if (accessKind == RepositoryAccessKind.GITHUB_CONTENTS) "GitHub repository URL" else "固定 HTTPS 網址") },
+            placeholder = {
+                Text(
+                    if (accessKind == RepositoryAccessKind.GITHUB_CONTENTS) {
+                        "https://github.com/owner/private-repo"
+                    } else {
+                        "https://example.org/extensions"
+                    },
+                )
+            },
             enabled = !busy,
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
+        if (accessKind == RepositoryAccessKind.GITHUB_CONTENTS) {
+            OutlinedTextField(
+                value = githubToken,
+                onValueChange = onGithubTokenChanged,
+                label = { Text("Fine-grained personal access token") },
+                supportingText = { Text("建議僅授予此 repository 的 Contents: read 權限。") },
+                visualTransformation = PasswordVisualTransformation(),
+                enabled = !busy,
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         when (state) {
             AddRepoValidationState.Idle -> Button(
                 onClick = onInspect,
-                enabled = url.isNotBlank(),
+                enabled = url.isNotBlank() && (
+                    accessKind == RepositoryAccessKind.PUBLIC_HTTPS || githubToken.isNotBlank()
+                ),
                 modifier = Modifier.align(Alignment.End),
             ) { Text("檢查金鑰") }
             AddRepoValidationState.InspectingRoot -> BusyMessage("正在安全地讀取根金鑰…")
@@ -161,6 +234,13 @@ private fun AddRepoSection(
                 onCancel,
             )
             is AddRepoValidationState.Error -> Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                Text(state.message, color = MaterialTheme.colorScheme.error)
+            }
+            is AddRepoValidationState.AccessRequired -> Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -218,6 +298,8 @@ private fun RepositoryDomainItem(
     onSuspend: () -> Unit,
     onResume: () -> Unit,
     onRevoke: () -> Unit,
+    accessRequired: Boolean,
+    onReauthorize: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
@@ -230,7 +312,7 @@ private fun RepositoryDomainItem(
             style = MaterialTheme.typography.bodyMedium,
         )
         Text(
-            "${domain.trustModeLabel()} · ${domain.stateLabel()} · 根門檻 ${domain.rootThreshold}",
+            "${domain.accessLabel()} · ${domain.trustModeLabel()} · ${domain.stateLabel()} · 根門檻 ${domain.rootThreshold}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -241,9 +323,21 @@ private fun RepositoryDomainItem(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
+        if (accessRequired) {
+            Text(
+                "需要重新授權才能更新 metadata 或下載 APK。",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         if (domain.trustMode == RepositoryTrustMode.USER_PINNED && domain.state != RepositoryDomainState.REVOKED) {
             Spacer(Modifier.height(2.dp))
             Row(modifier = Modifier.align(Alignment.End)) {
+                if (domain.access.kind == RepositoryAccessKind.GITHUB_CONTENTS) {
+                    TextButton(onClick = onReauthorize) {
+                        Text(if (accessRequired) "重新授權" else "更新 token")
+                    }
+                }
                 if (domain.state == RepositoryDomainState.ACTIVE) {
                     OutlinedButton(onClick = onSuspend) { Text("暫停") }
                 } else {
@@ -253,6 +347,45 @@ private fun RepositoryDomainItem(
             }
         }
     }
+}
+
+@Composable
+private fun ReauthorizationDialog(
+    token: String,
+    errorMessage: String?,
+    isVerifying: Boolean,
+    onTokenChanged: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!isVerifying) onDismiss() },
+        title = { Text("更新 GitHub 存取權") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("新的 token 會先通過 repository 與既有根信任驗證，成功後才取代舊 token。")
+                OutlinedTextField(
+                    value = token,
+                    onValueChange = onTokenChanged,
+                    label = { Text("Fine-grained personal access token") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    enabled = !isVerifying,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (isVerifying) BusyMessage("正在驗證存取權…")
+                errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = !isVerifying && token.isNotBlank()) {
+                Text("驗證並更新")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isVerifying) { Text("取消") }
+        },
+    )
 }
 
 internal fun RepositoryTrustDomain.trustModeLabel(): String = when (trustMode) {
@@ -265,4 +398,9 @@ internal fun RepositoryTrustDomain.stateLabel(): String = when (state) {
     RepositoryDomainState.EXPIRED -> "已過期"
     RepositoryDomainState.SUSPENDED -> "已暫停"
     RepositoryDomainState.REVOKED -> "已撤銷"
+}
+
+internal fun RepositoryTrustDomain.accessLabel(): String = when (access.kind) {
+    RepositoryAccessKind.PUBLIC_HTTPS -> "公開 HTTPS"
+    RepositoryAccessKind.GITHUB_CONTENTS -> "GitHub private (${access.revision})"
 }
