@@ -21,6 +21,7 @@ import tw.kevinzhang.extension_api.AuthSpec
 import tw.kevinzhang.extension_api.AuthenticatedSource
 import tw.kevinzhang.extension_api.BoardWebUrlRequest
 import tw.kevinzhang.extension_api.CommentPageRequest
+import tw.kevinzhang.extension_api.CommentContinuationRequest
 import tw.kevinzhang.extension_api.ExtensionProtocol
 import tw.kevinzhang.extension_api.ExtensionWireJson
 import tw.kevinzhang.extension_api.HostResourceProvider
@@ -47,10 +48,14 @@ import tw.kevinzhang.extension_api.model.BoardPageRequest
 import tw.kevinzhang.extension_api.model.CommentPage
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.extension_api.model.Comment
+import tw.kevinzhang.extension_api.model.CommentContinuation
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadPage
 import tw.kevinzhang.extension_api.model.ThreadSummary
+import tw.kevinzhang.extension_api.model.ThreadFeedFilter
+import tw.kevinzhang.extension_api.model.ThreadSummaryPage
+import tw.kevinzhang.extension_api.model.ThreadSummaryPageRequest
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -215,6 +220,25 @@ internal open class RemoteSource(
         )
             .map(::protect)
 
+    override suspend fun getThreadFeedFilters(board: Board): List<ThreadFeedFilter> =
+        if (runtimeDescriptor.supportsThreadSummaryPages) {
+            call(ExtensionProtocol.OP_THREAD_FEED_FILTERS, board)
+        } else {
+            emptyList()
+        }
+
+    override suspend fun getThreadSummaryPage(request: ThreadSummaryPageRequest): ThreadSummaryPage =
+        if (runtimeDescriptor.supportsThreadSummaryPages) {
+            protect(
+                call<ThreadSummaryPageRequest, ThreadSummaryPage>(
+                    ExtensionProtocol.OP_THREAD_SUMMARY_PAGE,
+                    request,
+                ),
+            )
+        } else {
+            super<Source>.getThreadSummaryPage(request).let(::protect)
+        }
+
     override suspend fun getThread(summary: ThreadSummary): Thread =
         protect(call<ThreadSummary, Thread>(ExtensionProtocol.OP_THREAD, summary))
 
@@ -233,6 +257,15 @@ internal open class RemoteSource(
         ).let { pageResult ->
             pageResult.copy(comments = pageResult.comments.map(::protect))
         }
+
+    override suspend fun getCommentContinuation(
+        post: Post,
+        continuation: CommentContinuation,
+    ): CommentPage =
+        call<CommentContinuationRequest, CommentPage>(
+            ExtensionProtocol.OP_COMMENT_CONTINUATION,
+            CommentContinuationRequest(post, continuation),
+        ).let(::protect)
 
     override suspend fun getWebUrl(summary: ThreadSummary): String? =
         call<WebUrlRequest, String?>(ExtensionProtocol.OP_WEB_URL, WebUrlRequest(summary))
@@ -266,6 +299,9 @@ internal open class RemoteSource(
         sourceIconUrl = summary.sourceIconUrl?.let(::resourceModel),
     )
 
+    private fun protect(page: ThreadSummaryPage): ThreadSummaryPage =
+        page.copy(summaries = page.summaries.map(::protect))
+
     private fun protect(post: Post): Post = post.copy(
         thumbnail = post.thumbnail?.let(::resourceModel),
         content = post.content.map(::protect),
@@ -273,6 +309,9 @@ internal open class RemoteSource(
         rawHtml = null,
         sourceIconUrl = post.sourceIconUrl?.let(::resourceModel),
     )
+
+    private fun protect(page: CommentPage): CommentPage =
+        page.copy(comments = page.comments.map(::protect))
 
     private fun protect(comment: Comment): Comment = comment.copy(content = comment.content.map(::protect))
 
@@ -315,6 +354,9 @@ private fun remoteOperationName(operation: Int): String = when (operation) {
     ExtensionProtocol.OP_VALIDATE_SESSION -> "validate_session"
     ExtensionProtocol.OP_BOARD_WEB_URL -> "board_web_url"
     ExtensionProtocol.OP_RUNTIME_DESCRIPTOR -> "runtime_descriptor"
+    ExtensionProtocol.OP_THREAD_FEED_FILTERS -> "thread_feed_filters"
+    ExtensionProtocol.OP_THREAD_SUMMARY_PAGE -> "thread_summary_page"
+    ExtensionProtocol.OP_COMMENT_CONTINUATION -> "comment_continuation"
     else -> "unknown"
 }
 

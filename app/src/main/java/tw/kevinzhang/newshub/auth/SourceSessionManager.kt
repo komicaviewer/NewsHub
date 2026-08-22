@@ -40,6 +40,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import javax.inject.Inject
 import javax.inject.Singleton
+import tw.kevinzhang.newshub.auth.oauth.OAuthCredentialProvider
 
 private const val COOKIE_PREFS = "source_cookie_sessions"
 private const val KEYSTORE = "AndroidKeyStore"
@@ -51,6 +52,7 @@ private const val MAX_LINK_HANDLES_PER_SOURCE = 1_024
 class SourceSessionManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val baseClient: OkHttpClient,
+    private val oauthCredentialProvider: OAuthCredentialProvider,
 ) : HostBrokerProvider, HostResourceProvider {
     private val sessions = mutableMapOf<String, SourceSession>()
     private val sourceIdentities = mutableMapOf<String, String>()
@@ -73,7 +75,15 @@ class SourceSessionManager @Inject constructor(
         synchronized(sessions) {
             sourceIdentities[identity.sourceId] = storageKey
         }
-        val broker = SourceNetworkBroker(baseClient, session(identity.sourceId).jar, identity, policy)
+        val sourceSession = session(identity.sourceId)
+        if (oauthCredentialProvider.hasCredential(identity)) sourceSession.setState(AuthState.Unknown)
+        val broker = SourceNetworkBroker(
+            baseClient,
+            sourceSession.jar,
+            oauthCredentialProvider,
+            identity,
+            policy,
+        )
         synchronized(resources) {
             resourceBrokers.remove(storageKey)?.revoke()
             val generation = (resourceGenerations[storageKey] ?: 0L) + 1L

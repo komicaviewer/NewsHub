@@ -5,4 +5,6 @@ data class Comment(
     val author: String?,
     val createdAt: Long?,
     val content: List<Paragraph>,
+    /** Null for a root comment; otherwise the stable id of its direct parent. */
+    val parentId: String? = null,
 )

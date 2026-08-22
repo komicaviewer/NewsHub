@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -28,6 +29,7 @@ import tw.kevinzhang.data.SourceIdentityRepository
 import tw.kevinzhang.data.domain.BoardSubscriptionRecord
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.model.ThreadSummary
+import tw.kevinzhang.extension_api.model.ThreadFeedFilter
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.newshub.auth.SourceSessionManager
 import tw.kevinzhang.newshub.data.PreferenceStore
@@ -136,6 +138,45 @@ class CollectionTimelineViewModel @Inject constructor(
 
     val selectedSourceId: StateFlow<String?> = effectiveSelectedSourceId
 
+    private val feedFilterSelectionsBySource =
+        MutableStateFlow<Map<String, Map<String, String>>>(emptyMap())
+
+    val activeFeedFilters: StateFlow<ActiveFeedFilters?> = combine(
+        effectiveSelectedSourceId,
+        availableSourceIds,
+        subscriptions.filterNotNull(),
+        extensionLoader.sourcesFlow,
+        feedFilterSelectionsBySource,
+    ) { selectedSourceId, availableSourceIds, subscriptions, sources, selections ->
+        FeedFilterContext(
+            sourceId = selectedSourceId ?: availableSourceIds.singleOrNull(),
+            subscriptions = subscriptions,
+            sources = sources,
+            selections = selections,
+        )
+    }
+        .mapLatest { context ->
+            val sourceId = context.sourceId ?: return@mapLatest null
+            val source = context.sources.firstOrNull { it.id == sourceId } ?: return@mapLatest null
+            val subscription = context.subscriptions.firstOrNull { it.sourceIdentity.sourceId == sourceId }
+                ?: return@mapLatest null
+            val board = tw.kevinzhang.extension_api.model.Board(
+                sourceId = sourceId,
+                url = subscription.subscription.boardUrl,
+                name = subscription.subscription.boardName,
+            )
+            val filters = runCatching { source.getThreadFeedFilters(board) }.getOrDefault(emptyList())
+            if (filters.isEmpty()) return@mapLatest null
+            val stored = context.selections[sourceId].orEmpty()
+            val effective = filters.associate { filter ->
+                val validOptions = filter.options.mapTo(hashSetOf()) { it.id }
+                filter.id to stored[filter.id].takeIf { it in validOptions }.orEmpty()
+                    .ifEmpty { filter.defaultOptionId }
+            }
+            ActiveFeedFilters(sourceId, filters, effective)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     val authenticationRequiredNotice = sessionManager.authenticationRequiredNotice
 
     fun consumeAuthenticationRequiredNotice(sourceId: String) {
@@ -165,16 +206,28 @@ class CollectionTimelineViewModel @Inject constructor(
         }
     }
 
+    fun selectFeedFilter(filterId: String, optionId: String) {
+        val state = activeFeedFilters.value ?: return
+        val filter = state.filters.firstOrNull { it.id == filterId } ?: return
+        if (filter.options.none { it.id == optionId }) return
+        feedFilterSelectionsBySource.value = feedFilterSelectionsBySource.value +
+            (state.sourceId to (state.selections + (filterId to optionId)))
+    }
+
     val timelinePager: Flow<PagingData<ThreadSummary>> =
         combine(
             subscriptions.filterNotNull(),
             effectiveSelectedSourceId,
             extensionLoader.sourcesFlow,
-        ) { currentSubscriptions, selectedSourceId, sources ->
+            activeFeedFilters,
+        ) { currentSubscriptions, selectedSourceId, sources, activeFeedFilters ->
             createTimelinePagerInput(
                 subscriptions = currentSubscriptions,
                 selectedSourceId = selectedSourceId,
                 sources = sources,
+                feedFiltersBySource = activeFeedFilters?.let {
+                    mapOf(it.sourceId to it.selections)
+                }.orEmpty(),
             )
         }
             .distinctUntilChanged()
@@ -184,6 +237,7 @@ class CollectionTimelineViewModel @Inject constructor(
                         subscriptions = input.subscriptions,
                         sourceResolver = input::resolveSource,
                         onAuthenticationRequired = sessionManager::notifyAuthenticationRequired,
+                        feedFiltersBySource = input.feedFiltersBySource,
                         onSourceLoadFailures = { failures -> _sourceLoadFailures.value = failures },
                     )
                 }.flow
@@ -210,9 +264,23 @@ private data class SourceSelection(
     val availableSourceIds: Set<String>?,
 )
 
+private data class FeedFilterContext(
+    val sourceId: String?,
+    val subscriptions: List<BoardSubscriptionRecord>,
+    val sources: List<Source>,
+    val selections: Map<String, Map<String, String>>,
+)
+
+data class ActiveFeedFilters(
+    val sourceId: String,
+    val filters: List<ThreadFeedFilter>,
+    val selections: Map<String, String>,
+)
+
 internal data class TimelinePagerInput(
     val subscriptions: List<BoardSubscriptionRecord>,
     private val sourcesById: Map<String, Source>,
+    val feedFiltersBySource: Map<String, Map<String, String>> = emptyMap(),
 ) {
     fun resolveSource(sourceId: String): Source? = sourcesById[sourceId]
 }
@@ -221,9 +289,11 @@ internal fun createTimelinePagerInput(
     subscriptions: List<BoardSubscriptionRecord>,
     selectedSourceId: String?,
     sources: List<Source>,
+    feedFiltersBySource: Map<String, Map<String, String>> = emptyMap(),
 ): TimelinePagerInput = TimelinePagerInput(
     subscriptions = filterSubscriptionsBySource(subscriptions, selectedSourceId),
     sourcesById = sources.associateBy(Source::id),
+    feedFiltersBySource = feedFiltersBySource,
 )
 
 /** Returns the effective filter. A null available set means subscriptions are still loading. */

@@ -81,6 +81,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_api.model.Comment
+import tw.kevinzhang.extension_api.model.CommentContinuation
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.newshub.filterRepliesBy
@@ -431,6 +432,9 @@ fun ThreadDetailScreen(
                                     galleryRequest = GalleryRequest(post.id, startIndex)
                                 },
                                 onLoadMoreCommentsClick = { viewModel.loadMoreComments(post.id) },
+                                onLoadCommentContinuation = { continuation ->
+                                    viewModel.loadCommentContinuation(post.id, continuation)
+                                },
                             )
                         }
                         if (thread != null) {
@@ -682,6 +686,7 @@ private fun ExtPostCard(
     onReplyToClick: (String) -> Unit,
     onMediaClick: (Int) -> Unit,
     onLoadMoreCommentsClick: () -> Unit,
+    onLoadCommentContinuation: (CommentContinuation) -> Unit,
 ) {
     val highlightAlpha = remember { Animatable(0f) }
     LaunchedEffect(isHighlighted) {
@@ -711,9 +716,13 @@ private fun ExtPostCard(
                 onMediaClick = onMediaClick,
             )
 
-            visibleComments.forEach { comment ->
-                CommentItem(comment = comment, alwaysUseRawImage = alwaysUseRawImage)
-            }
+            CommentForest(
+                comments = visibleComments,
+                continuations = commentUiState?.continuations.orEmpty(),
+                loadingContinuationTokens = commentUiState?.loadingContinuationTokens.orEmpty(),
+                alwaysUseRawImage = alwaysUseRawImage,
+                onLoadContinuation = onLoadCommentContinuation,
+            )
             when {
                 commentUiState?.isLoading == true ->
                     CircularProgressIndicator(
@@ -732,6 +741,130 @@ private fun ExtPostCard(
         }
     }
 
+}
+
+internal sealed interface CommentForestItem {
+    data class Node(
+        val comment: Comment,
+        val children: List<CommentForestItem>,
+    ) : CommentForestItem
+
+    data class More(val continuation: CommentContinuation) : CommentForestItem
+}
+
+/** Builds a stable forest while keeping malformed missing-parent/cyclic comments visible. */
+internal fun buildCommentForest(
+    comments: List<Comment>,
+    continuations: List<CommentContinuation>,
+): List<CommentForestItem> {
+    val commentsById = comments.distinctBy(Comment::id).associateByTo(linkedMapOf(), Comment::id)
+    val childrenByParent = commentsById.values.groupBy { comment ->
+        comment.parentId?.takeIf { parent -> parent != comment.id && parent in commentsById }
+    }
+    val continuationsByParent = continuations.distinctBy(CommentContinuation::token).groupBy { continuation ->
+        continuation.parentId?.takeIf { it in commentsById }
+    }
+    val emitted = mutableSetOf<String>()
+    val visiting = mutableSetOf<String>()
+
+    fun node(comment: Comment): CommentForestItem.Node {
+        if (!visiting.add(comment.id)) {
+            emitted += comment.id
+            return CommentForestItem.Node(comment.copy(parentId = null), emptyList())
+        }
+        emitted += comment.id
+        val children = buildList {
+            childrenByParent[comment.id].orEmpty().forEach { child ->
+                if (child.id !in emitted) add(node(child))
+            }
+            continuationsByParent[comment.id].orEmpty().forEach { add(CommentForestItem.More(it)) }
+        }
+        visiting -= comment.id
+        return CommentForestItem.Node(comment, children)
+    }
+
+    return buildList {
+        childrenByParent[null].orEmpty().forEach { root ->
+            if (root.id !in emitted) add(node(root))
+        }
+        commentsById.values.forEach { orphanOrCycle ->
+            if (orphanOrCycle.id !in emitted) add(node(orphanOrCycle.copy(parentId = null)))
+        }
+        continuationsByParent[null].orEmpty().forEach { add(CommentForestItem.More(it)) }
+    }
+}
+
+@Composable
+private fun CommentForest(
+    comments: List<Comment>,
+    continuations: List<CommentContinuation>,
+    loadingContinuationTokens: Set<String>,
+    alwaysUseRawImage: Boolean,
+    onLoadContinuation: (CommentContinuation) -> Unit,
+) {
+    val forest = remember(comments, continuations) { buildCommentForest(comments, continuations) }
+    forest.forEach { item ->
+        CommentForestBranch(
+            item = item,
+            depth = 0,
+            loadingContinuationTokens = loadingContinuationTokens,
+            alwaysUseRawImage = alwaysUseRawImage,
+            onLoadContinuation = onLoadContinuation,
+        )
+    }
+}
+
+@Composable
+private fun CommentForestBranch(
+    item: CommentForestItem,
+    depth: Int,
+    loadingContinuationTokens: Set<String>,
+    alwaysUseRawImage: Boolean,
+    onLoadContinuation: (CommentContinuation) -> Unit,
+) {
+    val visualDepth = depth.coerceAtMost(3)
+    Row(modifier = Modifier.fillMaxWidth()) {
+        if (visualDepth > 0) {
+            Box(
+                modifier = Modifier
+                    .padding(start = (8 * visualDepth).dp)
+                    .width(2.dp)
+                    .heightIn(min = 28.dp)
+                    .background(MaterialTheme.colorScheme.outlineVariant),
+            )
+        }
+        Column(modifier = Modifier.weight(1f).padding(start = if (visualDepth > 0) 8.dp else 0.dp)) {
+            when (item) {
+                is CommentForestItem.Node -> {
+                    CommentItem(comment = item.comment, alwaysUseRawImage = alwaysUseRawImage)
+                    item.children.forEach { child ->
+                        CommentForestBranch(
+                            item = child,
+                            depth = depth + 1,
+                            loadingContinuationTokens = loadingContinuationTokens,
+                            alwaysUseRawImage = alwaysUseRawImage,
+                            onLoadContinuation = onLoadContinuation,
+                        )
+                    }
+                }
+                is CommentForestItem.More -> {
+                    if (item.continuation.token in loadingContinuationTokens) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        TextButton(
+                            onClick = { onLoadContinuation(item.continuation) },
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            val remaining = item.continuation.remainingCount
+                            LabelSmallText(
+                                text = remaining?.let { "載入更多回覆（$it）" } ?: "載入更多回覆",
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /**

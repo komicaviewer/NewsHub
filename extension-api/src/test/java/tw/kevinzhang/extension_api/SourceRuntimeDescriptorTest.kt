@@ -27,7 +27,19 @@ class SourceRuntimeDescriptorTest {
         assertTrue(descriptor.alwaysUseRawImage)
         assertFalse(descriptor.needsLogin)
         assertNull(descriptor.webCookieAuth)
+        assertNull(descriptor.oauthAuth)
+        assertTrue(descriptor.supportsThreadSummaryPages)
         assertNull(descriptor.webLoginUserAgent)
+    }
+
+    @Test fun `service descriptor maps only the generic OAuth registration reference`() {
+        val descriptor = OAuthSource().toRuntimeDescriptor()
+        val auth = requireNotNull(descriptor.oauthAuth)
+
+        assertNull(descriptor.webCookieAuth)
+        assertEquals("reddit", auth.providerId)
+        assertEquals("reddit.installed.default", auth.clientRegistrationId)
+        assertEquals(setOf("identity", "read", "mysubreddits"), auth.scopes)
     }
 
     @Test fun `service descriptor maps complete WebCookie spec and user agent`() {
@@ -67,6 +79,15 @@ class SourceRuntimeDescriptorTest {
             javaScriptEnabled = false,
         )
         override val webLoginUserAgent = "Example Browser/1.0"
+        override suspend fun validateSession() = true
+    }
+
+    private class OAuthSource : PlainSource(), AuthenticatedSource {
+        override val authSpec = AuthSpec.OAuth(
+            providerId = "reddit",
+            clientRegistrationId = "reddit.installed.default",
+            scopes = setOf("identity", "read", "mysubreddits"),
+        )
         override suspend fun validateSession() = true
     }
 }

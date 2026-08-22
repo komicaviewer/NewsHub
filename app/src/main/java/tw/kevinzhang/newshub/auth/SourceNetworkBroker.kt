@@ -51,6 +51,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import tw.kevinzhang.newshub.auth.oauth.OAuthCredentialProvider
 
 private val FORBIDDEN_EXTENSION_HEADERS = setOf(
     "authorization",
@@ -81,6 +82,7 @@ internal const val MAX_SOURCE_REDIRECTS = 5
 internal class SourceNetworkBroker(
     private val baseClient: OkHttpClient,
     private val cookieJar: CookieJar,
+    private val oauthCredentialProvider: OAuthCredentialProvider,
     private val identity: SourceIdentity,
     private val policy: SourceNetworkPolicy,
 ) : IHostBroker.Stub() {
@@ -336,14 +338,20 @@ internal class SourceNetworkBroker(
             .cookieJar(if (credentialed) cookieJar else CookieJar.NO_COOKIES)
             .cache(null)
             .build()
-        val request = Request.Builder().url(url).method(networkRequest.method, null).apply {
-            networkRequest.headers.forEach { (name, value) -> addHeader(name, value) }
-            hostHeaders.forEach { (name, value) -> header(name, value) }
-        }.build()
-        val call = client.newCall(request)
-        calls[requestId] = call
-        return try {
-            call.execute().use { response ->
+        fun buildRequest(forceRefresh: Boolean): Request =
+            Request.Builder().url(url).method(networkRequest.method, null).apply {
+                networkRequest.headers.forEach { (name, value) -> addHeader(name, value) }
+                hostHeaders.forEach { (name, value) -> header(name, value) }
+                if (credentialed) {
+                    oauthCredentialProvider.authorizationHeader(identity, url, forceRefresh = forceRefresh)
+                        ?.let { bearer -> header("Authorization", bearer) }
+                }
+            }.build()
+
+        fun executeOnce(request: Request): SourceNetworkResponse {
+            val call = client.newCall(request)
+            calls[requestId] = call
+            return call.execute().use { response ->
                 val responseHeaders = response.headers.names()
                     .filterNot { it.equals("set-cookie", ignoreCase = true) }
                     .take(48)
@@ -357,6 +365,21 @@ internal class SourceNetworkBroker(
                         response.body.readBounded(responseLimit)
                     },
                 )
+            }
+        }
+
+        return try {
+            val initialRequest = buildRequest(forceRefresh = false)
+            val initialResponse = executeOnce(initialRequest)
+            if (initialResponse.code == 401 && initialRequest.header("Authorization") != null) {
+                val refreshedRequest = buildRequest(forceRefresh = true)
+                if (refreshedRequest.header("Authorization") != null) {
+                    executeOnce(refreshedRequest)
+                } else {
+                    initialResponse
+                }
+            } else {
+                initialResponse
             }
         } finally {
             calls.remove(requestId)

@@ -1,5 +1,8 @@
 package tw.kevinzhang.newshub.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -357,6 +360,8 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
     val navItems = remember { mainNavItems() }
 
     val webLoginUiState by authViewModel.webLoginUiState.collectAsStateWithLifecycle()
+    val oauthLoginUiState by authViewModel.oauthLoginUiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     val currentBackStack by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStack?.destination?.route
@@ -412,6 +417,22 @@ fun bindAppScreen(navController: NavHostController = rememberNavController()) {
         } else if (webLoginUiState.request == null && currentRoute == AUTH_WEB_LOGIN_ROUTE) {
             navController.popBackStack()
         }
+    }
+
+    LaunchedEffect(oauthLoginUiState.launch) {
+        val launch = oauthLoginUiState.launch ?: return@LaunchedEffect
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, launch.authorizationUri))
+            authViewModel.consumeOAuthLaunch(launch.sourceId)
+        } catch (_: ActivityNotFoundException) {
+            authViewModel.reportOAuthLaunchFailure(launch.sourceId)
+        }
+    }
+
+    LaunchedEffect(oauthLoginUiState.errorMessage) {
+        val message = oauthLoginUiState.errorMessage ?: return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        authViewModel.consumeOAuthError()
     }
 
     NewshubTheme {

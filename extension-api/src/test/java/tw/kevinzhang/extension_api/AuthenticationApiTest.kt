@@ -26,6 +26,23 @@ class AuthenticationApiTest {
     }
 
     @Test
+    fun `oauth spec names a host-owned provider registration without carrying endpoints or tokens`() {
+        val spec = AuthSpec.OAuth(
+            providerId = "reddit",
+            clientRegistrationId = "reddit.installed.default",
+            scopes = setOf("identity", "read", "mysubreddits"),
+        )
+
+        assertEquals("reddit", spec.providerId)
+        assertEquals("reddit.installed.default", spec.clientRegistrationId)
+        assertEquals(setOf("identity", "read", "mysubreddits"), spec.scopes)
+        assertEquals(
+            setOf("providerId", "clientRegistrationId", "scopes"),
+            AuthSpec.OAuth::class.java.declaredFields.mapTo(linkedSetOf()) { it.name },
+        )
+    }
+
+    @Test
     fun `web login user agent is an optional source capability`() {
         val provider = object : WebLoginUserAgentProvider {
             override val webLoginUserAgent = "NewsHub test browser"

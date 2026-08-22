@@ -508,7 +508,7 @@ private fun SourceAuthAction(
     if (source !is AuthenticatedSource) return
     when (authState) {
         AuthState.SignedIn -> TextButton(onClick = { onLogoutClick(source.id) }) { Text("Logout") }
-        AuthState.SigningIn -> Text("登入中…")
+        AuthState.SigningIn -> TextButton(onClick = { onLoginClick(source.id) }) { Text("重新開啟登入") }
         AuthState.Expired -> TextButton(onClick = { onLoginClick(source.id) }) { Text("重新登入") }
         AuthState.SignedOut, AuthState.Unknown ->
             TextButton(onClick = { onLoginClick(source.id) }) { Text("Login") }

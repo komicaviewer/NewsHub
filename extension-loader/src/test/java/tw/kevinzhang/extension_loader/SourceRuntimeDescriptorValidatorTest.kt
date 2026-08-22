@@ -7,6 +7,8 @@ import org.junit.Test
 import tw.kevinzhang.extension_api.ExtensionProtocol
 import tw.kevinzhang.extension_api.NetworkOperationPolicy
 import tw.kevinzhang.extension_api.NetworkOperations
+import tw.kevinzhang.extension_api.AuthSpec
+import tw.kevinzhang.extension_api.OAuthAuthDescriptor
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.SourceRuntimeDescriptor
 import tw.kevinzhang.extension_api.WebCookieAuthDescriptor
@@ -20,12 +22,39 @@ class SourceRuntimeDescriptorValidatorTest {
         assertFalse(validated.supportsCommentPagination)
         assertTrue(validated.alwaysUseRawImage)
         assertFalse(validated.needsLogin)
-        assertEquals("https://login.example.com/sign-in?next=%2F", validated.authSpec?.loginUrl)
-        assertEquals(setOf("login.example.com", "api.example.com"), validated.authSpec?.allowedHosts)
-        assertEquals(setOf("https://login.example.com", "https://api.example.com/"), validated.authSpec?.cookieOrigins)
-        assertEquals(setOf("example.com"), validated.authSpec?.cookieDomains)
-        assertFalse(requireNotNull(validated.authSpec).javaScriptEnabled)
+        val auth = validated.authSpec as AuthSpec.WebCookie
+        assertEquals("https://login.example.com/sign-in?next=%2F", auth.loginUrl)
+        assertEquals(setOf("login.example.com", "api.example.com"), auth.allowedHosts)
+        assertEquals(setOf("https://login.example.com", "https://api.example.com/"), auth.cookieOrigins)
+        assertEquals(setOf("example.com"), auth.cookieDomains)
+        assertFalse(auth.javaScriptEnabled)
         assertEquals("NewsHub Extension Browser/1.0", validated.webLoginUserAgent)
+        assertFalse(validated.supportsThreadSummaryPages)
+    }
+
+    @Test fun `validates provider neutral OAuth registration against bounded identifiers and scopes`() {
+        val runtime = validRuntime().copy(
+            webCookieAuth = null,
+            webLoginUserAgent = null,
+            oauthAuth = OAuthAuthDescriptor(
+                providerId = "reddit",
+                clientRegistrationId = "reddit.installed.default",
+                scopes = setOf("identity", "read", "mysubreddits"),
+            ),
+            supportsThreadSummaryPages = true,
+        )
+
+        val validated = validateSourceRuntimeDescriptor(runtime, manifest(), policy())
+
+        assertEquals(
+            AuthSpec.OAuth(
+                "reddit",
+                "reddit.installed.default",
+                setOf("identity", "read", "mysubreddits"),
+            ),
+            validated.authSpec,
+        )
+        assertTrue(validated.supportsThreadSummaryPages)
     }
 
     @Test fun `rejects identity version and authentication shape drift`() {
@@ -64,6 +93,42 @@ class SourceRuntimeDescriptorValidatorTest {
                 webLoginUserAgent = "Browser/1.0",
             ),
         )
+    }
+
+    @Test fun `rejects ambiguous or unbounded OAuth descriptors`() {
+        val validOAuth = OAuthAuthDescriptor(
+            providerId = "reddit",
+            clientRegistrationId = "reddit.installed.default",
+            scopes = setOf("identity", "read"),
+        )
+        listOf(
+            validRuntime().copy(oauthAuth = validOAuth),
+            validRuntime().copy(
+                webCookieAuth = null,
+                webLoginUserAgent = null,
+                oauthAuth = validOAuth.copy(providerId = "Reddit"),
+            ),
+            validRuntime().copy(
+                webCookieAuth = null,
+                webLoginUserAgent = null,
+                oauthAuth = validOAuth.copy(clientRegistrationId = "bad registration"),
+            ),
+            validRuntime().copy(
+                webCookieAuth = null,
+                webLoginUserAgent = null,
+                oauthAuth = validOAuth.copy(scopes = emptySet()),
+            ),
+            validRuntime().copy(
+                webCookieAuth = null,
+                webLoginUserAgent = null,
+                oauthAuth = validOAuth.copy(scopes = setOf("read scope")),
+            ),
+            validRuntime().copy(
+                webCookieAuth = null,
+                oauthAuth = validOAuth,
+                webLoginUserAgent = "Browser/1.0",
+            ),
+        ).forEach(::assertInvalid)
     }
 
     private fun assertInvalid(runtime: SourceRuntimeDescriptor) {

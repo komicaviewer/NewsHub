@@ -4,6 +4,7 @@ import java.net.URI
 import java.util.Locale
 import tw.kevinzhang.extension_api.AuthSpec
 import tw.kevinzhang.extension_api.ExtensionProtocol
+import tw.kevinzhang.extension_api.OAuthAuthDescriptor
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.SourceRuntimeDescriptor
 import tw.kevinzhang.extension_api.WebCookieAuthDescriptor
@@ -14,8 +15,9 @@ internal data class ValidatedSourceRuntimeDescriptor(
     val supportsCommentPagination: Boolean,
     val alwaysUseRawImage: Boolean,
     val needsLogin: Boolean,
-    val authSpec: AuthSpec.WebCookie?,
+    val authSpec: AuthSpec?,
     val webLoginUserAgent: String?,
+    val supportsThreadSummaryPages: Boolean,
 )
 
 /** Validates every extension-controlled descriptor field before it reaches app code. */
@@ -42,12 +44,18 @@ internal fun validateSourceRuntimeDescriptor(
         }
     }
 
-    val authSpec = runtime.webCookieAuth?.validated(policy)
+    require(runtime.webCookieAuth == null || runtime.oauthAuth == null) {
+        "Runtime Source must declare exactly one authentication mechanism"
+    }
+    val authSpec: AuthSpec? = runtime.webCookieAuth?.validated(policy)
+        ?: runtime.oauthAuth?.validated(policy)
     require(!runtime.needsLogin || authSpec != null) {
-        "Runtime Source requiring login must declare WebCookie authentication"
+        "Runtime Source requiring login must declare authentication"
     }
     val userAgent = runtime.webLoginUserAgent?.also { value ->
-        require(authSpec != null) { "Runtime Web login User-Agent requires WebCookie authentication" }
+        require(authSpec is AuthSpec.WebCookie) {
+            "Runtime Web login User-Agent requires WebCookie authentication"
+        }
         require(value.isNotBlank() && value.length <= MAX_USER_AGENT_BYTES && value == value.trim()) {
             "Runtime Web login User-Agent is invalid"
         }
@@ -64,7 +72,32 @@ internal fun validateSourceRuntimeDescriptor(
         needsLogin = runtime.needsLogin,
         authSpec = authSpec,
         webLoginUserAgent = userAgent,
+        supportsThreadSummaryPages = runtime.supportsThreadSummaryPages,
     )
+}
+
+private fun OAuthAuthDescriptor.validated(policy: SourceNetworkPolicy): AuthSpec.OAuth {
+    require(providerId.matches(Regex("[a-z][a-z0-9._-]{0,63}"))) {
+        "Runtime OAuth provider id is invalid"
+    }
+    require(clientRegistrationId.matches(Regex("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"))) {
+        "Runtime OAuth client registration id is invalid"
+    }
+    require(scopes.isNotEmpty() && scopes.size <= MAX_OAUTH_SCOPES) {
+        "Runtime OAuth scopes must be non-empty and bounded"
+    }
+    require(scopes.all { scope ->
+        scope.length in 1..MAX_OAUTH_SCOPE_BYTES &&
+            scope == scope.trim() &&
+            scope.matches(Regex("[A-Za-z0-9][A-Za-z0-9._:/-]*"))
+    }) { "Runtime OAuth scope is invalid" }
+    require(scopes.sumOf(String::length) <= MAX_OAUTH_SCOPE_TOTAL_BYTES) {
+        "Runtime OAuth scope set is too large"
+    }
+    require(policy.authExactHosts.isNotEmpty()) {
+        "Runtime OAuth authentication requires a signed authentication host scope"
+    }
+    return AuthSpec.OAuth(providerId, clientRegistrationId, scopes.toSet())
 }
 
 private fun WebCookieAuthDescriptor.validated(policy: SourceNetworkPolicy): AuthSpec.WebCookie {
@@ -144,3 +177,6 @@ private const val MAX_RUNTIME_TEXT_BYTES = 512
 private const val MAX_RUNTIME_URL_BYTES = 2048
 private const val MAX_USER_AGENT_BYTES = 512
 private const val MAX_AUTH_ITEMS = 32
+private const val MAX_OAUTH_SCOPES = 32
+private const val MAX_OAUTH_SCOPE_BYTES = 128
+private const val MAX_OAUTH_SCOPE_TOTAL_BYTES = 2048

@@ -31,6 +31,7 @@ import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.HostResourceProvider
 import tw.kevinzhang.extension_api.AuthenticationRequiredException
 import tw.kevinzhang.extension_api.model.Comment
+import tw.kevinzhang.extension_api.model.CommentContinuation
 import tw.kevinzhang.extension_api.model.CommentPage
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
@@ -51,6 +52,8 @@ data class CommentUiState(
     val visibleComments: List<Comment>,
     val hasMore: Boolean,
     val isLoading: Boolean = false,
+    val continuations: List<CommentContinuation> = emptyList(),
+    val loadingContinuationTokens: Set<String> = emptySet(),
 )
 
 @HiltViewModel
@@ -152,13 +155,21 @@ class ThreadDetailViewModel @Inject constructor(
         val nextPage: Int = 2,
         // local pagination
         val allLocalComments: List<Comment> = emptyList(),
+        val continuations: List<CommentContinuation> = emptyList(),
+        val loadingContinuationTokens: Set<String> = emptySet(),
     )
 
     private val _commentStates = MutableStateFlow<Map<String, InternalCommentState>>(emptyMap())
     val commentStates: StateFlow<Map<String, CommentUiState>> = _commentStates
         .map { states ->
             states.mapValues { (_, v) ->
-                CommentUiState(v.visibleComments, v.hasMore, v.isLoading)
+                CommentUiState(
+                    visibleComments = v.visibleComments,
+                    hasMore = v.hasMore,
+                    isLoading = v.isLoading,
+                    continuations = v.continuations,
+                    loadingContinuationTokens = v.loadingContinuationTokens,
+                )
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
@@ -455,6 +466,7 @@ class ThreadDetailViewModel @Inject constructor(
                             InternalCommentState(
                                 visibleComments = page.comments,
                                 hasMore = page.hasMore,
+                                continuations = page.continuations,
                             )
                         } catch (error: AuthenticationRequiredException) {
                             throw error
@@ -514,6 +526,66 @@ class ThreadDetailViewModel @Inject constructor(
                     ))
                 }
             }
+        }
+    }
+
+    fun loadCommentContinuation(postId: String, continuation: CommentContinuation) {
+        val state = _commentStates.value[postId] ?: return
+        if (continuation.token in state.loadingContinuationTokens) return
+
+        viewModelScope.launch {
+            _commentStates.update { states ->
+                val current = states[postId] ?: return@update states
+                states + (postId to current.copy(
+                    loadingContinuationTokens = current.loadingContinuationTokens + continuation.token,
+                ))
+            }
+            val source = cachedSource
+            val post = _thread.value?.posts?.find { it.id == postId }
+            if (source == null || post == null) {
+                clearContinuationLoading(postId, continuation.token)
+                return@launch
+            }
+
+            val result = try {
+                source.getCommentContinuation(post, continuation)
+            } catch (_: AuthenticationRequiredException) {
+                sessionManager.notifyAuthenticationRequired(sourceId)
+                null
+            } catch (_: Exception) {
+                null
+            }
+            _commentStates.update { states ->
+                val current = states[postId] ?: return@update states
+                if (result == null) {
+                    states + (postId to current.copy(
+                        loadingContinuationTokens = current.loadingContinuationTokens - continuation.token,
+                    ))
+                } else {
+                    val merged = mergeCommentContinuation(
+                        currentComments = current.visibleComments,
+                        currentContinuations = current.continuations,
+                        currentHasMore = current.hasMore,
+                        loadedToken = continuation.token,
+                        result = result,
+                    )
+                    states + (postId to current.copy(
+                        visibleComments = merged.comments,
+                        continuations = merged.continuations,
+                        hasMore = merged.hasMore,
+                        loadingContinuationTokens = current.loadingContinuationTokens - continuation.token,
+                    ))
+                }
+            }
+        }
+    }
+
+    private fun clearContinuationLoading(postId: String, token: String) {
+        _commentStates.update { states ->
+            val current = states[postId] ?: return@update states
+            states + (postId to current.copy(
+                loadingContinuationTokens = current.loadingContinuationTokens - token,
+            ))
         }
     }
 
@@ -589,3 +661,24 @@ class ThreadDetailViewModel @Inject constructor(
         return source.takeIf { runtimeKey == sourceKey }
     }
 }
+
+internal data class CommentContinuationMergeResult(
+    val comments: List<Comment>,
+    val continuations: List<CommentContinuation>,
+    val hasMore: Boolean,
+)
+
+/** Replaces one expansion point atomically while deduplicating replayed provider results. */
+internal fun mergeCommentContinuation(
+    currentComments: List<Comment>,
+    currentContinuations: List<CommentContinuation>,
+    currentHasMore: Boolean,
+    loadedToken: String,
+    result: CommentPage,
+): CommentContinuationMergeResult = CommentContinuationMergeResult(
+    comments = (currentComments + result.comments).distinctBy(Comment::id),
+    continuations = (
+        currentContinuations.filterNot { it.token == loadedToken } + result.continuations
+    ).distinctBy(CommentContinuation::token),
+    hasMore = currentHasMore || result.hasMore,
+)

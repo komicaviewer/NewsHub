@@ -150,6 +150,7 @@ fun CollectionTimelineScreen(
     val subscriptions by viewModel.subscriptions.collectAsStateWithLifecycle()
     val availableSourceIds by viewModel.availableSourceIds.collectAsStateWithLifecycle()
     val selectedSourceId by viewModel.selectedSourceId.collectAsStateWithLifecycle()
+    val activeFeedFilters by viewModel.activeFeedFilters.collectAsStateWithLifecycle()
     val authenticationRequiredNotice by viewModel.authenticationRequiredNotice.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val pullToRefreshState = rememberPullToRefreshState()
@@ -436,11 +437,47 @@ fun CollectionTimelineScreen(
                             onSourceSelect = onSourceSelect,
                         )
                     }
+                    activeFeedFilters?.let { state ->
+                        FeedFilterRows(
+                            state = state,
+                            onSelect = viewModel::selectFeedFilter,
+                        )
+                    }
                 }
             }
         }
     }
 
+}
+
+@Composable
+private fun FeedFilterRows(
+    state: ActiveFeedFilters,
+    onSelect: (filterId: String, optionId: String) -> Unit,
+) {
+    state.filters.forEach { filter ->
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            item(key = "label-${filter.id}") {
+                Text(
+                    text = filter.name,
+                    modifier = Modifier.padding(vertical = 10.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            items(filter.options, key = { "${filter.id}-${it.id}" }) { option ->
+                FilterChip(
+                    selected = state.selections[filter.id] == option.id,
+                    onClick = { onSelect(filter.id, option.id) },
+                    label = { Text(option.name) },
+                )
+            }
+        }
+    }
 }
 
 /** A saved-source emission never resets position; only a changed user selection does. */

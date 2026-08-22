@@ -27,6 +27,9 @@ android {
         vectorDrawables {
             useSupportLibrary true
         }
+        manifestPlaceholders.redditOAuthClientId = providers.gradleProperty("REDDIT_OAUTH_CLIENT_ID")
+                .orElse(providers.environmentVariable("REDDIT_OAUTH_CLIENT_ID"))
+                .getOrElse("")
     }
 
     signingConfigs {

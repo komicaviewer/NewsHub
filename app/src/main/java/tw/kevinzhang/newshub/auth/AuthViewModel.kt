@@ -15,6 +15,8 @@ import tw.kevinzhang.extension_api.AuthSpec
 import tw.kevinzhang.extension_api.AuthenticatedSource
 import tw.kevinzhang.extension_api.WebLoginUserAgentProvider
 import tw.kevinzhang.extension_loader.ExtensionLoader
+import tw.kevinzhang.newshub.auth.oauth.OAuthAuthorizationLaunch
+import tw.kevinzhang.newshub.auth.oauth.OAuthCoordinator
 import javax.inject.Inject
 
 data class WebLoginRequest(
@@ -68,15 +70,23 @@ internal object WebLoginStateReducer {
     fun clear() = WebLoginUiState()
 }
 
+data class OAuthLoginUiState(
+    val launch: OAuthAuthorizationLaunch? = null,
+    val errorMessage: String? = null,
+)
+
 /** Coordinates authentication requests; it deliberately contains no Android WebView code. */
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val extensionLoader: ExtensionLoader,
     private val sessionManager: SourceSessionManager,
+    private val oauthCoordinator: OAuthCoordinator,
 ) : ViewModel() {
     val authStates = sessionManager.states
     private val _webLoginUiState = MutableStateFlow(WebLoginStateReducer.clear())
     val webLoginUiState: StateFlow<WebLoginUiState> = _webLoginUiState.asStateFlow()
+    private val _oauthLoginUiState = MutableStateFlow(OAuthLoginUiState())
+    val oauthLoginUiState: StateFlow<OAuthLoginUiState> = _oauthLoginUiState.asStateFlow()
 
     private var validationJob: Job? = null
     /** Invalidates any late result from a cancelled/replaced login validation. */
@@ -85,12 +95,49 @@ class AuthViewModel @Inject constructor(
     /** Called exclusively from a user action in Boards. */
     fun triggerLogin(sourceId: String) {
         val source = extensionLoader.getSource(sourceId) as? AuthenticatedSource ?: return
-        val spec = source.authSpec as? AuthSpec.WebCookie ?: return
         cancelPendingValidation(markActiveSourceSignedOut = true)
-        sessionManager.beginLogin(sourceId)
-        _webLoginUiState.value = WebLoginStateReducer.begin(
-            WebLoginRequest(sourceId, spec, source.webLoginUserAgentOrNull()),
-        )
+        _oauthLoginUiState.value = OAuthLoginUiState()
+        when (val spec = source.authSpec) {
+            AuthSpec.None -> Unit
+            is AuthSpec.WebCookie -> {
+                sessionManager.beginLogin(sourceId)
+                _webLoginUiState.value = WebLoginStateReducer.begin(
+                    WebLoginRequest(sourceId, spec, source.webLoginUserAgentOrNull()),
+                )
+            }
+            is AuthSpec.OAuth -> {
+                val identity = source.sourceIdentity
+                if (identity == null) {
+                    _oauthLoginUiState.value = OAuthLoginUiState(errorMessage = OAUTH_UNAVAILABLE_MESSAGE)
+                    return
+                }
+                val launch = runCatching { oauthCoordinator.begin(identity, spec) }
+                    .getOrElse {
+                        sessionManager.markSignedOut(sourceId)
+                        _oauthLoginUiState.value = OAuthLoginUiState(errorMessage = OAUTH_UNAVAILABLE_MESSAGE)
+                        return
+                    }
+                sessionManager.beginLogin(sourceId)
+                _oauthLoginUiState.value = OAuthLoginUiState(launch = launch)
+            }
+        }
+    }
+
+    /** Prevents recomposition from launching the external authorization page more than once. */
+    fun consumeOAuthLaunch(sourceId: String) {
+        if (_oauthLoginUiState.value.launch?.sourceId == sourceId) {
+            _oauthLoginUiState.value = OAuthLoginUiState()
+        }
+    }
+
+    fun reportOAuthLaunchFailure(sourceId: String) {
+        oauthCoordinator.cancel(sourceId)
+        sessionManager.markSignedOut(sourceId)
+        _oauthLoginUiState.value = OAuthLoginUiState(errorMessage = OAUTH_BROWSER_MESSAGE)
+    }
+
+    fun consumeOAuthError() {
+        _oauthLoginUiState.value = _oauthLoginUiState.value.copy(errorMessage = null)
     }
 
     /**
@@ -150,10 +197,17 @@ class AuthViewModel @Inject constructor(
             cancelLogin(sourceId)
         }
         val source = extensionLoader.getSource(sourceId) as? AuthenticatedSource ?: return
-        val spec = source.authSpec as? AuthSpec.WebCookie ?: return
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                sessionManager.logout(sourceId, spec)
+        when (val spec = source.authSpec) {
+            AuthSpec.None -> Unit
+            is AuthSpec.WebCookie -> viewModelScope.launch {
+                withContext(Dispatchers.IO) {
+                    sessionManager.logout(sourceId, spec)
+                }
+            }
+            is AuthSpec.OAuth -> {
+                source.sourceIdentity?.let(oauthCoordinator::logout)
+                oauthCoordinator.cancel(sourceId)
+                sessionManager.markSignedOut(sourceId)
             }
         }
     }
@@ -175,5 +229,7 @@ class AuthViewModel @Inject constructor(
     private companion object {
         const val WEB_LOGIN_INVALID_MESSAGE = "登入未完成或登入資訊已失效，請確認後再試一次。"
         const val WEB_LOGIN_VERIFICATION_ERROR = "登入驗證時發生問題，請稍後再試一次。"
+        const val OAUTH_UNAVAILABLE_MESSAGE = "此 OAuth 登入尚未在 NewsHub Host 完成設定。"
+        const val OAUTH_BROWSER_MESSAGE = "找不到可開啟 OAuth 登入頁面的瀏覽器。"
     }
 }

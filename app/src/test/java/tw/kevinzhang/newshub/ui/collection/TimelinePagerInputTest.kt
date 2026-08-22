@@ -50,6 +50,22 @@ class TimelinePagerInputTest {
         assertNull(input.resolveSource("missing"))
     }
 
+    @Test
+    fun `pager input retains the effective feed filter selections`() {
+        val selections = mapOf(
+            "reddit" to mapOf("sort" to "controversial", "time" to "month"),
+        )
+
+        val input = createTimelinePagerInput(
+            subscriptions = listOf(subscription("reddit")),
+            selectedSourceId = "reddit",
+            sources = listOf(source("reddit")),
+            feedFiltersBySource = selections,
+        )
+
+        assertEquals(selections, input.feedFiltersBySource)
+    }
+
     private fun subscription(sourceId: String): BoardSubscriptionRecord {
         val stored = CanonicalSourceIdentities.fromRuntimeIdentity(identity(sourceId))
         return BoardSubscriptionRecord(

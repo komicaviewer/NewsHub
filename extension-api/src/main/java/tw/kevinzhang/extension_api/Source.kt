@@ -6,11 +6,15 @@ import tw.kevinzhang.extension_api.model.BoardCategory
 import tw.kevinzhang.extension_api.model.BoardPage
 import tw.kevinzhang.extension_api.model.BoardPageRequest
 import tw.kevinzhang.extension_api.model.CommentPage
+import tw.kevinzhang.extension_api.model.CommentContinuation
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadPage
 import tw.kevinzhang.extension_api.model.ThreadPageMetadata
 import tw.kevinzhang.extension_api.model.ThreadSummary
+import tw.kevinzhang.extension_api.model.ThreadFeedFilter
+import tw.kevinzhang.extension_api.model.ThreadSummaryPage
+import tw.kevinzhang.extension_api.model.ThreadSummaryPageRequest
 
 interface Source {
     /** Host-verified runtime identity. In-process extension implementations leave this null. */
@@ -56,6 +60,31 @@ interface Source {
      */
     suspend fun getBoardPage(request: BoardPageRequest): BoardPage
     suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary>
+
+    /**
+     * Describes source-owned feed filter dimensions such as sort order or time range. IDs are
+     * opaque to the Host and are sent back unchanged in [ThreadSummaryPageRequest.filters].
+     */
+    suspend fun getThreadFeedFilters(board: Board): List<ThreadFeedFilter> = emptyList()
+
+    /**
+     * Loads one cursor-based feed page. [ThreadSummaryPageRequest.pageToken] is source-defined and
+     * opaque to the Host.
+     *
+     * This default implementation bridges legacy integer-page Sources. Legacy Sources only accept
+     * their declared default filters; a non-empty filter selection is therefore unsupported.
+     */
+    suspend fun getThreadSummaryPage(request: ThreadSummaryPageRequest): ThreadSummaryPage {
+        if (request.filters.isNotEmpty()) {
+            throw UnsupportedOperationException("This source does not support feed filters")
+        }
+        val page = request.pageToken?.let(::decodeLegacyThreadSummaryPageToken) ?: 1
+        val summaries = getThreadSummaries(request.board, page)
+        return ThreadSummaryPage(
+            summaries = summaries,
+            nextPageToken = if (summaries.isEmpty()) null else encodeLegacyThreadSummaryPageToken(page + 1),
+        )
+    }
     suspend fun getThread(summary: ThreadSummary): Thread
 
     /**
@@ -86,6 +115,10 @@ interface Source {
      */
     suspend fun getComments(post: Post, page: Int): CommentPage = CommentPage(emptyList(), false)
 
+    /** Loads comments represented by a source-issued opaque continuation. */
+    suspend fun getCommentContinuation(post: Post, continuation: CommentContinuation): CommentPage =
+        throw UnsupportedOperationException("This source does not support comment continuations")
+
     /** Returns the public website URL for [board]. The Host turns it into a scoped opaque handle. */
     suspend fun getBoardWebUrl(board: Board): String? = board.url
 
@@ -108,6 +141,17 @@ sealed interface AuthSpec {
         val cookieOrigins: Set<String>,
         val cookieDomains: Set<String> = emptySet(),
         val javaScriptEnabled: Boolean = true,
+    ) : AuthSpec
+
+    /**
+     * A provider-neutral OAuth registration owned by the Host. The provider endpoints, redirect
+     * URI, PKCE verifier, client credentials, tokens, refresh policy, and credential injection are
+     * never supplied by or exposed to the isolated extension.
+     */
+    data class OAuth(
+        val providerId: String,
+        val clientRegistrationId: String,
+        val scopes: Set<String>,
     ) : AuthSpec
 }
 
@@ -222,4 +266,17 @@ interface AuthenticatedSource : SessionAwareSource {
 
     /** Verify the current session using a real protected endpoint, not cookie presence. */
     suspend fun validateSession(): Boolean
+}
+
+private const val LEGACY_THREAD_SUMMARY_PAGE_PREFIX = "newshub-legacy-page:"
+
+private fun encodeLegacyThreadSummaryPageToken(page: Int): String =
+    "$LEGACY_THREAD_SUMMARY_PAGE_PREFIX$page"
+
+private fun decodeLegacyThreadSummaryPageToken(token: String): Int {
+    val page = token.removePrefix(LEGACY_THREAD_SUMMARY_PAGE_PREFIX)
+        .takeIf { token.startsWith(LEGACY_THREAD_SUMMARY_PAGE_PREFIX) }
+        ?.toIntOrNull()
+    require(page != null && page > 1) { "Invalid legacy thread summary page token" }
+    return page
 }

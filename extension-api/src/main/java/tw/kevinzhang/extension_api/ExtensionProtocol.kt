@@ -36,10 +36,12 @@ import tw.kevinzhang.extension_api.model.Board
 import tw.kevinzhang.extension_api.model.BoardCategory
 import tw.kevinzhang.extension_api.model.BoardPageRequest
 import tw.kevinzhang.extension_api.model.CommentPage
+import tw.kevinzhang.extension_api.model.CommentContinuation
 import tw.kevinzhang.extension_api.model.Paragraph
 import tw.kevinzhang.extension_api.model.Post
 import tw.kevinzhang.extension_api.model.ThreadPage
 import tw.kevinzhang.extension_api.model.ThreadSummary
+import tw.kevinzhang.extension_api.model.ThreadSummaryPageRequest
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
@@ -73,6 +75,9 @@ object ExtensionProtocol {
     const val OP_BOARD_WEB_URL = 9
     /** First operation after binding. The Host refuses every Source until this succeeds. */
     const val OP_RUNTIME_DESCRIPTOR = 10
+    const val OP_THREAD_FEED_FILTERS = 11
+    const val OP_THREAD_SUMMARY_PAGE = 12
+    const val OP_COMMENT_CONTINUATION = 13
 
     const val STATUS_OK = 0
     const val STATUS_INVALID_REQUEST = 1
@@ -146,6 +151,7 @@ private class ParagraphAdapter : JsonSerializer<Paragraph>, JsonDeserializer<Par
 data class ThreadSummariesRequest(val board: Board, val page: Int)
 data class ThreadPageRequest(val summary: ThreadSummary, val pageToken: String?)
 data class CommentPageRequest(val post: Post, val page: Int)
+data class CommentContinuationRequest(val post: Post, val continuation: CommentContinuation)
 data class WebUrlRequest(val summary: ThreadSummary)
 data class BoardWebUrlRequest(val board: Board)
 
@@ -163,6 +169,9 @@ data class SourceRuntimeDescriptor(
     val needsLogin: Boolean,
     val webCookieAuth: WebCookieAuthDescriptor?,
     val webLoginUserAgent: String?,
+    /** Optional fields keep wire compatibility with already-published protocol-v2 services. */
+    val oauthAuth: OAuthAuthDescriptor? = null,
+    val supportsThreadSummaryPages: Boolean = false,
 )
 
 /** Wire representation of every field in [AuthSpec.WebCookie]. */
@@ -172,6 +181,13 @@ data class WebCookieAuthDescriptor(
     val cookieOrigins: Set<String>,
     val cookieDomains: Set<String>,
     val javaScriptEnabled: Boolean,
+)
+
+/** Wire representation of every field in [AuthSpec.OAuth]. */
+data class OAuthAuthDescriptor(
+    val providerId: String,
+    val clientRegistrationId: String,
+    val scopes: Set<String>,
 )
 
 /**
@@ -275,6 +291,12 @@ private suspend fun executeSourceOperation(source: Source, operation: Int, reque
             require(it.page > 0) { "page must be positive" }
             ExtensionWireJson.encode(source.getThreadSummaries(it.board, it.page))
         }
+        ExtensionProtocol.OP_THREAD_FEED_FILTERS -> ExtensionWireJson.encode(
+            source.getThreadFeedFilters(ExtensionWireJson.decode(request)),
+        )
+        ExtensionProtocol.OP_THREAD_SUMMARY_PAGE -> ExtensionWireJson.encode(
+            source.getThreadSummaryPage(ExtensionWireJson.decode<ThreadSummaryPageRequest>(request)),
+        )
         ExtensionProtocol.OP_THREAD -> ExtensionWireJson.encode(
             source.getThread(ExtensionWireJson.decode(request)),
         )
@@ -285,6 +307,10 @@ private suspend fun executeSourceOperation(source: Source, operation: Int, reque
             require(it.page > 0) { "page must be positive" }
             ExtensionWireJson.encode(source.getComments(it.post, it.page))
         }
+        ExtensionProtocol.OP_COMMENT_CONTINUATION ->
+            ExtensionWireJson.decode<CommentContinuationRequest>(request).let {
+                ExtensionWireJson.encode(source.getCommentContinuation(it.post, it.continuation))
+            }
         ExtensionProtocol.OP_WEB_URL -> ExtensionWireJson.encode(
             source.getWebUrl(ExtensionWireJson.decode<WebUrlRequest>(request).summary),
         )
@@ -299,15 +325,24 @@ private suspend fun executeSourceOperation(source: Source, operation: Int, reque
     }
 
 internal fun Source.toRuntimeDescriptor(): SourceRuntimeDescriptor {
-    val webCookie = when (val spec = (this as? AuthenticatedSource)?.authSpec) {
-        null, AuthSpec.None -> null
+    val authSpec = (this as? AuthenticatedSource)?.authSpec
+    val webCookie = when (authSpec) {
+        null, AuthSpec.None, is AuthSpec.OAuth -> null
         is AuthSpec.WebCookie -> WebCookieAuthDescriptor(
-            loginUrl = spec.loginUrl,
-            allowedHosts = spec.allowedHosts,
-            cookieOrigins = spec.cookieOrigins,
-            cookieDomains = spec.cookieDomains,
-            javaScriptEnabled = spec.javaScriptEnabled,
+            loginUrl = authSpec.loginUrl,
+            allowedHosts = authSpec.allowedHosts,
+            cookieOrigins = authSpec.cookieOrigins,
+            cookieDomains = authSpec.cookieDomains,
+            javaScriptEnabled = authSpec.javaScriptEnabled,
         )
+    }
+    val oauth = when (authSpec) {
+        is AuthSpec.OAuth -> OAuthAuthDescriptor(
+            providerId = authSpec.providerId,
+            clientRegistrationId = authSpec.clientRegistrationId,
+            scopes = authSpec.scopes,
+        )
+        null, AuthSpec.None, is AuthSpec.WebCookie -> null
     }
     return SourceRuntimeDescriptor(
         protocolVersion = ExtensionProtocol.VERSION,
@@ -321,6 +356,8 @@ internal fun Source.toRuntimeDescriptor(): SourceRuntimeDescriptor {
         needsLogin = needsLogin,
         webCookieAuth = webCookie,
         webLoginUserAgent = (this as? WebLoginUserAgentProvider)?.webLoginUserAgent,
+        oauthAuth = oauth,
+        supportsThreadSummaryPages = true,
     )
 }
 

@@ -23,6 +23,7 @@ object NetworkModule {
         return OkHttpClient.Builder().run {
             if (BuildConfig.DEBUG) {
                 val logging = HttpLoggingInterceptor().apply {
+                    redactHeader("Authorization")
                     redactHeader("Cookie")
                     redactHeader("Set-Cookie")
                 }

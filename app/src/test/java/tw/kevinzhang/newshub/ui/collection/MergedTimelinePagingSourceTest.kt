@@ -16,6 +16,8 @@ import tw.kevinzhang.extension_api.model.BoardPage
 import tw.kevinzhang.extension_api.model.BoardPageRequest
 import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
+import tw.kevinzhang.extension_api.model.ThreadSummaryPage
+import tw.kevinzhang.extension_api.model.ThreadSummaryPageRequest
 
 class MergedTimelinePagingSourceTest {
     @Test
@@ -115,8 +117,111 @@ class MergedTimelinePagingSourceTest {
         assertTrue((result as PagingSource.LoadResult.Page).data.isEmpty())
     }
 
+    @Test
+    fun `append forwards the opaque cursor returned by the first page`() = runBlocking {
+        val requests = mutableListOf<ThreadSummaryPageRequest>()
+        val source = cursorSource("reddit") { request ->
+            requests += request
+            when (request.pageToken) {
+                null -> ThreadSummaryPage(
+                    summaries = listOf(summary("reddit", "first", 20L)),
+                    nextPageToken = "after=t3_first+a/b",
+                )
+                "after=t3_first+a/b" -> ThreadSummaryPage(
+                    summaries = listOf(summary("reddit", "second", 10L)),
+                    nextPageToken = null,
+                )
+                else -> error("Unexpected cursor: ${request.pageToken}")
+            }
+        }
+        val pagingSource = MergedTimelinePagingSource(
+            subscriptions = listOf(subscription("reddit")),
+            sourceResolver = { source },
+            onAuthenticationRequired = {},
+        )
+
+        val first = pagingSource.load(refreshParams()) as PagingSource.LoadResult.Page
+        val second = pagingSource.load(appendParams(checkNotNull(first.nextKey))) as PagingSource.LoadResult.Page
+
+        assertEquals(listOf(null, "after=t3_first+a/b"), requests.map { it.pageToken })
+        assertEquals(listOf("first"), first.data.map { it.id })
+        assertEquals(listOf("second"), second.data.map { it.id })
+        assertEquals(null, second.nextKey)
+    }
+
+    @Test
+    fun `append does not request the first page again for a board without a cursor`() = runBlocking {
+        val requestsByBoard = mutableMapOf<String, MutableList<String?>>()
+        val source = cursorSource("reddit") { request ->
+            requestsByBoard.getOrPut(request.board.url) { mutableListOf() } += request.pageToken
+            when (request.board.url.substringAfterLast('/')) {
+                "exhausted" -> ThreadSummaryPage(
+                    summaries = listOf(summary("reddit", "exhausted-first", 30L)),
+                    nextPageToken = null,
+                )
+                "advancing" -> when (request.pageToken) {
+                    null -> ThreadSummaryPage(
+                        summaries = listOf(summary("reddit", "advancing-first", 20L)),
+                        nextPageToken = "next-advancing",
+                    )
+                    "next-advancing" -> ThreadSummaryPage(
+                        summaries = listOf(summary("reddit", "advancing-second", 10L)),
+                        nextPageToken = null,
+                    )
+                    else -> error("Unexpected cursor: ${request.pageToken}")
+                }
+                else -> error("Unexpected board: ${request.board.url}")
+            }
+        }
+        val pagingSource = MergedTimelinePagingSource(
+            subscriptions = listOf(
+                subscription("reddit", boardUrl = "https://example.com/exhausted"),
+                subscription("reddit", boardUrl = "https://example.com/advancing"),
+            ),
+            sourceResolver = { source },
+            onAuthenticationRequired = {},
+        )
+
+        val first = pagingSource.load(refreshParams()) as PagingSource.LoadResult.Page
+        val second = pagingSource.load(appendParams(checkNotNull(first.nextKey))) as PagingSource.LoadResult.Page
+
+        assertEquals(listOf<String?>(null), requestsByBoard.getValue("https://example.com/exhausted"))
+        assertEquals(
+            listOf(null, "next-advancing"),
+            requestsByBoard.getValue("https://example.com/advancing"),
+        )
+        assertEquals(listOf("advancing-second"), second.data.map { it.id })
+    }
+
+    @Test
+    fun `selected feed filters are passed unchanged to every board request`() = runBlocking {
+        val requests = mutableListOf<ThreadSummaryPageRequest>()
+        val source = cursorSource("reddit") { request ->
+            requests += request
+            ThreadSummaryPage(emptyList(), nextPageToken = null)
+        }
+        val selections = mapOf("sort" to "top", "time" to "week")
+        val pagingSource = MergedTimelinePagingSource(
+            subscriptions = listOf(
+                subscription("reddit", boardUrl = "https://example.com/r/android"),
+                subscription("reddit", boardUrl = "https://example.com/r/kotlin"),
+            ),
+            sourceResolver = { source },
+            onAuthenticationRequired = {},
+            feedFiltersBySource = mapOf("reddit" to selections),
+        )
+
+        pagingSource.load(refreshParams())
+
+        assertEquals(2, requests.size)
+        assertTrue(requests.all { it.filters == selections })
+    }
+
     private fun refreshParams() =
         PagingSource.LoadParams.Refresh<Int>(key = null, loadSize = 20, placeholdersEnabled = false)
+
+    private fun appendParams(key: Int) =
+        PagingSource.LoadParams.Append(key = key, loadSize = 20, placeholdersEnabled = false)
 
     private fun subscription(
         sourceId: String,
@@ -168,6 +273,31 @@ class MergedTimelinePagingSourceTest {
 
         override suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary> =
             getSummaries(board, page)
+
+        override suspend fun getThread(summary: ThreadSummary): Thread = error("Not used")
+    }
+
+    private fun cursorSource(
+        id: String,
+        getPage: suspend (ThreadSummaryPageRequest) -> ThreadSummaryPage,
+    ) = object : Source {
+        override val id = id
+        override val sourceIdentity = identity(id)
+        override val name = id
+        override val language = "en"
+        override val version = 1
+        override val iconUrl: String? = null
+        override val supportsCommentPagination = true
+        override val alwaysUseRawImage = false
+        override val needsLogin = false
+
+        override suspend fun getBoardPage(request: BoardPageRequest) = BoardPage(emptyList())
+
+        override suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary> =
+            error("Cursor source must use getThreadSummaryPage")
+
+        override suspend fun getThreadSummaryPage(request: ThreadSummaryPageRequest): ThreadSummaryPage =
+            getPage(request)
 
         override suspend fun getThread(summary: ThreadSummary): Thread = error("Not used")
     }
