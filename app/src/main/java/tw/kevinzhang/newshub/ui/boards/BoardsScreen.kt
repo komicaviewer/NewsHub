@@ -178,6 +178,12 @@ fun BoardsScreen(
                             ) {
                                 SourceBoardEmpty()
                             }
+                            SourceBoardState.LoginRequired -> item(
+                                key = "login-required:${source.id}",
+                                span = { GridItemSpan(maxLineSpan) },
+                            ) {
+                                SourceBoardLoginRequired(onLogin = { onLoginClick(source.id) })
+                            }
                             is SourceBoardState.Failed -> item(
                                 key = "failure:${source.id}",
                                 span = { GridItemSpan(maxLineSpan) },
@@ -309,6 +315,12 @@ fun BoardGroupDetailScreen(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center,
             ) { Text("此來源目前沒有看板") }
+            group.loadState == SourceBoardState.LoginRequired -> Box(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                SourceBoardLoginRequired(onLogin = { onLoginClick(group.source.id) })
+            }
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(vertical = 4.dp),
@@ -357,7 +369,25 @@ internal fun shouldShowNoExtensions(
 internal fun sourceBoardCountForDisplay(state: SourceBoardState): Int? = when (state) {
     SourceBoardState.EmptySuccessfully -> 0
     is SourceBoardState.Ready -> state.count.takeIf { it > 0 }
-    is SourceBoardState.Failed, SourceBoardState.Loading -> null
+    is SourceBoardState.Failed, SourceBoardState.Loading, SourceBoardState.LoginRequired -> null
+}
+
+@Composable
+private fun SourceBoardLoginRequired(onLogin: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("登入後即可載入看板")
+            TextButton(onClick = onLogin) { Text("登入") }
+        }
+    }
 }
 
 @Composable

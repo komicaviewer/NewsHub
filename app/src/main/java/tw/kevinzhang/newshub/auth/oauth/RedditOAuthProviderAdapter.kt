@@ -125,6 +125,6 @@ class RedditOAuthProviderAdapter @Inject constructor(
         val version = runCatching {
             context.packageManager.getPackageInfo(context.packageName, 0).versionName
         }.getOrNull()?.takeIf { it.matches(Regex("[A-Za-z0-9._-]{1,32}")) } ?: "unknown"
-        return "android:${context.packageName}:$version"
+        return "android:${context.packageName}:$version (by /u/Due-Valuable2441)"
     }
 }

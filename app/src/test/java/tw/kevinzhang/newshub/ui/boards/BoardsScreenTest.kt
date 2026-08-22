@@ -104,6 +104,7 @@ class BoardsScreenTest {
         assertEquals(0, sourceBoardCountForDisplay(SourceBoardState.EmptySuccessfully))
         assertEquals(null, sourceBoardCountForDisplay(SourceBoardState.Failed(SourceFailure(SourceFailureCode.TIMED_OUT))))
         assertEquals(null, sourceBoardCountForDisplay(SourceBoardState.Loading))
+        assertEquals(null, sourceBoardCountForDisplay(SourceBoardState.LoginRequired))
         assertEquals(3, sourceBoardCountForDisplay(SourceBoardState.Ready(3)))
     }
 

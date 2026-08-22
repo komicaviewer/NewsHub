@@ -5,6 +5,9 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.fail
 import org.junit.Test
 import tw.kevinzhang.extension_api.Source
+import tw.kevinzhang.extension_api.AuthSpec
+import tw.kevinzhang.extension_api.AuthState
+import tw.kevinzhang.extension_api.AuthenticatedSource
 import tw.kevinzhang.extension_api.SourceFailureCode
 import tw.kevinzhang.extension_api.SourceFailureException
 import tw.kevinzhang.extension_api.model.Board
@@ -14,6 +17,28 @@ import tw.kevinzhang.extension_api.model.Thread
 import tw.kevinzhang.extension_api.model.ThreadSummary
 
 class BoardsViewModelCancellationTest {
+    @Test
+    fun `authenticated source does not issue board request before sign in`() = runTest {
+        var requests = 0
+        val source = authenticatedSource { requests++ }
+
+        val result = loadBoards(source, AuthState.Expired)
+
+        org.junit.Assert.assertEquals(SourceBoardState.LoginRequired, result.state)
+        org.junit.Assert.assertEquals(0, requests)
+    }
+
+    @Test
+    fun `authenticated source loads boards after sign in`() = runTest {
+        var requests = 0
+        val source = authenticatedSource { requests++ }
+
+        val result = loadBoards(source, AuthState.SignedIn)
+
+        org.junit.Assert.assertEquals(SourceBoardState.EmptySuccessfully, result.state)
+        org.junit.Assert.assertEquals(1, requests)
+    }
+
     @Test
     fun `revocation cancellation cannot publish stale boards`() = runTest {
         val source = object : Source {
@@ -69,4 +94,25 @@ class BoardsViewModelCancellationTest {
         override suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary> = emptyList()
         override suspend fun getThread(summary: ThreadSummary): Thread = error("Not used")
     }
+
+    private fun authenticatedSource(onBoardsRequested: () -> Unit): AuthenticatedSource =
+        object : AuthenticatedSource {
+            override val id = "test.oauth.signed-in"
+            override val name = "OAuth"
+            override val language = "en"
+            override val version = 1
+            override val iconUrl: String? = null
+            override val supportsCommentPagination = false
+            override val alwaysUseRawImage = false
+            override val needsLogin = true
+            override val authSpec = AuthSpec.OAuth("reddit", "reddit-installed", setOf("read"))
+
+            override suspend fun validateSession(): Boolean = true
+            override suspend fun getBoardPage(request: BoardPageRequest): BoardPage {
+                onBoardsRequested()
+                return BoardPage(emptyList())
+            }
+            override suspend fun getThreadSummaries(board: Board, page: Int): List<ThreadSummary> = emptyList()
+            override suspend fun getThread(summary: ThreadSummary): Thread = error("Not used")
+        }
 }

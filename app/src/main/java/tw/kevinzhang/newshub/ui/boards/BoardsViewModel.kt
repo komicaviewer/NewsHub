@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.async
@@ -35,6 +36,7 @@ import javax.inject.Inject
 
 sealed interface SourceBoardState {
     data object Loading : SourceBoardState
+    data object LoginRequired : SourceBoardState
     data class Ready(val count: Int) : SourceBoardState
     data object EmptySuccessfully : SourceBoardState
     data class Failed(val failure: SourceFailure) : SourceBoardState
@@ -96,19 +98,22 @@ class BoardsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            extensionLoader.sourcesFlow.collectLatest { sources ->
+            combine(extensionLoader.sourcesFlow, sessionManager.states) { sources, authStates ->
+                sources to authStates
+            }.collectLatest { (sources, authStates) ->
                 _isLoading.value = true
                 _sources.value = coroutineScope {
                     sources.map { source ->
                         async {
-                            if (source is AuthenticatedSource && sessionManager.stateFor(source.id) == AuthState.Unknown) {
+                            val authState = authStates[source.id] ?: AuthState.Unknown
+                            if (source is AuthenticatedSource && authState == AuthState.Unknown) {
                                 if (validateSessionOrFalse(source)) {
                                     sessionManager.markSignedIn(source.id)
                                 } else {
                                     sessionManager.markExpired(source.id)
                                 }
                             }
-                            val load = loadBoards(source)
+                            val load = loadBoards(source, authState)
                             SourceWithBoards(source = source, boards = load.boards, loadState = load.state)
                         }
                     }.awaitAll()
@@ -141,7 +146,7 @@ class BoardsViewModel @Inject constructor(
         }
         retryJobs[sourceId] = viewModelScope.launch {
             try {
-                val load = loadBoards(current.source)
+                val load = loadBoards(current.source, sessionManager.stateFor(sourceId))
                 _sources.value = _sources.value.map {
                     if (it.source === current.source) {
                         it.copy(boards = load.boards, loadState = load.state)
@@ -164,20 +169,28 @@ internal suspend fun validateSessionOrFalse(source: AuthenticatedSource): Boolea
     false
 }
 
-internal suspend fun loadBoards(source: Source): SourceBoardLoad = try {
-    val boards = source.getBoardPage(BoardPageRequest()).boards.distinctBy { it.url }
-    SourceBoardLoad(
-        boards = boards,
-        state = if (boards.isEmpty()) SourceBoardState.EmptySuccessfully else SourceBoardState.Ready(boards.size),
-    )
-} catch (error: CancellationException) {
-    // collectLatest uses cancellation to discard work for a trust domain that was suspended or
-    // revoked. Swallowing this exception would let the obsolete Source list overwrite the new
-    // empty list after ExtensionManager has already quarantined the package.
-    throw error
-} catch (error: Throwable) {
-    SourceBoardLoad(
-        boards = emptyList(),
-        state = SourceBoardState.Failed(SourceFailures.fromThrowable(error, "board_page")),
-    )
+internal suspend fun loadBoards(
+    source: Source,
+    authState: AuthState = AuthState.Unknown,
+): SourceBoardLoad {
+    if (source is AuthenticatedSource && authState != AuthState.SignedIn) {
+        return SourceBoardLoad(emptyList(), SourceBoardState.LoginRequired)
+    }
+    return try {
+        val boards = source.getBoardPage(BoardPageRequest()).boards.distinctBy { it.url }
+        SourceBoardLoad(
+            boards = boards,
+            state = if (boards.isEmpty()) SourceBoardState.EmptySuccessfully else SourceBoardState.Ready(boards.size),
+        )
+    } catch (error: CancellationException) {
+        // collectLatest uses cancellation to discard work for a trust domain that was suspended or
+        // revoked. Swallowing this exception would let the obsolete Source list overwrite the new
+        // empty list after ExtensionManager has already quarantined the package.
+        throw error
+    } catch (error: Throwable) {
+        SourceBoardLoad(
+            boards = emptyList(),
+            state = SourceBoardState.Failed(SourceFailures.fromThrowable(error, "board_page")),
+        )
+    }
 }
