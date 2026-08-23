@@ -36,8 +36,20 @@ data class NetworkRequestRule(
     val operation: NetworkOperationPolicy,
 )
 
+/**
+ * A signed resource-fetch authority. Credentialed resources must also pin the exact User-Agent
+ * used by the login WebView; an unsigned runtime descriptor can never widen either value.
+ */
+data class ResourceNetworkRule(
+    val exactHosts: Set<String>,
+    val credentialed: Boolean = false,
+    val userAgent: String? = null,
+    val pathPrefixes: Set<String> = setOf("/"),
+    val exactPaths: Set<String> = emptySet(),
+)
+
 data class SourceNetworkPolicy(
-    /** v1 compatibility name. In v2 this is strictly the request scope. */
+    /** v1 compatibility name. In v2+ this is strictly the request scope. */
     val exactHosts: Set<String>,
     val operations: Map<String, NetworkOperationPolicy>,
     val namedCapabilities: Set<String> = emptySet(),
@@ -48,6 +60,8 @@ data class SourceNetworkPolicy(
     val requestRules: List<NetworkRequestRule> = operations.values.map { operation ->
         NetworkRequestRule(exactHosts, operation)
     },
+    /** Schema v3 only. Older policies retain the original cookieless resource behavior. */
+    val resourceRules: List<ResourceNetworkRule> = emptyList(),
 ) {
     val allExactHosts: Set<String>
         get() = exactHosts + resourceExactHosts + externalExactHosts + authExactHosts
@@ -55,7 +69,7 @@ data class SourceNetworkPolicy(
 
 /** Deterministic policy representation stored as `policyHash` in signed repository targets. */
 fun SourceNetworkPolicy.canonicalJson(): String {
-    require(policyVersion == 1 || policyVersion == 2) { "Unsupported network policy version" }
+    require(policyVersion in 1..3) { "Unsupported network policy version" }
     require(exactHosts.isNotEmpty() && exactHosts.size <= MAX_SCOPE_HOSTS) {
         "Request hosts must be non-empty and bounded"
     }
@@ -74,7 +88,7 @@ fun SourceNetworkPolicy.canonicalJson(): String {
     if (policyVersion == 1) {
         require(operations.keys == setOf(NetworkOperations.SOURCE_READ)) { "Unknown network operation" }
     } else {
-        require(operations.isEmpty()) { "Version 2 policy must use request rules" }
+        require(operations.isEmpty()) { "Version 2+ policy must use request rules" }
     }
     require(requestRules.isNotEmpty() && requestRules.size <= MAX_REQUEST_RULES) {
         "Request rules must be non-empty and bounded"
@@ -98,8 +112,35 @@ fun SourceNetworkPolicy.canonicalJson(): String {
         ) { "Version 1 policy must map to one compatibility request rule" }
     } else {
         require(requestRules.flatMapTo(linkedSetOf(), NetworkRequestRule::exactHosts) == exactHosts) {
-            "Version 2 request hosts must equal the request-rule host union"
+            "Versioned request hosts must equal the request-rule host union"
         }
+    }
+    if (policyVersion < 3) {
+        require(resourceRules.isEmpty()) { "Only version 3 policy can express resource rules" }
+    } else {
+        require(resourceRules.size <= MAX_RESOURCE_RULES) { "Resource rules exceed the Host limit" }
+        require(resourceRules.all { rule ->
+            rule.exactHosts.isNotEmpty() && rule.exactHosts.size <= MAX_SCOPE_HOSTS &&
+                rule.exactHosts.all(String::isCanonicalExactDnsHost) &&
+                rule.pathPrefixes.size + rule.exactPaths.size in 1..MAX_PATH_PREFIXES &&
+                rule.pathPrefixes.all { it.matches(Regex("/[\\x20-\\x7e]{0,255}")) } &&
+                rule.exactPaths.all { it.matches(Regex("/[\\x20-\\x7e]{0,255}")) } &&
+                if (rule.credentialed) {
+                    rule.userAgent.isCanonicalSessionUserAgent()
+                } else {
+                    rule.userAgent == null
+                }
+        }) { "Resource rules must use exact hosts and valid credential authority" }
+        require(resourceRules.flatMapTo(linkedSetOf(), ResourceNetworkRule::exactHosts) == resourceExactHosts) {
+            "Version 3 resource hosts must equal the resource-rule host union"
+        }
+        require(resourceRules.flatMap(ResourceNetworkRule::exactHosts).size == resourceExactHosts.size) {
+            "Version 3 resource rules must not overlap"
+        }
+        require(authExactHosts.containsAll(
+            resourceRules.filter(ResourceNetworkRule::credentialed)
+                .flatMapTo(linkedSetOf(), ResourceNetworkRule::exactHosts),
+        )) { "Credentialed resource hosts must be inside the authentication scope" }
     }
     require(namedCapabilities.size <= MAX_NAMED_CAPABILITIES && namedCapabilities.all {
         it in KNOWN_NAMED_CAPABILITIES
@@ -142,11 +183,22 @@ fun SourceNetworkPolicy.canonicalJson(): String {
         val ruleJson = requestRules.map { rule ->
             "{\"exactHosts\":${rule.exactHosts.jsonArray()},\"operation\":${rule.operation.json()}}"
         }.sorted().joinToString(",", "[", "]")
+        val resourceJson = if (policyVersion == 2) {
+            "{\"exactHosts\":${resourceExactHosts.jsonArray()}}"
+        } else {
+            val rules = resourceRules.map { rule ->
+                "{\"credentialed\":${rule.credentialed},\"exactHosts\":${rule.exactHosts.jsonArray()}," +
+                    "\"exactPaths\":${rule.exactPaths.jsonArray()}," +
+                    "\"pathPrefixes\":${rule.pathPrefixes.jsonArray()}," +
+                    "\"userAgent\":${rule.userAgent?.jsonString() ?: "null"}}"
+            }.sorted().joinToString(",", "[", "]")
+            "{\"rules\":$rules}"
+        }
         "{\"auth\":{\"exactHosts\":${authExactHosts.jsonArray()}}," +
             "\"external\":{\"exactHosts\":${externalExactHosts.jsonArray()}}," +
             "\"namedCapabilities\":${namedCapabilities.jsonArray()}," +
             "\"request\":{\"rules\":$ruleJson}," +
-            "\"resource\":{\"exactHosts\":${resourceExactHosts.jsonArray()}},\"schemaVersion\":2}"
+            "\"resource\":$resourceJson,\"schemaVersion\":$policyVersion}"
     }
 }
 
@@ -181,6 +233,10 @@ private fun String.isIpv4Literal(): Boolean {
     return labels.size == 4 && labels.all { it.isNotEmpty() && it.all(Char::isDigit) && it.toIntOrNull() in 0..255 }
 }
 
+private fun String?.isCanonicalSessionUserAgent(): Boolean =
+    this != null && isNotBlank() && length <= MAX_SESSION_USER_AGENT_BYTES && this == trim() &&
+        none { it.code < 0x20 || it.code == 0x7f }
+
 private val KNOWN_NAMED_CAPABILITIES = setOf(
     NamedHostCapabilities.PTT_ADULT_CONSENT_STATUS,
     NamedHostCapabilities.EYNY_CHALLENGE_PROOF,
@@ -192,6 +248,8 @@ private const val MAX_SCOPE_HOSTS = 32
 private const val MAX_PATH_PREFIXES = 32
 private const val MAX_NAMED_CAPABILITIES = 16
 private const val MAX_REQUEST_RULES = 32
+private const val MAX_RESOURCE_RULES = 32
+private const val MAX_SESSION_USER_AGENT_BYTES = 512
 
 /** Constructed by the Host; the loader never implements network or credential policy itself. */
 fun interface HostBrokerProvider {

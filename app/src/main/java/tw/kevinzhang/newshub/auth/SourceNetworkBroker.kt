@@ -236,19 +236,23 @@ internal class SourceNetworkBroker(
         kotlinx.coroutines.withContext(Dispatchers.IO) {
             concurrency.withPermit {
                 val request = SourceNetworkRequest(NetworkOperations.SOURCE_READ, "GET", url)
-                val validated = validateResourceUrl(url, policy)
+                val authorized = authorizeResourceRequest(url, policy)
                 val response = followBoundedSameOriginRedirects(
-                    initialUrl = validated,
+                    initialUrl = authorized.url,
                     operation = request.operation,
                     validateRedirect = { redirectUrl ->
-                        validateResourceUrl(redirectUrl.toString(), policy)
+                        require(authorizeResourceRequest(redirectUrl.toString(), policy) ==
+                            authorized.copy(url = redirectUrl)
+                        ) { "Resource redirect changed credential authority" }
                     },
                     execute = { redirectUrl ->
                         perform(
                             requestId = resourceRequestIds.incrementAndGet(),
                             networkRequest = request.copy(url = redirectUrl.toString()),
                             url = redirectUrl,
-                            credentialed = false,
+                            credentialed = authorized.credentialed,
+                            exactUserAgent = authorized.userAgent,
+                            allowAuthorization = false,
                         )
                     },
                 )
@@ -269,19 +273,23 @@ internal class SourceNetworkBroker(
             kotlinx.coroutines.withContext(Dispatchers.IO) {
                 concurrency.withPermit {
                 val request = SourceNetworkRequest(NetworkOperations.SOURCE_READ, "GET", url)
-                val validated = validateResourceUrl(url, policy)
+                val authorized = authorizeResourceRequest(url, policy)
                 val response = followBoundedSameOriginRedirects(
-                    initialUrl = validated,
+                    initialUrl = authorized.url,
                     operation = request.operation,
                     validateRedirect = { redirectUrl ->
-                        validateResourceUrl(redirectUrl.toString(), policy)
+                        require(authorizeResourceRequest(redirectUrl.toString(), policy) ==
+                            authorized.copy(url = redirectUrl)
+                        ) { "Resource redirect changed credential authority" }
                     },
                     execute = { redirectUrl ->
                         perform(
                             requestId = resourceRequestIds.incrementAndGet(),
                             networkRequest = request.copy(url = redirectUrl.toString()),
                             url = redirectUrl,
-                            credentialed = false,
+                            credentialed = authorized.credentialed,
+                            exactUserAgent = authorized.userAgent,
+                            allowAuthorization = false,
                             hostHeaders = mapOf("Range" to "bytes=$offset-${offset + length - 1L}"),
                             responseLimit = length,
                         )
@@ -329,6 +337,8 @@ internal class SourceNetworkBroker(
         networkRequest: SourceNetworkRequest,
         url: HttpUrl,
         credentialed: Boolean,
+        exactUserAgent: String? = null,
+        allowAuthorization: Boolean = credentialed,
         hostHeaders: Map<String, String> = emptyMap(),
         responseLimit: Int = ExtensionProtocol.MAX_NETWORK_RESPONSE_BYTES,
     ): SourceNetworkResponse {
@@ -344,7 +354,8 @@ internal class SourceNetworkBroker(
             Request.Builder().url(url).method(networkRequest.method, null).apply {
                 networkRequest.headers.forEach { (name, value) -> addHeader(name, value) }
                 hostHeaders.forEach { (name, value) -> header(name, value) }
-                if (credentialed) {
+                exactUserAgent?.let { userAgent -> header("User-Agent", userAgent) }
+                if (allowAuthorization) {
                     val bearer = oauthCredentialProvider.authorizationHeader(
                         identity,
                         url,

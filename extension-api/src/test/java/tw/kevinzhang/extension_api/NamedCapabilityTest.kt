@@ -179,6 +179,106 @@ class NamedCapabilityTest {
         assertInvalid { base.copy(resourceExactHosts = setOf("http://images.example.com")).canonicalJson() }
     }
 
+    @Test fun `version three signs exact credentialed resource user agent`() {
+        val policy = SourceNetworkPolicy(
+            exactHosts = setOf("forum.example.com"),
+            operations = emptyMap(),
+            requestRules = listOf(
+                NetworkRequestRule(
+                    setOf("forum.example.com"),
+                    NetworkOperationPolicy(
+                        NetworkOperations.SOURCE_READ,
+                        setOf("GET", "HEAD"),
+                        setOf("/"),
+                        credentialed = true,
+                    ),
+                ),
+            ),
+            namedCapabilities = setOf(NamedHostCapabilities.RESOURCE_READ),
+            policyVersion = 3,
+            resourceExactHosts = setOf("cdn.example.com", "forum.example.com"),
+            externalExactHosts = emptySet(),
+            authExactHosts = setOf("forum.example.com"),
+            resourceRules = listOf(
+                ResourceNetworkRule(
+                    setOf("forum.example.com"),
+                    true,
+                    "NewsHub Browser/1.0",
+                    setOf("/attachments/"),
+                ),
+                ResourceNetworkRule(setOf("cdn.example.com"), pathPrefixes = setOf("/images/")),
+            ),
+        )
+
+        assertEquals(
+            "{\"auth\":{\"exactHosts\":[\"forum.example.com\"]}," +
+                "\"external\":{\"exactHosts\":[]},\"namedCapabilities\":[\"resource_read\"]," +
+                "\"request\":{\"rules\":[{\"exactHosts\":[\"forum.example.com\"]," +
+                "\"operation\":{\"credentialed\":true,\"methods\":[\"GET\",\"HEAD\"]," +
+                "\"name\":\"source_read\",\"pathPrefixes\":[\"/\"]}}]}," +
+                "\"resource\":{\"rules\":[{\"credentialed\":false," +
+                "\"exactHosts\":[\"cdn.example.com\"],\"exactPaths\":[],\"pathPrefixes\":[\"/images/\"],\"userAgent\":null},{\"credentialed\":true," +
+                "\"exactHosts\":[\"forum.example.com\"],\"exactPaths\":[],\"pathPrefixes\":[\"/attachments/\"]," +
+                "\"userAgent\":\"NewsHub Browser/1.0\"}]}," +
+                "\"schemaVersion\":3}",
+            policy.canonicalJson(),
+        )
+
+        assertInvalid { policy.copy(resourceRules = emptyList()).canonicalJson() }
+        assertInvalid {
+            policy.copy(
+                resourceRules = listOf(ResourceNetworkRule(setOf("forum.example.com"), true, null)),
+            ).canonicalJson()
+        }
+        assertInvalid {
+            policy.copy(
+                resourceRules = policy.resourceRules +
+                    ResourceNetworkRule(setOf("forum.example.com"), false, null),
+            ).canonicalJson()
+        }
+        assertInvalid { policy.copy(authExactHosts = emptySet()).canonicalJson() }
+    }
+
+    @Test fun `version three policy hash matches repository publisher corpus`() {
+        val policy = SourceNetworkPolicy(
+            exactHosts = setOf("forum.example.com"),
+            operations = emptyMap(),
+            requestRules = listOf(
+                NetworkRequestRule(
+                    setOf("forum.example.com"),
+                    NetworkOperationPolicy(
+                        NetworkOperations.SOURCE_READ,
+                        setOf("GET", "HEAD"),
+                        setOf("/"),
+                        credentialed = true,
+                    ),
+                ),
+            ),
+            namedCapabilities = setOf(
+                NamedHostCapabilities.RESOURCE_READ,
+                NamedHostCapabilities.EXTERNAL_LINK,
+            ),
+            policyVersion = 3,
+            resourceExactHosts = setOf("forum.example.com", "cdn.example.com"),
+            externalExactHosts = setOf("forum.example.com"),
+            authExactHosts = setOf("forum.example.com"),
+            resourceRules = listOf(
+                ResourceNetworkRule(
+                    setOf("forum.example.com"),
+                    credentialed = true,
+                    userAgent = "NewsHub Extension Browser/1.0",
+                    pathPrefixes = setOf("/attachments/"),
+                ),
+                ResourceNetworkRule(setOf("cdn.example.com"), pathPrefixes = setOf("/images/")),
+            ),
+        )
+
+        assertEquals(
+            "3c6c6b1b85031c873f962b0b53716725972b569c02a1c5d99f70d55035ef9c7a",
+            policy.sha256(),
+        )
+    }
+
     @Test
     fun `EYNY proof accepts only the fixed bounded schema`() {
         val proof = EynyChallengeProof(

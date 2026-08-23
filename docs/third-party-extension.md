@@ -47,7 +47,32 @@ Implement `SessionAwareSource.onAttach` and store an adapter around `runtime.net
 
 Do not add OkHttp, `HttpURLConnection`, raw sockets, a WebView, or Android network permissions. The isolated process cannot use them as an alternative path.
 
-Match each request with one signed v2 rule. A request rule specifies exact hosts, `GET` or `HEAD`, path prefixes, and whether NewsHub may attach Host-owned credentials.
+Match each request with one signed rule. A request rule specifies exact hosts, `GET` or `HEAD`, path prefixes, and whether NewsHub may attach Host-owned credentials.
+
+Resource URLs are cookieless in v1 and v2 policies. Use a v3 `resource.rules` entry only when an image or media endpoint requires the WebView session. A credentialed resource rule must sign both exact hosts and the exact login User-Agent:
+
+```json
+"resource": {
+  "rules": [
+    {
+      "exactHosts": ["forum.example.com"],
+      "exactPaths": ["/forum.php"],
+      "pathPrefixes": ["/data/attachment/"],
+      "credentialed": true,
+      "userAgent": "NewsHub Extension Browser/1.0"
+    },
+    {
+      "exactHosts": ["cdn.example.com"],
+      "exactPaths": [],
+      "pathPrefixes": ["/images/"],
+      "credentialed": false,
+      "userAgent": null
+    }
+  ]
+}
+```
+
+Every credentialed resource host must also appear in `auth.exactHosts`. Rules cannot overlap, and each resource URL and redirect must remain under a signed path prefix. NewsHub follows only bounded same-origin HTTPS redirects, never adds cookies or the signed User-Agent for a public rule, and never forwards OAuth authorization headers to resource requests.
 
 ## Declare authentication when required
 
@@ -55,7 +80,7 @@ Implement `AuthenticatedSource` when the Source uses web-cookie login. Return `A
 
 Implement `validateSession` against a protected endpoint. Cookie presence alone does not prove a valid session. Throw `AuthenticationRequiredException` after the source identifies an unauthenticated response.
 
-If the site binds cookies to a User-Agent value, implement `WebLoginUserAgentProvider`. Use the same value for login and credentialed Source requests.
+If the site binds cookies to a User-Agent value, implement `WebLoginUserAgentProvider`. Its value must exactly match every signed credentialed resource rule; NewsHub rejects the service at bind time when they differ.
 
 ## Register the isolated service
 

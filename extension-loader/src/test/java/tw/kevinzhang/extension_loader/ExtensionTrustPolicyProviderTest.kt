@@ -9,6 +9,7 @@ import tw.kevinzhang.extension_api.NamedHostCapabilities
 import tw.kevinzhang.extension_api.NetworkOperationPolicy
 import tw.kevinzhang.extension_api.NetworkOperations
 import tw.kevinzhang.extension_api.NetworkRequestRule
+import tw.kevinzhang.extension_api.ResourceNetworkRule
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.sha256
 
@@ -187,6 +188,46 @@ class ExtensionTrustPolicyProviderTest {
         assertEquals(
             setOf("api.example.com", "cdn.example.com", "example.com", "login.example.com"),
             service.networkPolicy?.allExactHosts,
+        )
+    }
+
+    @Test fun `version three accepts path scoped credentialed resources`() {
+        val policy = networkPolicy("example.com").copy(
+            operations = emptyMap(),
+            policyVersion = 3,
+            resourceExactHosts = setOf("example.com"),
+            externalExactHosts = setOf("example.com"),
+            authExactHosts = setOf("example.com"),
+            requestRules = listOf(
+                NetworkRequestRule(
+                    setOf("example.com"),
+                    NetworkOperationPolicy(
+                        NetworkOperations.SOURCE_READ,
+                        setOf("GET", "HEAD"),
+                        setOf("/"),
+                        credentialed = true,
+                    ),
+                ),
+            ),
+            resourceRules = listOf(
+                ResourceNetworkRule(
+                    setOf("example.com"),
+                    credentialed = true,
+                    userAgent = "Example Browser/1.0",
+                    pathPrefixes = setOf("/attachments/"),
+                ),
+            ),
+        )
+
+        assertEquals(3, expectedService(domainA, "example.source", policy).networkPolicy?.policyVersion)
+        assertTrue(
+            runCatching {
+                expectedService(
+                    domainA,
+                    "example.source",
+                    policy.copy(resourceRules = policy.resourceRules.map { it.copy(pathPrefixes = emptySet()) }),
+                )
+            }.isFailure,
         )
     }
 

@@ -12,6 +12,7 @@ import tw.kevinzhang.extension_api.NamedHostCapabilities
 import tw.kevinzhang.extension_api.NetworkOperationPolicy
 import tw.kevinzhang.extension_api.NetworkOperations
 import tw.kevinzhang.extension_api.NetworkRequestRule
+import tw.kevinzhang.extension_api.ResourceNetworkRule
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.sha256
 import java.io.File
@@ -130,6 +131,45 @@ class TrustedRepositoryClientTest {
         )
         val result = client.parseTargets(domain.baseUrl, targets(legacy), 3, 7, 99_000)
         assertEquals(1, result.trust.policies.single().sources.getValue("source.test").networkPolicy?.policyVersion)
+    }
+
+    @Test
+    fun `version three resource credentials require signed exact user agent and auth host`() {
+        val policy = validPolicy().copy(
+            policyVersion = 3,
+            resourceExactHosts = setOf("api.example.test", "cdn.example.test"),
+            authExactHosts = setOf("api.example.test"),
+            resourceRules = listOf(
+                ResourceNetworkRule(
+                    exactHosts = setOf("api.example.test"),
+                    credentialed = true,
+                    userAgent = "NewsHub Extension Browser/1.0",
+                    pathPrefixes = setOf("/attachments/"),
+                ),
+                ResourceNetworkRule(
+                    exactHosts = setOf("cdn.example.test"),
+                    pathPrefixes = setOf("/images/"),
+                ),
+            ),
+        )
+
+        val parsed = client.parseTargets(domain.baseUrl, targets(policy), 3, 7, 99_000)
+            .trust.policies.single().sources.getValue("source.test").networkPolicy
+
+        assertEquals(policy, parsed)
+        assertEquals(3, parsed?.policyVersion)
+        assertEquals("NewsHub Extension Browser/1.0", parsed?.resourceRules?.first()?.userAgent)
+
+        listOf(
+            policyObject(policy).also {
+                it.getAsJsonObject("resource").getAsJsonArray("rules")[0].asJsonObject
+                    .add("userAgent", com.google.gson.JsonNull.INSTANCE)
+            },
+            policyObject(policy).also {
+                it.getAsJsonObject("resource").getAsJsonArray("rules")[1].asJsonObject
+                    .addProperty("userAgent", "Unsigned widening")
+            },
+        ).forEach { invalid -> assertPolicyRejected(invalid, policy.sha256()) }
     }
 
     @Test
@@ -294,7 +334,7 @@ class TrustedRepositoryClientTest {
             add("exactHosts", JsonArray().apply { policy.exactHosts.sorted().forEach(::add) })
             add("operations", operations())
         } else {
-            addProperty("schemaVersion", 2)
+            addProperty("schemaVersion", policy.policyVersion)
             add("request", JsonObject().apply {
                 add("rules", JsonArray().apply {
                     policy.requestRules.forEach { rule ->
@@ -315,7 +355,32 @@ class TrustedRepositoryClientTest {
                     }
                 })
             })
-            add("resource", scope(policy.resourceExactHosts))
+            add("resource", if (policy.policyVersion == 2) {
+                scope(policy.resourceExactHosts)
+            } else {
+                JsonObject().apply {
+                    add("rules", JsonArray().apply {
+                        policy.resourceRules.forEach { rule ->
+                            add(scope(rule.exactHosts).apply {
+                                add(
+                                    "exactPaths",
+                                    JsonArray().apply { rule.exactPaths.sorted().forEach(::add) },
+                                )
+                                add(
+                                    "pathPrefixes",
+                                    JsonArray().apply { rule.pathPrefixes.sorted().forEach(::add) },
+                                )
+                                addProperty("credentialed", rule.credentialed)
+                                if (rule.userAgent == null) {
+                                    add("userAgent", com.google.gson.JsonNull.INSTANCE)
+                                } else {
+                                    addProperty("userAgent", rule.userAgent)
+                                }
+                            })
+                        }
+                    })
+                }
+            })
             add("external", scope(policy.externalExactHosts))
             add("auth", scope(policy.authExactHosts))
         }

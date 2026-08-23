@@ -11,6 +11,8 @@ import tw.kevinzhang.extension_api.AuthSpec
 import tw.kevinzhang.extension_api.OAuthAuthDescriptor
 import tw.kevinzhang.extension_api.OAuth1AuthDescriptor
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
+import tw.kevinzhang.extension_api.ResourceNetworkRule
+import tw.kevinzhang.extension_api.NetworkRequestRule
 import tw.kevinzhang.extension_api.SourceRuntimeDescriptor
 import tw.kevinzhang.extension_api.WebCookieAuthDescriptor
 
@@ -107,6 +109,52 @@ class SourceRuntimeDescriptorValidatorTest {
                 webCookieAuth = null,
                 webLoginUserAgent = "Browser/1.0",
             ),
+        )
+    }
+
+    @Test fun `credentialed resource user agent must exactly match signed policy and WebView`() {
+        val operation = NetworkOperationPolicy(
+            name = NetworkOperations.SOURCE_READ,
+            methods = setOf("GET"),
+            pathPrefixes = setOf("/"),
+        )
+        val signedPolicy = policy().copy(
+            exactHosts = setOf("api.example.com"),
+            operations = emptyMap(),
+            policyVersion = 3,
+            resourceExactHosts = setOf("api.example.com", "cdn.example.com"),
+            requestRules = listOf(NetworkRequestRule(setOf("api.example.com"), operation)),
+            resourceRules = listOf(
+                ResourceNetworkRule(
+                    setOf("api.example.com"),
+                    credentialed = true,
+                    userAgent = "NewsHub Extension Browser/1.0",
+                ),
+                ResourceNetworkRule(setOf("cdn.example.com")),
+            ),
+        )
+
+        assertEquals(
+            "NewsHub Extension Browser/1.0",
+            validateSourceRuntimeDescriptor(validRuntime(), manifest(), signedPolicy).webLoginUserAgent,
+        )
+        assertTrue(
+            runCatching {
+                validateSourceRuntimeDescriptor(
+                    validRuntime().copy(webLoginUserAgent = "Other Browser/1.0"),
+                    manifest(),
+                    signedPolicy,
+                )
+            }.isFailure,
+        )
+        assertTrue(
+            runCatching {
+                validateSourceRuntimeDescriptor(
+                    validRuntime().copy(webCookieAuth = null, webLoginUserAgent = null),
+                    manifest(),
+                    signedPolicy,
+                )
+            }.isFailure,
         )
     }
 

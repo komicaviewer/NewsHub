@@ -51,6 +51,8 @@ Do not put the password, private keys, Android keystore, or decrypted material i
 
 Edit the single `repository-config.json` file. Use `samples/extension-starter/repository-config.fragment.json` for the extension entry and [repository-config.schema.json](../schemas/repository-config.schema.json) for field constraints.
 
+The starter uses network policy v2, whose resources are always cookieless. For a site whose media requires the WebView cookie session, use [network-policy-v3.schema.json](../schemas/network-policy-v3.schema.json). Version 3 requires signed exact hosts, exact paths and/or path prefixes, and a User-Agent for every credentialed resource rule, and keeps public resource rules explicitly cookieless.
+
 The four metadata versions must increase after their signed content changes. Set short expiry periods for online roles:
 
 - `timestamp`: publish frequently and expire in two days

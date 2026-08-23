@@ -67,6 +67,18 @@ internal fun validateSourceRuntimeDescriptor(
             "Runtime Web login User-Agent contains control characters"
         }
     }
+    val signedResourceUserAgents = policy.resourceRules.asSequence()
+        .filter { it.credentialed }
+        .map { requireNotNull(it.userAgent) }
+        .toSet()
+    if (signedResourceUserAgents.isNotEmpty()) {
+        require(authSpec is AuthSpec.WebCookie) {
+            "Credentialed resources require WebCookie authentication"
+        }
+        require(userAgent != null && signedResourceUserAgents == setOf(userAgent)) {
+            "Runtime Web login User-Agent differs from signed resource policy"
+        }
+    }
 
     return ValidatedSourceRuntimeDescriptor(
         sourceVersion = runtime.sourceVersion,

@@ -21,6 +21,7 @@ import tw.kevinzhang.extension_api.NamedHostCapabilities
 import tw.kevinzhang.extension_api.NetworkOperationPolicy
 import tw.kevinzhang.extension_api.NetworkRequestRule
 import tw.kevinzhang.extension_api.NetworkOperations
+import tw.kevinzhang.extension_api.ResourceNetworkRule
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.canonicalJson
 import tw.kevinzhang.extension_api.sha256
@@ -483,13 +484,11 @@ internal class TrustedRepositoryClient(
             val version = policyObject.get("schemaVersion")?.takeIf {
                 it.isJsonPrimitive && it.asJsonPrimitive.isNumber
             }?.asInt ?: throw TrustedMetadataException("Invalid network policy version")
-            if (version != 2) throw TrustedMetadataException("Unsupported network policy version")
+            if (version !in 2..3) throw TrustedMetadataException("Unsupported network policy version")
             val request = policyObject.requiredObject("request").also {
                 it.requireExactKeys(setOf("rules"), "networkPolicy.request")
             }
-            val resource = policyObject.requiredObject("resource").also {
-                it.requireExactKeys(setOf("exactHosts"), "networkPolicy.resource")
-            }
+            val resource = policyObject.requiredObject("resource")
             val external = policyObject.requiredObject("external").also {
                 it.requireExactKeys(setOf("exactHosts"), "networkPolicy.external")
             }
@@ -497,15 +496,28 @@ internal class TrustedRepositoryClient(
                 it.requireExactKeys(setOf("exactHosts"), "networkPolicy.auth")
             }
             val requestRules = parseNetworkRequestRules(request)
+            val resourceRules = if (version == 2) {
+                resource.requireExactKeys(setOf("exactHosts"), "networkPolicy.resource")
+                emptyList()
+            } else {
+                resource.requireExactKeys(setOf("rules"), "networkPolicy.resource")
+                parseResourceRules(resource)
+            }
+            val resourceHosts = if (version == 2) {
+                parsePolicyHosts(resource, "exactHosts", allowEmpty = true)
+            } else {
+                resourceRules.flatMapTo(linkedSetOf(), ResourceNetworkRule::exactHosts)
+            }
             SourceNetworkPolicy(
                 exactHosts = requestRules.flatMapTo(linkedSetOf(), NetworkRequestRule::exactHosts),
                 operations = emptyMap(),
                 namedCapabilities = parseNamedCapabilities(policyObject),
-                policyVersion = 2,
-                resourceExactHosts = parsePolicyHosts(resource, "exactHosts", allowEmpty = true),
+                policyVersion = version,
+                resourceExactHosts = resourceHosts,
                 externalExactHosts = parsePolicyHosts(external, "exactHosts", allowEmpty = true),
                 authExactHosts = parsePolicyHosts(auth, "exactHosts", allowEmpty = true),
                 requestRules = requestRules,
+                resourceRules = resourceRules,
             )
         }.also { policy ->
             runCatching { policy.canonicalJson() }
@@ -560,6 +572,59 @@ internal class TrustedRepositoryClient(
         return rules
     }
 
+    private fun parseResourceRules(owner: JsonObject): List<ResourceNetworkRule> {
+        val elements = owner.requiredArray("rules")
+        if (elements.size() > MAX_POLICY_HOSTS) {
+            throw TrustedMetadataException("Invalid resource rule count")
+        }
+        val rules = elements.map { element ->
+            val rule = runCatching { element.asJsonObject }
+                .getOrElse { throw TrustedMetadataException("Invalid resource rule", it) }
+            rule.requireExactKeys(
+                setOf("exactHosts", "exactPaths", "pathPrefixes", "credentialed", "userAgent"),
+                "network resource rule",
+            )
+            val credentialed = rule.get("credentialed")?.takeIf {
+                it.isJsonPrimitive && it.asJsonPrimitive.isBoolean
+            }?.asBoolean ?: throw TrustedMetadataException("Invalid resource credential policy")
+            val userAgentElement = rule.get("userAgent")
+                ?: throw TrustedMetadataException("Missing resource User-Agent policy")
+            val userAgent = if (userAgentElement.isJsonNull) {
+                null
+            } else {
+                userAgentElement.requiredStringValue("resource User-Agent").also { value ->
+                    if (value.isBlank() || value.length > MAX_POLICY_USER_AGENT || value != value.trim() ||
+                        value.any { it.code < 0x20 || it.code == 0x7f }
+                    ) {
+                        throw TrustedMetadataException("Invalid resource User-Agent")
+                    }
+                }
+            }
+            if (credentialed != (userAgent != null)) {
+                throw TrustedMetadataException("Resource credentials require an exact User-Agent")
+            }
+            val pathPrefixes = parsePathPrefixes(rule)
+            val exactPaths = parseExactPaths(rule)
+            if (pathPrefixes.size + exactPaths.size > MAX_POLICY_PREFIXES) {
+                throw TrustedMetadataException("Too many resource paths")
+            }
+            ResourceNetworkRule(
+                exactHosts = parsePolicyHosts(rule, "exactHosts", allowEmpty = false),
+                credentialed = credentialed,
+                userAgent = userAgent,
+                pathPrefixes = pathPrefixes,
+                exactPaths = exactPaths,
+            )
+        }
+        if (rules.distinct().size != rules.size ||
+            rules.flatMap(ResourceNetworkRule::exactHosts).size !=
+            rules.flatMapTo(linkedSetOf(), ResourceNetworkRule::exactHosts).size
+        ) {
+            throw TrustedMetadataException("Duplicate or overlapping resource rule")
+        }
+        return rules
+    }
+
     private fun parseNetworkOperation(operation: JsonObject): NetworkOperationPolicy {
         operation.requireExactKeys(
             setOf("name", "methods", "pathPrefixes", "credentialed"),
@@ -577,7 +642,15 @@ internal class TrustedRepositoryClient(
             }
         }
         if (methods.size != methodElements.size()) throw TrustedMetadataException("Duplicate network method")
-        val prefixElements = operation.requiredArray("pathPrefixes")
+        val prefixes = parsePathPrefixes(operation)
+        val credentialed = operation.get("credentialed")?.takeIf {
+            it.isJsonPrimitive && it.asJsonPrimitive.isBoolean
+        }?.asBoolean ?: throw TrustedMetadataException("Invalid credentialed policy")
+        return NetworkOperationPolicy(name, methods, prefixes, credentialed)
+    }
+
+    private fun parsePathPrefixes(owner: JsonObject): Set<String> {
+        val prefixElements = owner.requiredArray("pathPrefixes")
         if (prefixElements.size() !in 1..MAX_POLICY_PREFIXES) {
             throw TrustedMetadataException("Invalid path prefix count")
         }
@@ -591,10 +664,25 @@ internal class TrustedRepositoryClient(
             }
         }
         if (prefixes.size != prefixElements.size()) throw TrustedMetadataException("Duplicate path prefix")
-        val credentialed = operation.get("credentialed")?.takeIf {
-            it.isJsonPrimitive && it.asJsonPrimitive.isBoolean
-        }?.asBoolean ?: throw TrustedMetadataException("Invalid credentialed policy")
-        return NetworkOperationPolicy(name, methods, prefixes, credentialed)
+        return prefixes
+    }
+
+    private fun parseExactPaths(owner: JsonObject): Set<String> {
+        val pathElements = owner.requiredArray("exactPaths")
+        if (pathElements.size() > MAX_POLICY_PREFIXES) {
+            throw TrustedMetadataException("Invalid exact resource path count")
+        }
+        val paths = pathElements.mapTo(linkedSetOf()) { pathElement ->
+            pathElement.requiredStringValue("exact resource path").also { path ->
+                if (path.length > 256 || !path.startsWith('/') ||
+                    path.any { it.code < 0x20 || it.code == 0x7f }
+                ) {
+                    throw TrustedMetadataException("Invalid exact resource path")
+                }
+            }
+        }
+        if (paths.size != pathElements.size()) throw TrustedMetadataException("Duplicate exact resource path")
+        return paths
     }
 
     private fun parseNamedCapabilities(owner: JsonObject): Set<String> {
@@ -727,6 +815,7 @@ internal class TrustedRepositoryClient(
         const val MAX_POLICY_METHODS = 2
         const val MAX_POLICY_PREFIXES = 16
         const val MAX_POLICY_CAPABILITIES = 16
+        const val MAX_POLICY_USER_AGENT = 512
         const val MAX_METADATA_BYTES = 4L * 1024 * 1024
         const val MAX_APK_BYTES = 64L * 1024 * 1024
         const val MAX_ACCEPTED_ARTIFACTS = 2

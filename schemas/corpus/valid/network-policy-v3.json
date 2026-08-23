@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 3,
+  "request": {
+    "rules": [
+      {
+        "exactHosts": ["forum.example.com"],
+        "operation": {
+          "name": "source_read",
+          "methods": ["GET", "HEAD"],
+          "pathPrefixes": ["/"],
+          "credentialed": true
+        }
+      }
+    ]
+  },
+  "resource": {
+    "rules": [
+      {
+        "exactHosts": ["forum.example.com"],
+        "exactPaths": [],
+        "pathPrefixes": ["/attachments/"],
+        "credentialed": true,
+        "userAgent": "NewsHub Extension Browser/1.0"
+      },
+      {
+        "exactHosts": ["cdn.example.com"],
+        "exactPaths": [],
+        "pathPrefixes": ["/images/"],
+        "credentialed": false,
+        "userAgent": null
+      }
+    ]
+  },
+  "external": { "exactHosts": ["forum.example.com"] },
+  "auth": { "exactHosts": ["forum.example.com"] },
+  "namedCapabilities": ["resource_read", "external_link"]
+}

@@ -203,9 +203,10 @@ def validate_network_policy(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise RepoError("networkPolicy must be an object")
     require_keys(value, {"schemaVersion", "request", "resource", "external", "auth", "namedCapabilities"}, "networkPolicy")
-    if value["schemaVersion"] != 2:
-        raise RepoError("networkPolicy.schemaVersion must be 2")
-    for scope in ("resource", "external", "auth"):
+    version = value["schemaVersion"]
+    if version not in {2, 3}:
+        raise RepoError("networkPolicy.schemaVersion must be 2 or 3")
+    for scope in ("external", "auth"):
         owner = value[scope]
         if not isinstance(owner, dict):
             raise RepoError(f"networkPolicy.{scope} must be an object")
@@ -213,6 +214,63 @@ def validate_network_policy(value: Any) -> dict[str, Any]:
         hosts = validate_string_set(owner["exactHosts"], f"networkPolicy.{scope}.exactHosts")
         if any(not is_exact_host(host) for host in hosts):
             raise RepoError(f"networkPolicy.{scope}.exactHosts requires canonical DNS hosts")
+    resource = value["resource"]
+    if not isinstance(resource, dict):
+        raise RepoError("networkPolicy.resource must be an object")
+    resource_hosts: set[str] = set()
+    if version == 2:
+        require_keys(resource, {"exactHosts"}, "networkPolicy.resource")
+        hosts = validate_string_set(resource["exactHosts"], "networkPolicy.resource.exactHosts")
+        if any(not is_exact_host(host) for host in hosts):
+            raise RepoError("networkPolicy.resource.exactHosts requires canonical DNS hosts")
+        resource_hosts.update(hosts)
+    else:
+        require_keys(resource, {"rules"}, "networkPolicy.resource")
+        resource_rules = resource["rules"]
+        if not isinstance(resource_rules, list) or len(resource_rules) > 32:
+            raise RepoError("networkPolicy.resource.rules must contain at most 32 rules")
+        seen_resource_hosts: set[str] = set()
+        for index, rule in enumerate(resource_rules):
+            label = f"networkPolicy.resource.rules[{index}]"
+            if not isinstance(rule, dict):
+                raise RepoError(f"{label} must be an object")
+            require_keys(rule, {"exactHosts", "exactPaths", "pathPrefixes", "credentialed", "userAgent"}, label)
+            hosts = validate_string_set(rule["exactHosts"], f"{label}.exactHosts", minimum=1)
+            if any(not is_exact_host(host) for host in hosts):
+                raise RepoError(f"{label}.exactHosts requires canonical DNS hosts")
+            overlap = seen_resource_hosts.intersection(hosts)
+            if overlap:
+                raise RepoError(f"{label}.exactHosts overlaps another resource rule")
+            seen_resource_hosts.update(hosts)
+            prefixes = validate_string_set(rule["pathPrefixes"], f"{label}.pathPrefixes", minimum=1, maximum=16)
+            if any(
+                len(item) > 256 or not item.startswith("/") or
+                any(ord(char) < 32 or ord(char) == 127 for char in item)
+                for item in prefixes
+            ):
+                raise RepoError(f"{label}.pathPrefixes contains an invalid prefix")
+            exact_paths = validate_string_set(rule["exactPaths"], f"{label}.exactPaths", maximum=16)
+            if len(prefixes) + len(exact_paths) > 16 or any(
+                len(item) > 256 or not item.startswith("/") or
+                any(ord(char) < 32 or ord(char) == 127 for char in item)
+                for item in exact_paths
+            ):
+                raise RepoError(f"{label}.exactPaths contains an invalid path")
+            credentialed = rule["credentialed"]
+            if not isinstance(credentialed, bool):
+                raise RepoError(f"{label}.credentialed must be boolean")
+            user_agent = rule["userAgent"]
+            valid_user_agent = (
+                isinstance(user_agent, str)
+                and user_agent == user_agent.strip()
+                and 1 <= len(user_agent) <= 512
+                and all(32 <= ord(char) != 127 for char in user_agent)
+            )
+            if credentialed != valid_user_agent:
+                raise RepoError(f"{label} credentials require an exact valid userAgent")
+            if not credentialed and user_agent is not None:
+                raise RepoError(f"{label}.userAgent must be null for public resources")
+            resource_hosts.update(hosts)
     request = value["request"]
     if not isinstance(request, dict):
         raise RepoError("networkPolicy.request must be an object")
@@ -237,10 +295,19 @@ def validate_network_policy(value: Any) -> dict[str, Any]:
         seen_rules.add(encoded)
         request_hosts.update(hosts)
     all_hosts = request_hosts.copy()
-    for scope in ("resource", "external", "auth"):
+    all_hosts.update(resource_hosts)
+    for scope in ("external", "auth"):
         all_hosts.update(value[scope]["exactHosts"])
     if len(request_hosts) > 32 or len(all_hosts) > 32:
         raise RepoError("networkPolicy contains more than 32 hosts")
+    credentialed_resource_hosts = {
+        host
+        for rule in value["resource"].get("rules", [])
+        if rule["credentialed"]
+        for host in rule["exactHosts"]
+    }
+    if not credentialed_resource_hosts.issubset(set(value["auth"]["exactHosts"])):
+        raise RepoError("credentialed resource hosts must be inside networkPolicy.auth.exactHosts")
     capabilities = validate_string_set(value["namedCapabilities"], "networkPolicy.namedCapabilities", maximum=16)
     unknown = set(capabilities) - KNOWN_CAPABILITIES
     if unknown:
@@ -250,7 +317,26 @@ def validate_network_policy(value: Any) -> dict[str, Any]:
 
 def network_policy_hash(policy: dict[str, Any]) -> str:
     validate_network_policy(policy)
-    return sha256(canonical_bytes(policy))
+    if policy["schemaVersion"] == 2:
+        # Preserve the already-published v2 producer contract byte-for-byte.
+        return sha256(canonical_bytes(policy))
+    normalized = json.loads(json.dumps(policy))
+    normalized["namedCapabilities"] = sorted(normalized["namedCapabilities"])
+    for scope in ("external", "auth"):
+        normalized[scope]["exactHosts"] = sorted(normalized[scope]["exactHosts"])
+    request_rules = normalized["request"]["rules"]
+    for rule in request_rules:
+        rule["exactHosts"] = sorted(rule["exactHosts"])
+        rule["operation"]["methods"] = sorted(rule["operation"]["methods"])
+        rule["operation"]["pathPrefixes"] = sorted(rule["operation"]["pathPrefixes"])
+    request_rules.sort(key=canonical_bytes)
+    resource_rules = normalized["resource"]["rules"]
+    for rule in resource_rules:
+        rule["exactHosts"] = sorted(rule["exactHosts"])
+        rule["exactPaths"] = sorted(rule["exactPaths"])
+        rule["pathPrefixes"] = sorted(rule["pathPrefixes"])
+    resource_rules.sort(key=canonical_bytes)
+    return sha256(canonical_bytes(normalized))
 
 
 def validate_source(source: Any, label: str) -> dict[str, Any]:
@@ -269,7 +355,12 @@ def validate_source(source: Any, label: str) -> dict[str, Any]:
     policy = validate_network_policy(source["networkPolicy"])
     hosts = {host for rule in policy["request"]["rules"] for host in rule["exactHosts"]}
     hosts.update(policy[scope]["exactHosts"] for scope in ())
-    all_hosts = hosts | set(policy["resource"]["exactHosts"]) | set(policy["external"]["exactHosts"]) | set(policy["auth"]["exactHosts"])
+    resource_hosts = (
+        set(policy["resource"]["exactHosts"])
+        if policy["schemaVersion"] == 2
+        else {host for rule in policy["resource"]["rules"] for host in rule["exactHosts"]}
+    )
+    all_hosts = hosts | resource_hosts | set(policy["external"]["exactHosts"]) | set(policy["auth"]["exactHosts"])
     if parsed.hostname.lower() not in all_hosts:
         raise RepoError(f"{label}.baseUrl host is outside networkPolicy")
     return source

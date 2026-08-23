@@ -8,6 +8,7 @@ import org.junit.Test
 import tw.kevinzhang.extension_api.NetworkOperationPolicy
 import tw.kevinzhang.extension_api.NetworkOperations
 import tw.kevinzhang.extension_api.NetworkRequestRule
+import tw.kevinzhang.extension_api.ResourceNetworkRule
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.SourceNetworkRequest
 import tw.kevinzhang.extension_api.SourceNetworkResponse
@@ -21,6 +22,7 @@ import tw.kevinzhang.extension_api.EynyChallengeProof
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 
 class SourceNetworkBrokerTest {
@@ -410,6 +412,79 @@ class SourceNetworkBrokerTest {
         assertTrue(runCatching { validateExternalLink("https://images.example.test/post/1", scoped) }.isFailure)
         assertTrue(runCatching { validateAuthUrl("https://api.example.test/session", scoped) }.isFailure)
         assertTrue(runCatching { validateAuthUrl("https://www.example.test/session", scoped) }.isFailure)
+    }
+
+    @Test fun `resource credentials and exact session user agent require signed version three rule`() {
+        val sessionUserAgent = "Mozilla/5.0 NewsHub-Cloudflare/1.0"
+        val v3 = SourceNetworkPolicy(
+            exactHosts = setOf("forum.example.test"),
+            operations = emptyMap(),
+            namedCapabilities = setOf(NamedHostCapabilities.RESOURCE_READ),
+            policyVersion = 3,
+            resourceExactHosts = setOf("forum.example.test", "cdn.example.test"),
+            externalExactHosts = emptySet(),
+            authExactHosts = setOf("forum.example.test"),
+            requestRules = listOf(
+                NetworkRequestRule(
+                    setOf("forum.example.test"),
+                    NetworkOperationPolicy(NetworkOperations.SOURCE_READ, setOf("GET"), setOf("/"), true),
+                ),
+            ),
+            resourceRules = listOf(
+                ResourceNetworkRule(
+                    setOf("forum.example.test"),
+                    true,
+                    sessionUserAgent,
+                    setOf("/attachment/"),
+                    setOf("/forum.php"),
+                ),
+                ResourceNetworkRule(
+                    setOf("cdn.example.test"),
+                    false,
+                    null,
+                    setOf("/public/"),
+                ),
+            ),
+        )
+
+        assertEquals(
+            AuthorizedResourceRequest(
+                "https://forum.example.test/attachment/1.jpg".toHttpUrl(),
+                credentialed = true,
+                userAgent = sessionUserAgent,
+            ),
+            authorizeResourceRequest("https://forum.example.test/attachment/1.jpg", v3),
+        )
+        assertTrue(
+            authorizeResourceRequest(
+                "https://forum.example.test/forum.php?mod=image&aid=1",
+                v3,
+            ).credentialed,
+        )
+        assertTrue(runCatching {
+            authorizeResourceRequest("https://forum.example.test/forum.php-extra", v3)
+        }.isFailure)
+        assertEquals(
+            AuthorizedResourceRequest(
+                "https://cdn.example.test/public/image.jpg".toHttpUrl(),
+                credentialed = false,
+                userAgent = null,
+            ),
+            authorizeResourceRequest("https://cdn.example.test/public/image.jpg", v3),
+        )
+        assertTrue(runCatching {
+            authorizeResourceRequest("https://forum.example.test/member.php?action=logout", v3)
+        }.isFailure)
+        assertTrue(runCatching {
+            authorizeResourceRequest("https://cdn.example.test/private.jpg", v3)
+        }.isFailure)
+
+        val legacy = v3.copy(
+            policyVersion = 2,
+            resourceRules = emptyList(),
+        )
+        assertFalse(authorizeResourceRequest("https://forum.example.test/attachment/1.jpg", legacy).credentialed)
+        assertEquals(null, authorizeResourceRequest("https://forum.example.test/attachment/1.jpg", legacy).userAgent)
     }
 
     @Test fun `Gamer board API is public while forum rule is credentialed`() {

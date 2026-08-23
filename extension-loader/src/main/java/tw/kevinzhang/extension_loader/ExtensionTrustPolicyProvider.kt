@@ -340,7 +340,7 @@ private fun validateSignedNetworkPolicy(policy: SourceNetworkPolicy) {
         NamedHostCapabilities.PTT_ADULT_CONSENT_STATUS,
         NamedHostCapabilities.EYNY_CHALLENGE_PROOF,
     )
-    require(policy.policyVersion == 1 || policy.policyVersion == 2) {
+    require(policy.policyVersion in 1..3) {
         "Signed policy has an unsupported version"
     }
     val scopedHosts = listOf(
@@ -376,7 +376,7 @@ private fun validateSignedNetworkPolicy(policy: SourceNetworkPolicy) {
             "Signed policy contains an unknown network operation"
         }
     } else {
-        require(policy.operations.isEmpty()) { "Version 2 policy must use request rules" }
+        require(policy.operations.isEmpty()) { "Version 2+ policy must use request rules" }
     }
     require(policy.requestRules.isNotEmpty() && policy.requestRules.size <= MAX_REQUEST_RULES)
     require(policy.requestRules.all { rule ->
@@ -390,9 +390,9 @@ private fun validateSignedNetworkPolicy(policy: SourceNetworkPolicy) {
     require(policy.requestRules.distinct().size == policy.requestRules.size) {
         "Signed policy contains duplicate request rules"
     }
-    if (policy.policyVersion == 2) {
+    if (policy.policyVersion >= 2) {
         require(policy.requestRules.flatMapTo(linkedSetOf()) { it.exactHosts } == policy.exactHosts) {
-            "Version 2 request hosts do not match the rule host union"
+            "Version 2+ request hosts do not match the rule host union"
         }
     }
     require(policy.namedCapabilities.all { it in knownCapabilities }) {

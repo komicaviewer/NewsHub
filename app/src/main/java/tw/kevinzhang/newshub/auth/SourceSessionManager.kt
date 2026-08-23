@@ -390,6 +390,17 @@ internal fun validateExternalLink(url: String, policy: SourceNetworkPolicy): Htt
 }
 
 internal fun validateResourceUrl(url: String, policy: SourceNetworkPolicy): HttpUrl {
+    return authorizeResourceRequest(url, policy).url
+}
+
+internal data class AuthorizedResourceRequest(
+    val url: HttpUrl,
+    val credentialed: Boolean,
+    val userAgent: String?,
+)
+
+/** Resolves one signed resource rule; legacy policies deliberately remain cookieless. */
+internal fun authorizeResourceRequest(url: String, policy: SourceNetworkPolicy): AuthorizedResourceRequest {
     require(NamedHostCapabilities.RESOURCE_READ in policy.namedCapabilities) {
         "Resource capability is not authorized"
     }
@@ -400,7 +411,22 @@ internal fun validateResourceUrl(url: String, policy: SourceNetworkPolicy): Http
         "Resource host is not authorized"
     }
     require(!parsed.host.matches(Regex("[0-9.]+")) && ':' !in parsed.host) { "Resource IP is forbidden" }
-    return parsed
+    if (policy.policyVersion < 3) {
+        return AuthorizedResourceRequest(parsed, credentialed = false, userAgent = null)
+    }
+    val rules = policy.resourceRules.filter { rule ->
+        parsed.host.lowercase(Locale.ROOT) in rule.exactHosts &&
+            (parsed.encodedPath in rule.exactPaths || rule.pathPrefixes.any(parsed.encodedPath::startsWith))
+    }
+    require(rules.size == 1) { "Resource host has ambiguous credential authority" }
+    val rule = rules.single()
+    require(!rule.credentialed || rule.userAgent != null) {
+        "Credentialed resource omitted its exact User-Agent"
+    }
+    require(rule.credentialed || rule.userAgent == null) {
+        "Public resource cannot inject a session User-Agent"
+    }
+    return AuthorizedResourceRequest(parsed, rule.credentialed, rule.userAgent)
 }
 
 private fun SourceIdentity.storageKey(): String = sourceStorageKey(this)

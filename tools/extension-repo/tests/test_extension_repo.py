@@ -29,6 +29,25 @@ class NetworkPolicyCorpusTest(unittest.TestCase):
         with self.assertRaises(repo_tool.RepoError):
             repo_tool.validate_network_policy(policy)
 
+    def test_v3_credentialed_resource_policy_is_canonical_and_bounded(self):
+        policy = json.loads((ROOT / "schemas/corpus/valid/network-policy-v3.json").read_text())
+        repo_tool.validate_network_policy(policy)
+        self.assertEqual(
+            "3c6c6b1b85031c873f962b0b53716725972b569c02a1c5d99f70d55035ef9c7a",
+            repo_tool.network_policy_hash(policy),
+        )
+
+        for mutation in (
+            lambda value: value["resource"]["rules"][0].update(userAgent=None),
+            lambda value: value["resource"]["rules"][0].update(userAgent="Other/1.0\nInjected"),
+            lambda value: value["resource"]["rules"][1].update(userAgent="Unexpected/1.0"),
+            lambda value: value["auth"].update(exactHosts=[]),
+        ):
+            invalid = json.loads(json.dumps(policy))
+            mutation(invalid)
+            with self.assertRaises(repo_tool.RepoError):
+                repo_tool.validate_network_policy(invalid)
+
     def test_policy_requires_exact_fields(self):
         policy = json.loads((ROOT / "schemas/corpus/valid/network-policy-v2.json").read_text())
         policy["request"]["proxy"] = True

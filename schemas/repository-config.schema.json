@@ -93,7 +93,12 @@
         "baseUrl": { "type": "string", "format": "uri", "pattern": "^https://" },
         "service": { "type": "string", "minLength": 1 },
         "protocol": { "const": 2 },
-        "networkPolicy": { "$ref": "network-policy-v2.schema.json" }
+        "networkPolicy": {
+          "oneOf": [
+            { "$ref": "network-policy-v2.schema.json" },
+            { "$ref": "network-policy-v3.schema.json" }
+          ]
+        }
       }
     },
     "extension": {

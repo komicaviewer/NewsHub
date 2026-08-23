@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://newshub.example/schemas/network-policy-v3.schema.json",
+  "title": "NewsHub network policy v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "request", "resource", "external", "auth", "namedCapabilities"],
+  "properties": {
+    "schemaVersion": { "const": 3 },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rules"],
+      "properties": {
+        "rules": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "network-policy-v2.schema.json#/$defs/requestRule" }
+        }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rules"],
+      "properties": {
+        "rules": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/resourceRule" }
+        }
+      }
+    },
+    "external": { "$ref": "network-policy-v2.schema.json#/$defs/hostScope" },
+    "auth": { "$ref": "network-policy-v2.schema.json#/$defs/hostScope" },
+    "namedCapabilities": {
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["resource_read", "external_link", "ptt_adult_consent_status", "eyny_challenge_proof"]
+      }
+    }
+  },
+  "$defs": {
+    "resourceRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exactHosts", "exactPaths", "pathPrefixes", "credentialed", "userAgent"],
+      "properties": {
+        "exactHosts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "network-policy-v2.schema.json#/$defs/exactHost" }
+        },
+        "pathPrefixes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^/" }
+        },
+        "exactPaths": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^/" }
+        },
+        "credentialed": { "type": "boolean" },
+        "userAgent": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[^\\u0000-\\u001f\\u007f]+$" }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "credentialed": { "const": true } } },
+          "then": { "properties": { "userAgent": { "type": "string" } } },
+          "else": { "properties": { "userAgent": { "type": "null" } } }
+        }
+      ]
+    }
+  }
+}
