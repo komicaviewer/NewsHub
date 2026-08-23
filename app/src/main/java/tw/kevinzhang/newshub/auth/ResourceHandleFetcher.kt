@@ -9,6 +9,7 @@ import coil.request.Options
 import okio.Buffer
 import tw.kevinzhang.extension_api.HostResourceProvider
 import tw.kevinzhang.extension_api.ResourceHandle
+import tw.kevinzhang.newshub.ui.component.ResourceModel
 
 /** Coil fetcher that recognizes only Host-issued opaque resource handles. */
 class ResourceHandleFetcher private constructor(
@@ -27,10 +28,8 @@ class ResourceHandleFetcher private constructor(
 
     class Factory(
         private val resourceProvider: HostResourceProvider,
-    ) : Fetcher.Factory<String> {
-        override fun create(data: String, options: Options, imageLoader: ImageLoader): Fetcher? {
-            val handle = ResourceHandle.parse(data) ?: return null
-            return ResourceHandleFetcher(handle, options, resourceProvider)
-        }
+    ) : Fetcher.Factory<ResourceModel> {
+        override fun create(data: ResourceModel, options: Options, imageLoader: ImageLoader): Fetcher =
+            ResourceHandleFetcher(data.handle, options, resourceProvider)
     }
 }
