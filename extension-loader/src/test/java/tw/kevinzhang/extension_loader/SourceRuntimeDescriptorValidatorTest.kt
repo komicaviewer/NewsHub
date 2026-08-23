@@ -9,6 +9,7 @@ import tw.kevinzhang.extension_api.NetworkOperationPolicy
 import tw.kevinzhang.extension_api.NetworkOperations
 import tw.kevinzhang.extension_api.AuthSpec
 import tw.kevinzhang.extension_api.OAuthAuthDescriptor
+import tw.kevinzhang.extension_api.OAuth1AuthDescriptor
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.SourceRuntimeDescriptor
 import tw.kevinzhang.extension_api.WebCookieAuthDescriptor
@@ -67,6 +68,20 @@ class SourceRuntimeDescriptorValidatorTest {
             valid.copy(sourceVersion = 0),
             valid.copy(needsLogin = true, webCookieAuth = null, webLoginUserAgent = null),
         ).forEach(::assertInvalid)
+    }
+
+    @Test fun `validates OAuth 1 registration without accepting secrets from an extension`() {
+        val runtime = validRuntime().copy(
+            webCookieAuth = null,
+            webLoginUserAgent = null,
+            oauth1Auth = OAuth1AuthDescriptor("plurk", "plurk-mobile"),
+        )
+
+        assertEquals(
+            AuthSpec.OAuth1("plurk", "plurk-mobile"),
+            validateSourceRuntimeDescriptor(runtime, manifest(), policy()).authSpec,
+        )
+        assertInvalid(runtime.copy(oauthAuth = OAuthAuthDescriptor("reddit", "reddit-installed", setOf("read"))))
     }
 
     @Test fun `rejects URLs hosts origins domains and user agents outside canonical signed surface`() {

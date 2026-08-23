@@ -41,6 +41,7 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.inject.Inject
 import javax.inject.Singleton
 import tw.kevinzhang.newshub.auth.oauth.OAuthCredentialProvider
+import tw.kevinzhang.newshub.auth.oauth.OAuth1CredentialProvider
 
 private const val COOKIE_PREFS = "source_cookie_sessions"
 private const val KEYSTORE = "AndroidKeyStore"
@@ -53,6 +54,7 @@ class SourceSessionManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val baseClient: OkHttpClient,
     private val oauthCredentialProvider: OAuthCredentialProvider,
+    private val oauth1CredentialProvider: OAuth1CredentialProvider,
 ) : HostBrokerProvider, HostResourceProvider {
     private val sessions = mutableMapOf<String, SourceSession>()
     private val sourceIdentities = mutableMapOf<String, String>()
@@ -76,11 +78,14 @@ class SourceSessionManager @Inject constructor(
             sourceIdentities[identity.sourceId] = storageKey
         }
         val sourceSession = session(identity.sourceId)
-        if (oauthCredentialProvider.hasCredential(identity)) sourceSession.setState(AuthState.Unknown)
+        if (oauthCredentialProvider.hasCredential(identity) || oauth1CredentialProvider.hasCredential(identity)) {
+            sourceSession.setState(AuthState.Unknown)
+        }
         val broker = SourceNetworkBroker(
             baseClient,
             sourceSession.jar,
             oauthCredentialProvider,
+            oauth1CredentialProvider,
             identity,
             policy,
         )

@@ -30,6 +30,12 @@ android {
         manifestPlaceholders.redditOAuthClientId = providers.gradleProperty("REDDIT_OAUTH_CLIENT_ID")
                 .orElse(providers.environmentVariable("REDDIT_OAUTH_CLIENT_ID"))
                 .getOrElse("")
+        manifestPlaceholders.plurkConsumerKey = providers.gradleProperty("PLURK_CONSUMER_KEY")
+                .orElse(providers.environmentVariable("PLURK_CONSUMER_KEY"))
+                .getOrElse("")
+        manifestPlaceholders.plurkConsumerSecret = providers.gradleProperty("PLURK_CONSUMER_SECRET")
+                .orElse(providers.environmentVariable("PLURK_CONSUMER_SECRET"))
+                .getOrElse("")
     }
 
     signingConfigs {

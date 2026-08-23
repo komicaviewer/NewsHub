@@ -6,6 +6,8 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
 import tw.kevinzhang.newshub.auth.oauth.OAuthProviderAdapter
+import tw.kevinzhang.newshub.auth.oauth.OAuth1ProviderAdapter
+import tw.kevinzhang.newshub.auth.oauth.PlurkOAuth1ProviderAdapter
 import tw.kevinzhang.newshub.auth.oauth.RedditOAuthProviderAdapter
 
 @Module
@@ -14,4 +16,8 @@ abstract class OAuthModule {
     @Binds
     @IntoSet
     abstract fun bindRedditOAuthProvider(adapter: RedditOAuthProviderAdapter): OAuthProviderAdapter
+
+    @Binds
+    @IntoSet
+    abstract fun bindPlurkOAuth1Provider(adapter: PlurkOAuth1ProviderAdapter): OAuth1ProviderAdapter
 }

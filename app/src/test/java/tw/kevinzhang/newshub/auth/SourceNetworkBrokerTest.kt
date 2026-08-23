@@ -21,6 +21,7 @@ import tw.kevinzhang.extension_api.EynyChallengeProof
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
+import okhttp3.Request
 
 class SourceNetworkBrokerTest {
     private val policy = SourceNetworkPolicy(
@@ -49,6 +50,19 @@ class SourceNetworkBrokerTest {
             policy,
         )
         assertEquals("news.example", url.host)
+    }
+
+    @Test fun `only bearer 401 is eligible for one refresh retry`() {
+        val bearer = Request.Builder().url("https://news.example/threads/1")
+            .header("Authorization", "Bearer expired")
+            .build()
+        val oauth1 = bearer.newBuilder()
+            .header("Authorization", "OAuth oauth_signature=\"signed\"")
+            .build()
+
+        assertTrue(shouldRetryBearer401(bearer, networkResponse(401)))
+        assertFalse(shouldRetryBearer401(oauth1, networkResponse(401)))
+        assertFalse(shouldRetryBearer401(bearer, networkResponse(403)))
     }
 
     @Test fun `rejects same-host mutation confused deputy`() {

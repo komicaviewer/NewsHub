@@ -52,6 +52,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import tw.kevinzhang.newshub.auth.oauth.OAuthCredentialProvider
+import tw.kevinzhang.newshub.auth.oauth.OAuth1CredentialProvider
 
 private val FORBIDDEN_EXTENSION_HEADERS = setOf(
     "authorization",
@@ -83,6 +84,7 @@ internal class SourceNetworkBroker(
     private val baseClient: OkHttpClient,
     private val cookieJar: CookieJar,
     private val oauthCredentialProvider: OAuthCredentialProvider,
+    private val oauth1CredentialProvider: OAuth1CredentialProvider,
     private val identity: SourceIdentity,
     private val policy: SourceNetworkPolicy,
 ) : IHostBroker.Stub() {
@@ -343,8 +345,17 @@ internal class SourceNetworkBroker(
                 networkRequest.headers.forEach { (name, value) -> addHeader(name, value) }
                 hostHeaders.forEach { (name, value) -> header(name, value) }
                 if (credentialed) {
-                    oauthCredentialProvider.authorizationHeader(identity, url, forceRefresh = forceRefresh)
-                        ?.let { bearer -> header("Authorization", bearer) }
+                    val bearer = oauthCredentialProvider.authorizationHeader(
+                        identity,
+                        url,
+                        forceRefresh = forceRefresh,
+                    )
+                    if (bearer != null) {
+                        header("Authorization", bearer)
+                    } else {
+                        oauth1CredentialProvider.authorizationHeader(identity, networkRequest.method, url)
+                            ?.let { oauth1 -> header("Authorization", oauth1) }
+                    }
                 }
             }.build()
 
@@ -371,7 +382,7 @@ internal class SourceNetworkBroker(
         return try {
             val initialRequest = buildRequest(forceRefresh = false)
             val initialResponse = executeOnce(initialRequest)
-            if (initialResponse.code == 401 && initialRequest.header("Authorization") != null) {
+            if (shouldRetryBearer401(initialRequest, initialResponse)) {
                 val refreshedRequest = buildRequest(forceRefresh = true)
                 if (refreshedRequest.header("Authorization") != null) {
                     executeOnce(refreshedRequest)
@@ -386,6 +397,10 @@ internal class SourceNetworkBroker(
         }
     }
 }
+
+internal fun shouldRetryBearer401(request: Request, response: SourceNetworkResponse): Boolean =
+    response.code == 401 &&
+        request.header("Authorization")?.startsWith("Bearer ", ignoreCase = true) == true
 
 internal fun executeNamedCookieOperation(
     identity: SourceIdentity,

@@ -5,6 +5,7 @@ import java.util.Locale
 import tw.kevinzhang.extension_api.AuthSpec
 import tw.kevinzhang.extension_api.ExtensionProtocol
 import tw.kevinzhang.extension_api.OAuthAuthDescriptor
+import tw.kevinzhang.extension_api.OAuth1AuthDescriptor
 import tw.kevinzhang.extension_api.SourceNetworkPolicy
 import tw.kevinzhang.extension_api.SourceRuntimeDescriptor
 import tw.kevinzhang.extension_api.WebCookieAuthDescriptor
@@ -44,11 +45,14 @@ internal fun validateSourceRuntimeDescriptor(
         }
     }
 
-    require(runtime.webCookieAuth == null || runtime.oauthAuth == null) {
+    val authMechanismCount = listOf(runtime.webCookieAuth, runtime.oauthAuth, runtime.oauth1Auth)
+        .count { it != null }
+    require(authMechanismCount <= 1) {
         "Runtime Source must declare exactly one authentication mechanism"
     }
     val authSpec: AuthSpec? = runtime.webCookieAuth?.validated(policy)
         ?: runtime.oauthAuth?.validated(policy)
+        ?: runtime.oauth1Auth?.validated(policy)
     require(!runtime.needsLogin || authSpec != null) {
         "Runtime Source requiring login must declare authentication"
     }
@@ -74,6 +78,19 @@ internal fun validateSourceRuntimeDescriptor(
         webLoginUserAgent = userAgent,
         supportsThreadSummaryPages = runtime.supportsThreadSummaryPages,
     )
+}
+
+private fun OAuth1AuthDescriptor.validated(policy: SourceNetworkPolicy): AuthSpec.OAuth1 {
+    require(providerId.matches(Regex("[a-z][a-z0-9._-]{0,63}"))) {
+        "Runtime OAuth 1 provider id is invalid"
+    }
+    require(clientRegistrationId.matches(Regex("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"))) {
+        "Runtime OAuth 1 client registration id is invalid"
+    }
+    require(policy.authExactHosts.isNotEmpty()) {
+        "Runtime OAuth 1 authentication requires a signed authentication host scope"
+    }
+    return AuthSpec.OAuth1(providerId, clientRegistrationId)
 }
 
 private fun OAuthAuthDescriptor.validated(policy: SourceNetworkPolicy): AuthSpec.OAuth {

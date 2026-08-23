@@ -65,6 +65,14 @@
         <meta-data
             android:name="newshub.oauth.reddit.client_id"
             android:value="${redditOAuthClientId}" />
+        <!-- OAuth 1 requires a consumer secret. It is injected at build time and never sent to
+             extensions, but a mobile APK cannot make an application-level secret unrecoverable. -->
+        <meta-data
+            android:name="newshub.oauth1.plurk.consumer_key"
+            android:value="${plurkConsumerKey}" />
+        <meta-data
+            android:name="newshub.oauth1.plurk.consumer_secret"
+            android:value="${plurkConsumerSecret}" />
     </application>
 
 </manifest>

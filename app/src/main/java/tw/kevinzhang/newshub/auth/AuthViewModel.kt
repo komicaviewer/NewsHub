@@ -17,6 +17,7 @@ import tw.kevinzhang.extension_api.WebLoginUserAgentProvider
 import tw.kevinzhang.extension_loader.ExtensionLoader
 import tw.kevinzhang.newshub.auth.oauth.OAuthAuthorizationLaunch
 import tw.kevinzhang.newshub.auth.oauth.OAuthCoordinator
+import tw.kevinzhang.newshub.auth.oauth.OAuth1Coordinator
 import javax.inject.Inject
 
 data class WebLoginRequest(
@@ -81,6 +82,7 @@ class AuthViewModel @Inject constructor(
     private val extensionLoader: ExtensionLoader,
     private val sessionManager: SourceSessionManager,
     private val oauthCoordinator: OAuthCoordinator,
+    private val oauth1Coordinator: OAuth1Coordinator,
 ) : ViewModel() {
     val authStates = sessionManager.states
     private val _webLoginUiState = MutableStateFlow(WebLoginStateReducer.clear())
@@ -120,6 +122,23 @@ class AuthViewModel @Inject constructor(
                 sessionManager.beginLogin(sourceId)
                 _oauthLoginUiState.value = OAuthLoginUiState(launch = launch)
             }
+            is AuthSpec.OAuth1 -> {
+                val identity = source.sourceIdentity
+                if (identity == null) {
+                    _oauthLoginUiState.value = OAuthLoginUiState(errorMessage = OAUTH_UNAVAILABLE_MESSAGE)
+                    return
+                }
+                sessionManager.beginLogin(sourceId)
+                viewModelScope.launch {
+                    val launch = runCatching { oauth1Coordinator.begin(identity, spec) }
+                        .getOrElse {
+                            sessionManager.markSignedOut(sourceId)
+                            _oauthLoginUiState.value = OAuthLoginUiState(errorMessage = OAUTH_UNAVAILABLE_MESSAGE)
+                            return@launch
+                        }
+                    _oauthLoginUiState.value = OAuthLoginUiState(launch = launch)
+                }
+            }
         }
     }
 
@@ -132,6 +151,7 @@ class AuthViewModel @Inject constructor(
 
     fun reportOAuthLaunchFailure(sourceId: String) {
         oauthCoordinator.cancel(sourceId)
+        oauth1Coordinator.cancel(sourceId)
         sessionManager.markSignedOut(sourceId)
         _oauthLoginUiState.value = OAuthLoginUiState(errorMessage = OAUTH_BROWSER_MESSAGE)
     }
@@ -207,6 +227,11 @@ class AuthViewModel @Inject constructor(
             is AuthSpec.OAuth -> {
                 source.sourceIdentity?.let(oauthCoordinator::logout)
                 oauthCoordinator.cancel(sourceId)
+                sessionManager.markSignedOut(sourceId)
+            }
+            is AuthSpec.OAuth1 -> {
+                source.sourceIdentity?.let(oauth1Coordinator::logout)
+                oauth1Coordinator.cancel(sourceId)
                 sessionManager.markSignedOut(sourceId)
             }
         }

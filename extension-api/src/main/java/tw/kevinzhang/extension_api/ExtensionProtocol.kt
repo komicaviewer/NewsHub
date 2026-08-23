@@ -172,6 +172,7 @@ data class SourceRuntimeDescriptor(
     /** Optional fields keep wire compatibility with already-published protocol-v2 services. */
     val oauthAuth: OAuthAuthDescriptor? = null,
     val supportsThreadSummaryPages: Boolean = false,
+    val oauth1Auth: OAuth1AuthDescriptor? = null,
 )
 
 /** Wire representation of every field in [AuthSpec.WebCookie]. */
@@ -188,6 +189,12 @@ data class OAuthAuthDescriptor(
     val providerId: String,
     val clientRegistrationId: String,
     val scopes: Set<String>,
+)
+
+/** Wire representation of every extension-controlled field in [AuthSpec.OAuth1]. */
+data class OAuth1AuthDescriptor(
+    val providerId: String,
+    val clientRegistrationId: String,
 )
 
 /**
@@ -327,7 +334,7 @@ private suspend fun executeSourceOperation(source: Source, operation: Int, reque
 internal fun Source.toRuntimeDescriptor(): SourceRuntimeDescriptor {
     val authSpec = (this as? AuthenticatedSource)?.authSpec
     val webCookie = when (authSpec) {
-        null, AuthSpec.None, is AuthSpec.OAuth -> null
+        null, AuthSpec.None, is AuthSpec.OAuth, is AuthSpec.OAuth1 -> null
         is AuthSpec.WebCookie -> WebCookieAuthDescriptor(
             loginUrl = authSpec.loginUrl,
             allowedHosts = authSpec.allowedHosts,
@@ -342,7 +349,14 @@ internal fun Source.toRuntimeDescriptor(): SourceRuntimeDescriptor {
             clientRegistrationId = authSpec.clientRegistrationId,
             scopes = authSpec.scopes,
         )
-        null, AuthSpec.None, is AuthSpec.WebCookie -> null
+        null, AuthSpec.None, is AuthSpec.WebCookie, is AuthSpec.OAuth1 -> null
+    }
+    val oauth1 = when (authSpec) {
+        is AuthSpec.OAuth1 -> OAuth1AuthDescriptor(
+            providerId = authSpec.providerId,
+            clientRegistrationId = authSpec.clientRegistrationId,
+        )
+        null, AuthSpec.None, is AuthSpec.WebCookie, is AuthSpec.OAuth -> null
     }
     return SourceRuntimeDescriptor(
         protocolVersion = ExtensionProtocol.VERSION,
@@ -358,6 +372,7 @@ internal fun Source.toRuntimeDescriptor(): SourceRuntimeDescriptor {
         webLoginUserAgent = (this as? WebLoginUserAgentProvider)?.webLoginUserAgent,
         oauthAuth = oauth,
         supportsThreadSummaryPages = true,
+        oauth1Auth = oauth1,
     )
 }
 

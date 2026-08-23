@@ -153,6 +153,16 @@ sealed interface AuthSpec {
         val clientRegistrationId: String,
         val scopes: Set<String>,
     ) : AuthSpec
+
+    /**
+     * A provider-neutral OAuth 1.0a registration owned by the Host. Consumer credentials,
+     * temporary request-token secrets, access-token secrets, signatures, and callback
+     * verification never cross the isolated extension boundary.
+     */
+    data class OAuth1(
+        val providerId: String,
+        val clientRegistrationId: String,
+    ) : AuthSpec
 }
 
 /**
