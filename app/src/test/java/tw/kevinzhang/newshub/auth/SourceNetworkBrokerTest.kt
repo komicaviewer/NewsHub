@@ -557,42 +557,44 @@ class SourceNetworkBrokerTest {
     }
 
     @Test fun `EYNY capability blindly writes only fixed proof cookies`() {
-        val jar = RecordingCookieJar()
-        val now = 1_800_000_000_000L
-        val proof = EynyChallengeProof(
-            host = "www52.eyny.com",
-            cookiePrefix = "9bd3f9c",
-            nonce = 119_310,
-            timestamp = "1784585056",
-            challenge = "0979c1c29ad14faae09cf23af6e79666",
-        )
-        val result = executeNamedCookieOperation(
-            identity = SourceIdentity(
-                "tw.kevinzhang.newshub.extension.eyny",
-                "trusted-signer",
-                "tw.kevinzhang.eyny",
-            ),
-            policy = SourceNetworkPolicy(
-                exactHosts = setOf("eyny.com", "www.eyny.com", "www52.eyny.com", "www53.eyny.com"),
-                operations = emptyMap(),
-                namedCapabilities = setOf(NamedHostCapabilities.EYNY_CHALLENGE_PROOF),
-                authExactHosts = setOf("eyny.com", "www.eyny.com", "www52.eyny.com", "www53.eyny.com"),
-            ),
-            cookieJar = jar,
-            operation = ExtensionProtocol.COOKIE_OP_EYNY_CHALLENGE_PROOF,
-            payload = ExtensionWireJson.encode(proof),
-            now = now,
-        )
-        assertTrue(ExtensionWireJson.decode<Boolean>(result))
-        assertEquals(6, jar.saved.size)
-        assertEquals(
-            setOf("9bd3f9c_n", "9bd3f9c_ts", "9bd3f9c_ch"),
-            jar.saved.mapTo(linkedSetOf()) { it.name },
-        )
-        assertEquals(setOf("www52.eyny.com", "eyny.com"), jar.saved.mapTo(linkedSetOf()) { it.domain })
-        assertTrue(jar.saved.all { it.path == "/" && it.secure })
-        assertTrue(jar.saved.all { it.expiresAt == now + 86_400_000L })
-        assertFalse(jar.saved.any { it.name == "session" || it.name == "auth" })
+        listOf("www51.eyny.com", "www52.eyny.com", "www54.eyny.com").forEach { host ->
+            val jar = RecordingCookieJar()
+            val now = 1_800_000_000_000L
+            val proof = EynyChallengeProof(
+                host = host,
+                cookiePrefix = "9bd3f9c",
+                nonce = 119_310,
+                timestamp = "1784585056",
+                challenge = "0979c1c29ad14faae09cf23af6e79666",
+            )
+            val result = executeNamedCookieOperation(
+                identity = SourceIdentity(
+                    "tw.kevinzhang.newshub.extension.eyny",
+                    "trusted-signer",
+                    "tw.kevinzhang.eyny",
+                ),
+                policy = SourceNetworkPolicy(
+                    exactHosts = setOf("eyny.com", "www.eyny.com", "www51.eyny.com", "www52.eyny.com", "www53.eyny.com", "www54.eyny.com"),
+                    operations = emptyMap(),
+                    namedCapabilities = setOf(NamedHostCapabilities.EYNY_CHALLENGE_PROOF),
+                    authExactHosts = setOf("eyny.com", "www.eyny.com", "www51.eyny.com", "www52.eyny.com", "www53.eyny.com", "www54.eyny.com"),
+                ),
+                cookieJar = jar,
+                operation = ExtensionProtocol.COOKIE_OP_EYNY_CHALLENGE_PROOF,
+                payload = ExtensionWireJson.encode(proof),
+                now = now,
+            )
+            assertTrue(ExtensionWireJson.decode<Boolean>(result))
+            assertEquals(6, jar.saved.size)
+            assertEquals(
+                setOf("9bd3f9c_n", "9bd3f9c_ts", "9bd3f9c_ch"),
+                jar.saved.mapTo(linkedSetOf()) { it.name },
+            )
+            assertEquals(setOf(host, "eyny.com"), jar.saved.mapTo(linkedSetOf()) { it.domain })
+            assertTrue(jar.saved.all { it.path == "/" && it.secure })
+            assertTrue(jar.saved.all { it.expiresAt == now + 86_400_000L })
+            assertFalse(jar.saved.any { it.name == "session" || it.name == "auth" })
+        }
     }
 
     @Test fun `EYNY apex proof avoids duplicate RFC cookie identities`() {
@@ -604,10 +606,10 @@ class SourceNetworkBrokerTest {
                 "tw.kevinzhang.eyny",
             ),
             policy = SourceNetworkPolicy(
-                exactHosts = setOf("eyny.com", "www.eyny.com", "www52.eyny.com", "www53.eyny.com"),
+                exactHosts = setOf("eyny.com", "www.eyny.com", "www51.eyny.com", "www52.eyny.com", "www53.eyny.com", "www54.eyny.com"),
                 operations = emptyMap(),
                 namedCapabilities = setOf(NamedHostCapabilities.EYNY_CHALLENGE_PROOF),
-                authExactHosts = setOf("eyny.com", "www.eyny.com", "www52.eyny.com", "www53.eyny.com"),
+                authExactHosts = setOf("eyny.com", "www.eyny.com", "www51.eyny.com", "www52.eyny.com", "www53.eyny.com", "www54.eyny.com"),
             ),
             cookieJar = jar,
             operation = ExtensionProtocol.COOKIE_OP_EYNY_CHALLENGE_PROOF,

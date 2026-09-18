@@ -217,8 +217,10 @@ data class EynyChallengeProof(
 private val EYNY_CHALLENGE_HOSTS = setOf(
     "eyny.com",
     "www.eyny.com",
+    "www51.eyny.com",
     "www52.eyny.com",
     "www53.eyny.com",
+    "www54.eyny.com",
 )
 
 interface NamedCookieCapability {

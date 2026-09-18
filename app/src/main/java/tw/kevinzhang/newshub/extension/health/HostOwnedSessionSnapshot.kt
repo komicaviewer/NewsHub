@@ -43,8 +43,10 @@ class HostOwnedSessionSnapshot private constructor(
                 origins = setOf(
                     "https://eyny.com",
                     "https://www.eyny.com",
+                    "https://www51.eyny.com",
                     "https://www52.eyny.com",
                     "https://www53.eyny.com",
+                    "https://www54.eyny.com",
                 ),
                 parentDomains = setOf("eyny.com"),
                 userAgentProfileId = "eyny-android14-chrome120-v1",

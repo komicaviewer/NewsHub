@@ -47,10 +47,12 @@ class HostOwnedSessionSnapshotTest {
 
     @Test
     fun eynySnapshotAcceptsOnlyReviewedRotatingOrigins() {
-        val snapshot = decode(eynySnapshot("www52.eyny.com"))
-
-        assertEquals("www52.eyny.com", snapshot.sessions.single().cookies.single().domain)
-        assertInvalid(eynySnapshot("www54.eyny.com"))
+        listOf("www51.eyny.com", "www52.eyny.com", "www53.eyny.com", "www54.eyny.com").forEach { host ->
+            val snapshot = decode(eynySnapshot(host))
+            assertEquals(host, snapshot.sessions.single().cookies.single().domain)
+        }
+        assertInvalid(eynySnapshot("www55.eyny.com"))
+        assertInvalid(eynySnapshot("attacker.www54.eyny.com"))
     }
 
     private fun assertInvalid(raw: String) {
