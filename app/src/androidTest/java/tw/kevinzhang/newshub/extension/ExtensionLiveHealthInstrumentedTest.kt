@@ -9,7 +9,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withTimeout
 import org.junit.Test
 import org.junit.runner.RunWith
 import tw.kevinzhang.newshub.extension.health.ExtensionHealthJson
@@ -114,8 +114,12 @@ class ExtensionLiveHealthInstrumentedTest {
             bootstrapOperation = EXTENSION_REFRESH_OPERATION
             entryPoint.manager().refreshAllExtensionsAndAwait()
             val expectedSourceIds = profile.sources.mapTo(linkedSetOf(), SourceHealthProfile::sourceId)
-            withTimeoutOrNull(SOURCE_SETTLE_TIMEOUT_MS) {
-                while (entryPoint.loader().sourcesFlow.value.mapTo(linkedSetOf()) { it.id } != expectedSourceIds) {
+            // Await the loader's projection of the completed scan, including genuine quarantines.
+            // A timed-out scan/projection is a harness failure, never evidence that every Source failed.
+            val publishedSourceIds = entryPoint.manager().installedExtensions.value
+                .flatMap { it.sources }.mapTo(linkedSetOf()) { it.id }
+            withTimeout(SOURCE_SETTLE_TIMEOUT_MS) {
+                while (entryPoint.loader().sourcesFlow.value.mapTo(linkedSetOf()) { it.id } != publishedSourceIds) {
                     delay(SOURCE_SETTLE_POLL_MS)
                 }
             }

@@ -31,12 +31,12 @@ import tw.kevinzhang.extension_api.SourceIdentity
 import java.io.File
 import java.security.MessageDigest
 import java.nio.file.Paths
-import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val FILE_PROVIDER_AUTHORITY_SUFFIX = ".provider"
 private const val TAG = "ExtensionManager"
+private const val REFRESH_TIMEOUT_MS = 120_000L
 
 data class QuarantinedExtension(
     val packageName: String,
@@ -55,7 +55,7 @@ class ExtensionManager @Inject constructor(
     private val activeConnections = mutableListOf<RemoteSourceConnection>()
     private val activeIdentities = mutableListOf<SourceIdentity>()
     private val refreshMutex = Mutex()
-    private val refreshGeneration = AtomicLong()
+    private val refreshCompletion = ExtensionRefreshCompletion()
     private val _installedExtensions = MutableStateFlow<List<InstalledExtension>>(emptyList())
     val installedExtensions: StateFlow<List<InstalledExtension>> = _installedExtensions.asStateFlow()
     private val _quarantinedExtensions = MutableStateFlow<List<QuarantinedExtension>>(emptyList())
@@ -97,7 +97,7 @@ class ExtensionManager @Inject constructor(
     }
 
     fun refreshAllExtensions() {
-        val generation = refreshGeneration.incrementAndGet()
+        val generation = refreshCompletion.request()
         scope.launch {
             refresh(generation)
         }
@@ -105,11 +105,12 @@ class ExtensionManager @Inject constructor(
 
     /** Deterministic refresh boundary used by install orchestration and device-level verification. */
     suspend fun refreshAllExtensionsAndAwait() {
-        refresh(refreshGeneration.incrementAndGet())
+        val generation = refreshCompletion.request()
+        refreshCompletion.await(generation, REFRESH_TIMEOUT_MS) { refresh(generation) }
     }
 
     private suspend fun refresh(generation: Long) = refreshMutex.withLock {
-        if (generation != refreshGeneration.get()) return@withLock
+        if (!refreshCompletion.isCurrent(generation)) return@withLock
         synchronized(activeConnections) {
             // Revoke every Host capability before the explicit Service unbind.
             activeIdentities.forEach(resourceProvider::revoke)
@@ -120,7 +121,7 @@ class ExtensionManager @Inject constructor(
         // Never expose RemoteSource objects whose connections were just revoked.
         _installedExtensions.value = emptyList()
         val scan = scanInstalledExtensions()
-        if (generation != refreshGeneration.get()) {
+        if (!refreshCompletion.isCurrent(generation)) {
             scan.identities.forEach(resourceProvider::revoke)
             scan.connections.forEach(RemoteSourceConnection::close)
             return@withLock
@@ -131,6 +132,7 @@ class ExtensionManager @Inject constructor(
         }
         _quarantinedExtensions.value = scan.quarantined
         _installedExtensions.value = scan.installed
+        refreshCompletion.published(generation)
     }
 
     fun notifyPackageChanged(packageName: String) = refreshAllExtensions()
