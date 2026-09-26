@@ -80,11 +80,21 @@ object ExtensionHealthProfileSelection {
             "tw.kevinzhang.wtako",
         ),
         candidate(
+            "candidate-komica-twocat-v1",
+            "tw.kevinzhang.newshub.extension.komica",
+            "tw.kevinzhang.komica.twocat",
+        ),
+        candidate(
             "candidate-komica2-v1",
             "tw.kevinzhang.newshub.extension.komica2",
             "tw.kevinzhang.komica2.twocat",
             "tw.kevinzhang.komica2.sora",
             "tw.kevinzhang.komica2.zawarudo",
+        ),
+        candidate(
+            "candidate-komica2-twocat-v1",
+            "tw.kevinzhang.newshub.extension.komica2",
+            "tw.kevinzhang.komica2.twocat",
         ),
         candidate(
             "candidate-mobile01-v1",

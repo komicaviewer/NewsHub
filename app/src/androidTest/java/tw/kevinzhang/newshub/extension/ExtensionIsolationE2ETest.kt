@@ -206,6 +206,32 @@ class ExtensionIsolationE2ETest {
         assertEquals(SOURCE_POLICIES.size, entryPoint.manager().quarantinedExtensions.value.size)
     }
 
+    @Test
+    fun partialHealthSelectionExpandsOnlyToItsTrustedPackageSources() {
+        listOf("komica" to 5, "komica2" to 3).forEach { (bundle, count) ->
+            val requested = setOf("tw.kevinzhang.$bundle.twocat")
+            val expanded = completePackageSourceIds(requested)
+            assertEquals(count, expanded.size)
+            assertTrue(expanded.containsAll(requested))
+            assertEquals(
+                setOf("tw.kevinzhang.newshub.extension.$bundle"),
+                SOURCE_POLICIES.filter { it.sourceId in expanded }.map { it.packageName }.toSet(),
+            )
+        }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            completePackageSourceIds(setOf("unknown.source"))
+        }
+    }
+
+    internal fun completePackageSourceIds(sourceIds: Set<String>): Set<String> {
+        val selected = SOURCE_POLICIES.filter { it.sourceId in sourceIds }
+        require(selected.mapTo(linkedSetOf()) { it.sourceId } == sourceIds) {
+            "Unknown Source requested by health profile"
+        }
+        val packages = selected.mapTo(linkedSetOf()) { it.packageName }
+        return SOURCE_POLICIES.filter { it.packageName in packages }.mapTo(linkedSetOf()) { it.sourceId }
+    }
+
     @Suppress("DEPRECATION")
     internal fun snapshot(
         context: Context,
@@ -216,9 +242,11 @@ class ExtensionIsolationE2ETest {
         pinInstalledSigner: Boolean = false,
         expectedVersionDelta: Long = 0,
         acceptInstalledArtifact: Boolean = false,
+        includeCompletePackages: Boolean = false,
     ): VerifiedExtensionTrustSnapshot {
-        val selectedPolicies = SOURCE_POLICIES.filter { it.sourceId in sourceIds }
-        require(selectedPolicies.mapTo(linkedSetOf()) { it.sourceId } == sourceIds) {
+        val trustedSourceIds = if (includeCompletePackages) completePackageSourceIds(sourceIds) else sourceIds
+        val selectedPolicies = SOURCE_POLICIES.filter { it.sourceId in trustedSourceIds }
+        require(selectedPolicies.mapTo(linkedSetOf()) { it.sourceId } == trustedSourceIds) {
             "Unknown Source requested by health profile"
         }
         val packagePolicies = selectedPolicies.groupBy { it.packageName }.map { (packageName, sources) ->

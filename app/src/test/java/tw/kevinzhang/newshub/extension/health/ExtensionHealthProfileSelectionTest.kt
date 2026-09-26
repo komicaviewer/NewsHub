@@ -47,6 +47,42 @@ class ExtensionHealthProfileSelectionTest {
     }
 
     @Test
+    fun twocatCandidatesSelectOnlyTheirSourceAndLimitRequestsToThree() {
+        val full = officialProfile()
+        listOf("komica", "komica2").forEach { bundle ->
+            val profileId = "candidate-$bundle-twocat-v1"
+            val selection = ExtensionHealthProfileSelection.selectionFor(profileId)
+            val selected = selection.select(full)
+
+            assertEquals(profileId, selected.profileId)
+            assertEquals("extension-health/profile-v1.json", selection.assetPath)
+            assertEquals(listOf("tw.kevinzhang.$bundle.twocat"), selected.sources.map { it.sourceId })
+            assertEquals("tw.kevinzhang.newshub.extension.$bundle", selected.sources.single().packageName)
+            assertEquals(3, selected.maxRequests)
+            assertFalse(selected.sources.single().requireAuthenticatedSession)
+            assertFalse(selection.allowAuthPending)
+        }
+    }
+
+    @Test
+    fun twocatCandidatesRejectMissingSourcesAndUnexpectedPackages() {
+        val full = officialProfile()
+        listOf("komica", "komica2").forEach { bundle ->
+            val selection = ExtensionHealthProfileSelection.selectionFor("candidate-$bundle-twocat-v1")
+            val sourceId = "tw.kevinzhang.$bundle.twocat"
+
+            assertThrows(IllegalArgumentException::class.java) {
+                selection.select(full.copy(sources = full.sources.filterNot { it.sourceId == sourceId }))
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                selection.select(full.copy(sources = full.sources.map { source ->
+                    if (source.sourceId == sourceId) source.copy(packageName = "unexpected.extension") else source
+                }))
+            }
+        }
+    }
+
+    @Test
     fun publicRecurringProfileKeepsAllThirteenAndUsesOperationLevelAuthentication() {
         val full = officialProfile()
         val selection = ExtensionHealthProfileSelection.selectionFor(

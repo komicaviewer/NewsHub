@@ -101,19 +101,24 @@ class ExtensionLiveHealthInstrumentedTest {
             // this dynamic fixture is not a replacement for production TUF metadata.
             bootstrapOperation = TRUST_FIXTURE_OPERATION
             entryPoint.trustProvider().clear()
+            // The verifier admits whole APK service sets, even when the probe targets one Source.
+            // Expand only through the fixed Host catalog; keep actual probes scoped to the profile.
+            val trustSnapshot = ExtensionIsolationE2ETest().snapshot(
+                context = context,
+                targetsVersion = 1,
+                validPins = true,
+                validContent = true,
+                sourceIds = profile.sources.mapTo(linkedSetOf()) { it.sourceId },
+                pinInstalledSigner = true,
+                includeCompletePackages = true,
+            )
             entryPoint.trustProvider().installVerifiedSnapshot(
-                ExtensionIsolationE2ETest().snapshot(
-                    context = context,
-                    targetsVersion = 1,
-                    validPins = true,
-                    validContent = true,
-                    sourceIds = profile.sources.mapTo(linkedSetOf()) { it.sourceId },
-                    pinInstalledSigner = true,
-                ),
+                trustSnapshot,
             )
             bootstrapOperation = EXTENSION_REFRESH_OPERATION
             entryPoint.manager().refreshAllExtensionsAndAwait()
             val expectedSourceIds = profile.sources.mapTo(linkedSetOf(), SourceHealthProfile::sourceId)
+            val trustedSourceIds = trustSnapshot.policies.flatMapTo(linkedSetOf()) { it.sources.keys }
             // Await the loader's projection of the completed scan, including genuine quarantines.
             // A timed-out scan/projection is a harness failure, never evidence that every Source failed.
             val publishedSourceIds = entryPoint.manager().installedExtensions.value
@@ -124,13 +129,13 @@ class ExtensionLiveHealthInstrumentedTest {
                 }
             }
             val sources = entryPoint.loader().sourcesFlow.value
-            check(sources.mapTo(linkedSetOf()) { it.id }.all { it in expectedSourceIds }) {
+            check(sources.mapTo(linkedSetOf()) { it.id }.all { it in trustedSourceIds }) {
                 "Unexpected Source escaped the health trust snapshot"
             }
             bootstrapOperation = HEALTH_RUNNER_OPERATION
             ExtensionHealthRunner().run(
                 profile = profile,
-                sources = sources,
+                sources = sources.filter { it.id in expectedSourceIds },
                 loadFailureClassesByPackage = entryPoint.manager().quarantinedExtensions.value
                     .associate { quarantine ->
                         quarantine.packageName to classifyQuarantinedLoadFailure(quarantine.reason)
