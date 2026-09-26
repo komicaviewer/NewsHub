@@ -1,0 +1,149 @@
+name: Host health incident
+description: 回報 NewsHub host policy、runtime 或健康檢查失敗
+title: "[Host health] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        此表單用於可公開的 Host health incident。請只提供已去識別化、可安全公開且能重現判斷的證據。
+
+        **請勿貼上 credentials、token、cookie、登入狀態、raw logs、原始 response 或 screenshots。** 敏感材料應保留在 private operations storage。
+
+  - type: input
+    id: summary
+    attributes:
+      label: 摘要
+      description: 用一句話描述故障、影響與目前需要的處置。
+      placeholder: 例如：Source catalog 與 Host allowlist 不一致，需要 owner 補上精確 host
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: 填寫穩定且精確的 Source ID；若影響多個 Source，請分別建立事件。
+      placeholder: 例如：tw.kevinzhang.example
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operation
+    attributes:
+      label: Operation
+      description: 選擇最先出現可判定失敗的操作。
+      options:
+        - get_boards
+        - get_board_page
+        - get_thread_summaries
+        - get_thread_page
+        - get_thread
+        - source_attach
+        - extension_load
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: failure_class
+    attributes:
+      label: Failure class
+      description: 使用 ops 正規化後的 failure class。
+      options:
+        - host-policy
+        - host-regression
+    validations:
+      required: true
+
+  - type: dropdown
+    id: policy_layer
+    attributes:
+      label: Policy layer
+      description: 使用 ops 正規化後的 policy layer；若尚未判定，選 unknown。
+      options:
+        - health-profile
+        - signed-target
+        - network-contract
+        - host-runtime
+        - unknown
+    validations:
+      required: true
+
+  - type: input
+    id: target_host
+    attributes:
+      label: Target host
+      description: 預期 request 應到達的精確 hostname；不適用時填 N/A。不要使用 wildcard 或完整 URL。
+      placeholder: 例如：forum.example.com
+    validations:
+      required: true
+
+  - type: input
+    id: observed_host
+    attributes:
+      label: Observed host
+      description: 實際觀察到的精確 hostname；尚未到達網路層或不適用時填 N/A。不要使用 wildcard 或完整 URL。
+      placeholder: 例如：www.example.com
+    validations:
+      required: true
+
+  - type: textarea
+    id: allowed_hosts
+    attributes:
+      label: Allowed hosts
+      description: 每行填寫一個目前允許的精確 hostname；不適用時填 N/A。不要使用 wildcard。
+      placeholder: |
+        forum.example.com
+        static.example.com
+    validations:
+      required: true
+
+  - type: dropdown
+    id: repair_disposition
+    attributes:
+      label: Repair disposition
+      description: 說明這個事件目前可採取的處置層級。
+      options:
+        - needs-owner
+        - observe
+    validations:
+      required: true
+
+  - type: textarea
+    id: public_evidence
+    attributes:
+      label: 公開證據
+      description: 提供 sanitized 結果、精確 commit SHA、公開 artifact 或 repo 內證據路徑。不要貼 raw logs、原始 response、登入狀態或 screenshots。
+      placeholder: |
+        - NewsHub commit：<40-character SHA>
+        - Public report/artifact：<URL or artifact ID>
+        - Evidence path：<repo-relative path>
+        - Observed at：<UTC timestamp>
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy 聲明
+      description: 提交前確認所有內容均可公開。
+      options:
+        - label: 我確認未附上 credentials、token、cookie、登入狀態、raw logs、原始 response、個人資料或 screenshots；敏感材料只保留在 private operations storage。
+          required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 驗收／結案條件
+      description: 列出可重跑且可明確判定 pass/fail 的條件；需涵蓋原失敗 operation，不能只以 build 成功結案。
+      placeholder: |
+        - [ ] 在相同 pinned Source／NewsHub 版本重跑原失敗 operation 並通過
+        - [ ] 公開健康報告顯示預期 terminal status
+        - [ ] 未放寬成 wildcard，且未洩漏敏感證據
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        > 本 Issue 不授權自動放寬 network policy、建立 wildcard allowlist 或自動合併。自動化建立的 Issue 另會附上 `health-fingerprint` 與 `newshub-host-health:v1` metadata，以供 lifecycle 去重與重開。
