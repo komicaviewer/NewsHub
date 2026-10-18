@@ -1,0 +1,17 @@
+// Build the existing device dev App, preserving its package and repository trust anchors.
+allprojects {
+    plugins.withId('com.android.application') {
+        android.buildTypes.debug.applicationIdSuffix = '.debug'
+    }
+    if (project.path == ':marketplace') {
+        plugins.withId('com.android.library') {
+            def trustedRoot = layout.projectDirectory.file('src/main/assets/extension-root.json').asFile
+            if (!trustedRoot.isFile()) {
+                throw new GradleException('Dev App build requires the existing trusted repository root')
+            }
+            // src/debug/assets contains synthetic keys for isolated tests. The installed dev App
+            // uses the same main root as its previous APK; never replace that trust with a fixture.
+            android.sourceSets.debug.assets.setSrcDirs([])
+        }
+    }
+}

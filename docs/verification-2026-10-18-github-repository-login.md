@@ -41,3 +41,11 @@ App 管理頁：https://github.com/organizations/komicaviewer/settings/applicati
 ## 成本與執行生命週期
 
 本次無雲端部署、付費 build、dev server 或持續計費資源；只建立 GitHub OAuth App 與執行本機／連接裝置測試。沒有常駐付費容量。
+
+## ASUS 既有 dev App 覆蓋更新（後續實機驗收）
+
+- 使用者已提供原 debug.keystore 並指定為預設；憑證 SHA-256 為 `5d8d88556c9b3b5f56847637aea4a4395161e46cb1a05a6047795b8a5b3bbdd1`，與 ASUS 既有 `tw.kevinzhang.newshub.debug` APK 相同。
+- SDK 已移至 `%LOCALAPPDATA%/Android/Sdk`；建置前核對預設金鑰，建置後核對實際 application ID 與 APK 憑證，再以 `adb install -r` 更新。沒有卸載或清除資料，firstInstallTime 維持 `2026-10-16 02:28:58`，既有收藏名稱仍可見。
+- 初次 dev 組建因 debug assets 的合成 root fixture 蓋過 main root，出現 timestamp signature threshold 0/1。比對發現舊 APK root 與 main root 完全一致；改用 `scripts/dev/dev-app.init.gradle` 保留原 root，未改動任何根金鑰或放寬簽章驗證。重新更新後 Marketplace 成功顯示已驗證的 extensions，Boards 恢復顯示 EYNY、Gamer 等來源。
+- 實際 UI 已顯示三種來源入口；選取「登入 GitHub」可見登入按鈕與授權說明，沒有「尚未設定」錯誤。截圖：本機 `.tmp/github-login/asus-manage-repos.png`。
+- 尚未代使用者按下 GitHub repo 授權；真人授權、私有 repo 選取與登出恢復的真實端到端驗收仍待使用者操作。Sora 圖片驗收收藏曾顯示時間軸載入失敗，未將此次來源清單恢復當成其圖片流程已通過。
