@@ -228,12 +228,13 @@ private fun ExtensionListItem(
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
-            if (info.iconUrl != null) {
+            val iconModel = bundledExtensionIcon(info.id, info.repositoryDomainId) ?: info.iconUrl
+            if (iconModel != null) {
                 AsyncImage(
-                    model = info.iconUrl,
+                    model = iconModel,
                     contentDescription = info.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize().padding(4.dp),
                 )
             } else {
                 Text(
@@ -315,12 +316,13 @@ private fun ExtensionDetailSheet(
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
-            if (info.iconUrl != null) {
+            val iconModel = bundledExtensionIcon(info.id, info.repositoryDomainId) ?: info.iconUrl
+            if (iconModel != null) {
                 AsyncImage(
-                    model = info.iconUrl,
+                    model = iconModel,
                     contentDescription = info.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize().padding(6.dp),
                 )
             } else {
                 Text(
