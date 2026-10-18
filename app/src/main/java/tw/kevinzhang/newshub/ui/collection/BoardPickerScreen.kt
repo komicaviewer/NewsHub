@@ -101,6 +101,7 @@ fun BoardPickerScreen(
                 onLoadNextPage = viewModel::loadNextPage,
                 onRetry = viewModel::retry,
                 onRetrySource = viewModel::retrySource,
+                onRefresh = viewModel::refresh,
             )
         }
     }
@@ -169,6 +170,7 @@ private fun BoardCatalogContent(
     onLoadNextPage: (String) -> Unit,
     onRetry: () -> Unit,
     onRetrySource: (String) -> Unit,
+    onRefresh: () -> Unit = onRetry,
 ) {
     val selectedByKey = remember(selectedBoards) { selectedBoards.associateBy(SelectedBoard::key) }
     val visibleSources = remember(state.sources, state.selectedSourceId, state.query, selectedByKey) {
@@ -211,6 +213,7 @@ private fun BoardCatalogContent(
                 onSourceSelect = onSourceSelect,
                 onCategorySelect = onCategorySelect,
             )
+            TextButton(onClick = onRefresh, enabled = !state.isRefreshing) { Text("更新目錄") }
         }
 
         if (state.isRefreshing) {
@@ -236,7 +239,7 @@ private fun BoardCatalogContent(
             }
         }
 
-        if (!state.isRefreshing && visibleSources.all { it.boards.isEmpty() }) {
+        if (!state.isRefreshing && state.failures.isEmpty() && visibleSources.all { it.boards.isEmpty() }) {
             item(key = "empty_results") {
                 EmptyResultsContent(
                     when {
@@ -255,6 +258,11 @@ private fun BoardCatalogContent(
                     selectedCount = selectedBoards.count { it.sourceId == source.id },
                     isFromCache = sourceWithBoards.isFromCache,
                 )
+            }
+            item(key = "catalog_info:${source.id}") {
+                Text(tw.kevinzhang.newshub.ui.boards.boardCatalogStatusText(sourceWithBoards.catalogInfo),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall)
             }
             items(sourceWithBoards.boards, key = { "${source.id}:${it.url}" }) { board ->
                 val identity = source.sourceIdentity ?: return@items

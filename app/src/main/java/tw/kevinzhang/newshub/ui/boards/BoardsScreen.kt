@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -287,54 +288,45 @@ fun BoardGroupDetailScreen(
             )
         },
     ) { padding ->
-        when {
-            isLoading -> Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
-            group == null -> Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) { Text("找不到此 group") }
-            group.loadState is SourceBoardState.Failed -> Box(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                SourceBoardFailureCard(
-                    source = group.source,
-                    failure = group.loadState.failure,
-                    onRetry = { viewModel.retrySource(group.source.id) },
-                    onLogin = { onLoginClick(group.source.id) },
-                )
-            }
-            group.loadState == SourceBoardState.Loading -> Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
-            group.loadState == SourceBoardState.EmptySuccessfully -> Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) { Text("此來源目前沒有看板") }
-            group.loadState == SourceBoardState.LoginRequired -> Box(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                SourceBoardLoginRequired(onLogin = { onLoginClick(group.source.id) })
-            }
-            else -> LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(vertical = 4.dp),
-            ) {
-                items(group.boards, key = { "${group.source.id}:${it.url}" }) { board ->
-                    BoardRow(
-                        source = group.source,
-                        board = board,
-                        collections = collections,
-                        onOpenWebsite = openBoardWebsite,
-                        onAddToCollections = { collectionIds ->
-                            viewModel.addBoardToCollections(collectionIds, board, group.source)
-                        },
-                    )
+        Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
+            val catalog = group?.catalog ?: BoardCatalogState()
+            var input by remember(sourceId) { mutableStateOf(catalog.query.text) }
+            BoardSearchControls(
+                query = input, loading = catalog.firstPageLoading, info = catalog.catalogInfo,
+                onQuery = { input = it; viewModel.searchBoards(sourceId, it) },
+                onRefresh = { viewModel.refreshBoards(sourceId) },
+            )
+            when {
+                isLoading || catalog.firstPageLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                group == null -> Text("找不到此論壇", Modifier.padding(24.dp))
+                group.loadState == SourceBoardState.LoginRequired -> SourceBoardLoginRequired(onLogin = { onLoginClick(sourceId) })
+                else -> {
+                    catalog.firstPageFailure?.let { failure ->
+                        SourceBoardFailureCard(group.source, failure,
+                            onRetry = { viewModel.retrySource(sourceId) }, onLogin = { onLoginClick(sourceId) })
+                    }
+                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
+                        if (catalog.boards.isEmpty() && catalog.firstPageFailure == null) item {
+                            Text(boardSearchEmptyText(input), Modifier.padding(24.dp))
+                        }
+                        items(catalog.boards, key = { "${group.source.id}:${it.url}" }) { board ->
+                            BoardRow(source = group.source, board = board, collections = collections,
+                                onOpenWebsite = openBoardWebsite,
+                                onAddToCollections = { ids -> viewModel.addBoardToCollections(ids, board, group.source) })
+                        }
+                        catalog.moreFailure?.let { failure -> item {
+                            SourceBoardFailureCard(group.source, failure,
+                                onRetry = { viewModel.loadMoreBoards(sourceId) }, onLogin = { onLoginClick(sourceId) })
+                            TextButton(onClick = { viewModel.refreshBoards(sourceId) }) { Text("重新載入第一頁") }
+                        } }
+                        if (catalog.moreLoading) item {
+                            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                        } else if (catalog.nextPageToken != null && catalog.moreFailure == null) item {
+                            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                TextButton(onClick = { viewModel.loadMoreBoards(sourceId) }) { Text("載入更多") }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -425,7 +417,7 @@ private fun SourceHeader(
             }
             if (boardCount != null) {
                 TextButton(onClick = onViewAll) {
-                    Text("查看全部 $boardCount 個")
+                    Text("查看推薦看板")
                     Icon(
                         Icons.AutoMirrored.Outlined.ArrowForward,
                         contentDescription = null,
