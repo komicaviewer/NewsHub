@@ -17,6 +17,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RepositoryContentTransportTest {
+    @Test fun `GitHub subdirectory stays inside repository and ref is encoded once`() = runBlocking {
+        val client = clientResponding { chain ->
+            assertEquals("https://api.github.com/repos/acme/private-repo/contents/%E5%A5%97%E4%BB%B6/repo/metadata/root.json?ref=release%2Fv1", chain.request().url.toString())
+            response(chain.request(), 200, ROOT_BYTES)
+        }
+        val transport = RepositoryContentTransport(client, "https://github.com/acme/private-repo",
+            RepositoryAccessDescriptor.githubContents("release/v1", "套件/repo"), "domain", { RepositoryAccessCredential.githubToken("token") })
+        assertArrayEquals(ROOT_BYTES, transport.fetchRequired(VIRTUAL_ROOT, 1024))
+    }
+
+    @Test fun `repository directories reject encoded traversal and external paths`() {
+        listOf("../repo", "%2e%2e/repo", "a\\b", "https://evil.test", "/root", "a//b").forEach {
+            assertThrows(IllegalArgumentException::class.java) { RepositoryAccessDescriptor.githubContents("main", it) }
+        }
+    }
+
     @Test
     fun `GitHub transport maps virtual path and sends only required auth headers`() = runBlocking {
         val token = "github_pat_secret_value"

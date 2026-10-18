@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import tw.kevinzhang.marketplace.MarketplaceRepository
 import tw.kevinzhang.marketplace.RepositoryAccessDescriptor
 import tw.kevinzhang.marketplace.RepositoryAccessKind
+import tw.kevinzhang.marketplace.RepositoryCredentialBinding
 import tw.kevinzhang.marketplace.RepositoryCredentialStore
 import tw.kevinzhang.marketplace.RepositoryDomainState
 import tw.kevinzhang.marketplace.RepositoryTrustDomain
@@ -146,6 +147,8 @@ internal fun encodeRepositoryDomains(domains: Collection<RepositoryTrustDomain>)
                     domain.rootKeyFingerprints.sorted().forEach(::add)
                 })
                 addProperty("accessKind", domain.access.kind.name)
+                addProperty("accessBinding", domain.access.credentialBinding.name)
+                addProperty("repositoryPath", domain.access.repositoryPath)
                 domain.access.revision?.let { addProperty("accessRevision", it) }
             })
         }
@@ -169,6 +172,10 @@ internal fun decodeRepositoryDomains(value: String): List<RepositoryTrustDomain>
                     ?.let(RepositoryAccessKind::valueOf)
                     ?: RepositoryAccessKind.PUBLIC_HTTPS,
                 revision = item.get("accessRevision")?.asString,
+                repositoryPath = item.get("repositoryPath")?.asString ?: "",
+                credentialBinding = item.get("accessBinding")?.asString?.let(RepositoryCredentialBinding::valueOf)
+                    ?: if (item.get("accessKind")?.asString == "GITHUB_CONTENTS") RepositoryCredentialBinding.MANUAL_PAT
+                    else RepositoryCredentialBinding.NONE,
             ),
         )
     }

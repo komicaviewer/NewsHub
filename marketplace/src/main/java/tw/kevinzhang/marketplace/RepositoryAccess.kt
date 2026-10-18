@@ -5,12 +5,23 @@ import java.io.IOException
 
 /** The non-secret transport configuration that is safe to persist with a trust domain. */
 enum class RepositoryAccessKind { PUBLIC_HTTPS, GITHUB_CONTENTS }
+enum class RepositoryCredentialBinding { NONE, MANUAL_PAT, GITHUB_ACCOUNT }
 
 data class RepositoryAccessDescriptor(
     val kind: RepositoryAccessKind = RepositoryAccessKind.PUBLIC_HTTPS,
     val revision: String? = null,
+    val repositoryPath: String = "",
+    val credentialBinding: RepositoryCredentialBinding = if (kind == RepositoryAccessKind.GITHUB_CONTENTS)
+        RepositoryCredentialBinding.MANUAL_PAT else RepositoryCredentialBinding.NONE,
 ) {
     init {
+        require(repositoryPath.isEmpty() || (repositoryPath.length <= 1024 &&
+            repositoryPath.split('/').all { it.isNotEmpty() && it != "." && it != ".." } &&
+            repositoryPath.none { it == '%' || it == '\\' || it == ':' || it == '?' || it == '#' || it.code < 32 })) {
+            "Invalid repository directory"
+        }
+        require(if (kind == RepositoryAccessKind.PUBLIC_HTTPS) repositoryPath.isEmpty() && credentialBinding == RepositoryCredentialBinding.NONE
+            else credentialBinding != RepositoryCredentialBinding.NONE)
         when (kind) {
             RepositoryAccessKind.PUBLIC_HTTPS -> require(revision == null) {
                 "A public HTTPS repository cannot declare a GitHub revision"
@@ -24,9 +35,12 @@ data class RepositoryAccessDescriptor(
     companion object {
         fun publicHttps() = RepositoryAccessDescriptor()
 
-        fun githubContents(revision: String = "main") = RepositoryAccessDescriptor(
+        fun githubContents(revision: String = "main", repositoryPath: String = "",
+            credentialBinding: RepositoryCredentialBinding = RepositoryCredentialBinding.MANUAL_PAT) = RepositoryAccessDescriptor(
             kind = RepositoryAccessKind.GITHUB_CONTENTS,
             revision = revision,
+            repositoryPath = repositoryPath,
+            credentialBinding = credentialBinding,
         )
     }
 }

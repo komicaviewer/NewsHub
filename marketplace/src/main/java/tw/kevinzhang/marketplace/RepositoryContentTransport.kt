@@ -94,6 +94,7 @@ internal class RepositoryContentTransport(
             .addPathSegment(coordinates.owner)
             .addPathSegment(coordinates.repository)
             .addPathSegment("contents")
+            .apply { access.repositoryPath.split('/').filter(String::isNotEmpty).forEach(::addPathSegment) }
             .apply { relativeSegments.forEach(::addPathSegment) }
             .addQueryParameter("ref", requireNotNull(access.revision))
             .build()
