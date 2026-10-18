@@ -57,6 +57,12 @@ class SourceSessionManager @Inject constructor(
     private val oauth1CredentialProvider: OAuth1CredentialProvider,
 ) : HostBrokerProvider, HostResourceProvider {
     private val sessions = mutableMapOf<String, SourceSession>()
+    private val boardContexts = tw.kevinzhang.newshub.ui.boards.BoardCatalogContexts()
+    val catalogContexts = boardContexts.states
+
+    init {
+        context.getSharedPreferences("board_catalog_recent_results", Context.MODE_PRIVATE).edit().clear().apply()
+    }
     private val sourceIdentities = mutableMapOf<String, String>()
     private val resourceGenerations = mutableMapOf<String, Long>()
     private val resourceBrokers = mutableMapOf<String, SourceNetworkBroker>()
@@ -78,6 +84,7 @@ class SourceSessionManager @Inject constructor(
             sourceIdentities[identity.sourceId] = storageKey
         }
         val sourceSession = session(identity.sourceId)
+        boardContexts.activate(identity.sourceId, storageKey)
         if (oauthCredentialProvider.hasCredential(identity) || oauth1CredentialProvider.hasCredential(identity)) {
             sourceSession.setState(AuthState.Unknown)
         }
@@ -184,6 +191,7 @@ class SourceSessionManager @Inject constructor(
 
     override fun revoke(identity: SourceIdentity) {
         val storageKey = identity.storageKey()
+        boardContexts.remove(identity.sourceId)
         synchronized(resources) {
             resourceBrokers.remove(storageKey)?.revoke()
             sourcePolicies.remove(storageKey)
@@ -194,21 +202,25 @@ class SourceSessionManager @Inject constructor(
     fun stateFor(sourceId: String): AuthState = states.value[sourceId] ?: AuthState.Unknown
 
     fun beginLogin(sourceId: String) {
+        boardContexts.rotate(sourceId)
         invalidateSourceCapabilities(sourceId)
         session(sourceId).setState(AuthState.SigningIn)
     }
 
     fun markSignedIn(sourceId: String) {
+        if (stateFor(sourceId) != AuthState.SignedIn) boardContexts.rotate(sourceId)
         invalidateSourceCapabilities(sourceId)
         session(sourceId).setState(AuthState.SignedIn)
     }
 
     fun markSignedOut(sourceId: String) {
+        if (stateFor(sourceId) != AuthState.SignedOut) boardContexts.rotate(sourceId)
         invalidateSourceCapabilities(sourceId)
         session(sourceId).setState(AuthState.SignedOut)
     }
 
     fun markExpired(sourceId: String) {
+        if (stateFor(sourceId) != AuthState.Expired) boardContexts.rotate(sourceId)
         invalidateSourceCapabilities(sourceId)
         session(sourceId).setState(AuthState.Expired)
     }
@@ -270,10 +282,12 @@ class SourceSessionManager @Inject constructor(
         saveWebViewCookieBatch(originHeaders) { cookies ->
             jar.saveAllFromResponses(cookies)
         }
+        boardContexts.rotate(sourceId)
     }
 
     /** Clears only one source's OkHttp and WebView cookies. */
     fun logout(sourceId: String, spec: AuthSpec.WebCookie) {
+        boardContexts.rotate(sourceId)
         val policy = activePolicyForSource(sourceId)
         val jar = session(sourceId).jar
         val cookieManager = CookieManager.getInstance()
