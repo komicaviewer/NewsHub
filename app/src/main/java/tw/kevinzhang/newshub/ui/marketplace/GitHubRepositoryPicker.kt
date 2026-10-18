@@ -1,10 +1,14 @@
 package tw.kevinzhang.newshub.ui.marketplace
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -17,6 +21,7 @@ internal fun GitHubRepositoryPicker(onSelect: (GitHubRepo, RepositoryAccessCrede
     val session by viewModel.session.state.collectAsStateWithLifecycle()
     val search by viewModel.search.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
+    val clipboard = LocalClipboardManager.current
     var expanded by remember(session.account) { mutableStateOf(true) }
     LaunchedEffect(session.account) { onSessionChanged(); if (session.account != null) viewModel.loadMore() }
     DisposableEffect(Unit) { onDispose { if (viewModel.session.state.value.busy) viewModel.cancel() } }
@@ -55,7 +60,17 @@ internal fun GitHubRepositoryPicker(onSelect: (GitHubRepo, RepositoryAccessCrede
         }
         if (session.busy) {
             session.userCode?.let { code ->
-                Text("請在 GitHub 輸入授權碼：$code", style = MaterialTheme.typography.titleMedium)
+                var copied by remember(code) { mutableStateOf(false) }
+                Text("請在 GitHub 輸入授權碼：", style = MaterialTheme.typography.titleMedium)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SelectionContainer {
+                        Text(code, style = MaterialTheme.typography.titleMedium)
+                    }
+                    TextButton(onClick = {
+                        clipboard.setText(AnnotatedString(code))
+                        copied = true
+                    }) { Text(if (copied) "已複製" else "複製授權碼") }
+                }
                 Text("授權碼會自動到期；授權完成後此畫面會繼續。", style = MaterialTheme.typography.bodySmall)
                 Button(onClick = { session.verificationUri?.let(uriHandler::openUri) }) { Text("開啟 GitHub 授權頁") }
             } ?: CircularProgressIndicator()
