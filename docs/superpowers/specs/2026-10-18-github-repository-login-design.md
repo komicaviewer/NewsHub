@@ -1,6 +1,6 @@
 # GitHub 登入與 extensions repository 選取設計
 
-日期：2026-10-18。狀態：對話設計已核准；本文待使用者審閱。
+日期：2026-10-18。狀態：設計文件及實作計畫已經使用者核准，採 Native 執行。
 
 ## 目的與既有狀態
 
@@ -8,7 +8,7 @@
 
 目前 ManageReposScreen／ManageReposViewModel 只有公開 HTTPS 與 GitHub Contents + PAT。Marketplace 已有根金鑰預覽與確認、受限的 GitHub Contents transport；RepositoryCredentialVault 提供 Android Keystore 保護。現有論壇 OAuth 與 SourceIdentity 綁定，不直接套用為 GitHub 來源登入。
 
-已唯讀確認 twkevinzhang 個人及 komicaviewer 組織沒有已註冊 OAuth App；專案未找到 GitHub OAuth Client ID。使用者已同意在 komicaviewer 建立 NewsHub 專用 OAuth App。註冊屬獨立外部設定步驟；尚未執行。
+設計前唯讀確認 twkevinzhang 個人及 komicaviewer 組織沒有已註冊 OAuth App，專案未找到 GitHub OAuth Client ID。使用者核准後已在 komicaviewer 建立 NewsHub 專用 OAuth App `3942641`；維護設定見 `docs/github-repository-login.md`。
 
 ## 已核准選擇
 

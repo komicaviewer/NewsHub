@@ -10,6 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-18-github-repository-login-design.md`
 
+## 執行結果（2026-10-18）
+
+使用者已選 Native。Tasks 1–5 已實作並提交；Task 6 的 OAuth App 註冊、真實授權碼端點、組建及本機驗證已完成，真人授權與私有 repo 端到端驗收待使用者完成。獨立審查的兩項 Important 問題已以重現測試修正；私有 URL logger 亦已移除。
+
+詳細測試、既有 Windows 環境失敗與限制見 `docs/verification-2026-10-18-github-repository-login.md`。以下核准原計畫保留，不將未執行的真人授權步驟勾為完成。
+
 ## Global Constraints
 
 - 同時一個 GitHub 帳號；Device Flow，不在 APK 放 client secret、不新增登入後端。
