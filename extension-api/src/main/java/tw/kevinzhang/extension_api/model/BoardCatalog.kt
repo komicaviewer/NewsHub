@@ -23,9 +23,13 @@ data class BoardPageRequest(
     val query: BoardQuery = BoardQuery(),
     val pageToken: String? = null,
     val pageSize: Int = 30,
+    val refresh: Boolean = false,
+    /** Host-issued non-secret generation; never a credential or authorization grant. */
+    val contextEpoch: String? = null,
 ) {
     init {
-        require(pageSize > 0) { "pageSize must be positive" }
+        require(pageSize in 1..100) { "pageSize must be between 1 and 100" }
+        require(!refresh || pageToken == null) { "Refresh requires the first page" }
     }
 }
 
@@ -33,4 +37,15 @@ data class BoardPageRequest(
 data class BoardPage(
     val boards: List<Board>,
     val nextPageToken: String? = null,
+    val catalogInfo: BoardCatalogInfo? = null,
+)
+
+enum class BoardCatalogMode { REMOTE_SEARCH, CATALOG, UNKNOWN }
+enum class BoardCatalogCoverage { AVAILABLE, PARTIAL, UNKNOWN }
+
+data class BoardCatalogInfo(
+    val mode: BoardCatalogMode = BoardCatalogMode.UNKNOWN,
+    val updatedAtMillis: Long? = null,
+    val isStale: Boolean = false,
+    val coverage: BoardCatalogCoverage = BoardCatalogCoverage.UNKNOWN,
 )

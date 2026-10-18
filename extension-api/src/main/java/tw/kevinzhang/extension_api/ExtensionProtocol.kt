@@ -101,6 +101,8 @@ object ExtensionProtocol {
 object ExtensionWireJson {
     val gson: Gson = GsonBuilder()
         .registerTypeAdapter(Paragraph::class.java, ParagraphAdapter())
+        .registerTypeAdapter(BoardPageRequest::class.java, BoardPageRequestAdapter())
+        .registerTypeAdapter(tw.kevinzhang.extension_api.model.BoardCatalogInfo::class.java, BoardCatalogInfoAdapter())
         .disableHtmlEscaping()
         .create()
 
