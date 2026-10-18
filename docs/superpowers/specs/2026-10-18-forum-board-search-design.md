@@ -2,7 +2,7 @@
 
 日期：2026-10-18
 
-狀態：對話設計已同意；本文件供規格審閱，尚未授權跳過實作計畫審閱。
+狀態：規格與實作計畫已核准；本機實作與外部驗收缺口見 [驗證紀錄](../../verification-2026-10-18-board-search.md)。
 
 ## 目的與已確認需求
 
@@ -71,13 +71,14 @@
 | 欄位 | 語意 |
 | --- | --- |
 | `BoardPageRequest.refresh`，預設 false | true 僅用於第一頁，繞過目錄有效期或近期結果；不授權無限抓取 |
+| `BoardPageRequest.contextEpoch`，可缺省 | Host 發出的非機密登入情境版本，變更時清除舊目錄／token，不當作網站授權 |
 | `BoardPage.catalogInfo`，可缺省 | 描述查詢來源、新鮮度與涵蓋程度；缺省表示舊版來源資訊未知 |
 | `catalogInfo.mode` | `REMOTE_SEARCH` 或 `CATALOG` |
 | `catalogInfo.updatedAtMillis` | 最近成功取得目前資料的時間；失敗回退不得改成現在 |
 | `catalogInfo.isStale` | 已逾有效期，這次更新未成功而使用舊資料 |
 | `catalogInfo.coverage` | `AVAILABLE`、`PARTIAL` 或 `UNKNOWN`；AVAILABLE 表示已完成目前可發現範圍的解析／搜尋流程 |
 
-新欄位缺省時，Host 仍可搜尋但不得標示「完整」或虛構更新時間。新增 enum 未知值安全降為 UNKNOWN 語意；wire 解碼處理缺省與 null，不依賴 Gson 會呼叫 Kotlin 預設建構式的假設。
+新欄位缺省時，匿名來源仍可搜尋但不得標示「完整」或虛構更新時間。登入來源必須回傳 `catalogInfo.contextEpoch` 確認已套用的 request epoch；未確認時顯示更新要求並拒絕發布，避免舊來源忽略新欄位而回傳上一帳號的目錄。新增 enum 未知值安全降為 UNKNOWN 語意；wire 解碼處理缺省與 null，不依賴 Gson 會呼叫 Kotlin 預設建構式的假設。
 
 `pageSize` 預設 30，接受 1–100；超出回傳明確 invalid request。來源 API 固定頁面大小時，來源自行保存剩餘項目／偏移，不能 `take(pageSize)` 後直接跳網站下一頁而漏項。頁面 token 綁定正規化查詢、分類、目錄版本及登入情境；token 不含 credential，Host 不解析其內容。資料集或權限變更後，舊 token 回傳明確失效錯誤，Host 提示重新載入第一頁。
 

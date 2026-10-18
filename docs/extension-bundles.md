@@ -121,3 +121,8 @@ targets/apk/com.example.extension-v1.0.0.apk
 ```
 
 `repo.json`, `index.json`, `apk/` at the repository root, and JSON registries inside APKs are unsupported legacy formats.
+# 看板目錄協議相容擴充
+
+board page IPC operation 編號不變，新增 `BoardPageRequest.refresh`、`contextEpoch` 及 `BoardPage.catalogInfo`。wire 解碼顯式處理缺省、null、未知 enum 與頁面大小驗證；舊來源回傳沒有 catalogInfo 時，Host 保持未知狀態，不宣稱刷新或完整目錄已驗證。詳見 [第三方來源看板搜尋契約](third-party-extension.md)。
+
+Mobile01 動態目錄需要來源政策額外允許 `https://www.mobile01.com/forumlist.php` 的 GET；其他既有 host／credential 規則不變。新的本機 policy hash 為 `6d5f1c025d40a396d73b793ce4a3ff0a23f9495531b7163d2d271b7c5f9e0cdf`。來源 repo 的 contract／release catalog 與 Host 隔離測試 fixture 已同步，但遠端 signed targets 未更新；以舊發布政策執行新來源時，目錄請求仍會被正確拒絕，必須依正式發布流程審閱並發布政策後才能使用。

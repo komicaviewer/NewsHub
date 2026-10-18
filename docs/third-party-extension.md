@@ -117,3 +117,19 @@ The implementation contract is complete when these checks pass:
 - `newshub-extension-repo validate` succeeds on a clean repository copy
 - NewsHub displays the expected root fingerprints before trust-on-first-use confirmation
 - Installation, binding, boards, thread content, login, and update work on a disposable emulator
+# 看板搜尋與目錄更新
+
+`Source.getBoardPage(BoardPageRequest)` 是推薦及搜尋的共用入口。空白文字回傳少量推薦；非空文字搜尋該來源目前可存取的討論區目錄，不得只搜尋推薦種子。來源有網站搜尋 API 時優先使用，否則可快取動態目錄 24 小時。排除交易、商城等不支援一般讀文的區域。
+
+- `query.text`、`query.categoryId`：文字與分類為交集；不支援的組合應明確回報。
+- `pageSize`：1–100，預設 30；不可截斷網站一頁後直接跳下一頁而漏項。
+- `pageToken`：來源發出的 opaque continuation，須綁定查詢、分類、資料版本及登入情境。
+- `refresh`：預設 false，true 僅用於第一頁，要求重新取得資料。
+- `contextEpoch`：Host 發出的非機密情境識別；變更時來源必須清掉舊目錄與 continuation，不可用作網站授權。
+- `BoardPage.catalogInfo`：可缺省的 `mode`、`updatedAtMillis`、`isStale`、`coverage`。舊來源缺省時表示未知；部分目錄必須回報 PARTIAL，更新失敗回退不可更新原時間。
+
+先取得帶目前情境的第一頁再讀分類，避免回傳上一帳號的分類。目錄刷新必須可取消、single flight，最多 60 秒、50 次 HTTP request（包含 redirect）、同時 2 次 request。禁止背景無限爬取；登入過期不得回退受限快取。來源內記憶體目錄與 Host 近期結果快取是不同資料，不得混用。
+
+支援登入的來源必須在 `catalogInfo.contextEpoch` 回傳已套用的 request 世代。Host 在發布前檢查回應；缺乏此確認的舊版登入來源會顯示更新提示。匿名舊來源仍可使用未知 metadata。來源收到 null epoch 時不得重用／回退帳號目錄，也不得覆寫另一個消費者的有效目錄；舊 Host 需要更新後才能可靠接續這類目錄分頁。
+
+本機跨 repo 驗證先在 NewsHub 建立 `:extension-api:assembleDebug`，來源 repo 再傳 `-PnewshubDir=C:/Projects/NewsHub`。正式發布前必須將 `common.gradle`、`jvm-library.gradle`、`bundle.gradle`、`shared/broker-http/build.gradle` 的 API pin 更新為已發布且可讀的 immutable commit；本機 AAR 驗證不等於正式依賴或簽章發布完成。
