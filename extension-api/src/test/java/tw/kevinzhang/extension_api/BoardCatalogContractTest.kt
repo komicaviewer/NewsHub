@@ -29,7 +29,7 @@ class BoardCatalogContractTest {
     @Test fun `legacy pages have unknown information and new pages round trip`() {
         assertNull(ExtensionWireJson.decode<BoardPage>("""{"boards":[]}""").catalogInfo)
         val page = BoardPage(emptyList(), catalogInfo = BoardCatalogInfo(
-            BoardCatalogMode.CATALOG, 42L, true, BoardCatalogCoverage.PARTIAL,
+            BoardCatalogMode.CATALOG, 42L, true, BoardCatalogCoverage.PARTIAL, "generation-2",
         ))
         assertEquals(page, ExtensionWireJson.decode<BoardPage>(ExtensionWireJson.encode(page)))
         val unknown = ExtensionWireJson.decode<BoardPage>("""{"boards":[],"catalogInfo":{"mode":"future","coverage":"future"}}""")

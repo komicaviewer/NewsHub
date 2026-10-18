@@ -290,10 +290,10 @@ fun BoardGroupDetailScreen(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
             val catalog = group?.catalog ?: BoardCatalogState()
-            var input by remember(sourceId) { mutableStateOf(catalog.query.text) }
+            val input = catalog.query.text
             BoardSearchControls(
                 query = input, loading = catalog.firstPageLoading, info = catalog.catalogInfo,
-                onQuery = { input = it; viewModel.searchBoards(sourceId, it) },
+                onQuery = { viewModel.searchBoards(sourceId, it) },
                 onRefresh = { viewModel.refreshBoards(sourceId) },
             )
             when {
@@ -446,6 +446,7 @@ internal fun sourceBoardFailureMessage(code: SourceFailureCode): String = when (
     SourceFailureCode.SITE_UNAVAILABLE -> "目前無法連線網站"
     SourceFailureCode.PARSER_CONTRACT -> "網站內容格式已變更"
     SourceFailureCode.EXTENSION_RUNTIME -> "Extension 執行失敗"
+    SourceFailureCode.EXTENSION_UPDATE_REQUIRED -> "請更新擴充套件以支援帳號隔離搜尋"
     SourceFailureCode.TIMED_OUT -> "網站回應逾時"
     SourceFailureCode.TRUST_INACTIVE -> "Extension 來源目前未啟用"
     SourceFailureCode.INVALID_REQUEST -> "Extension 請求格式錯誤"

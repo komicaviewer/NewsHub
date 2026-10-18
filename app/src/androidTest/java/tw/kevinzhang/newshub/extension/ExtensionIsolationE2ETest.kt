@@ -527,7 +527,7 @@ class ExtensionIsolationE2ETest {
                     requestRules = listOf(
                         requestRule(
                             "www.mobile01.com",
-                            pathPrefixes = setOf("/topicdetail.php", "/topiclist.php"),
+                            pathPrefixes = setOf("/forumlist.php", "/topicdetail.php", "/topiclist.php"),
                         ),
                     ),
                     resourceHosts = hosts("attach2.mobile01.com", "www.mobile01.com"),
@@ -576,7 +576,7 @@ class ExtensionIsolationE2ETest {
             "tw.kevinzhang.komica2.twocat" to "692ca4fc6068b2aaec7375ab7e819d51c7a218f92402b77568ea9fd1ffd317a5",
             "tw.kevinzhang.komica2.sora" to "2e9f6788904a5f7546292b947af18d65569e2b4152c2a1b0f4aa2952e71da70f",
             "tw.kevinzhang.komica2.zawarudo" to "585d25644328939cbbed7183690c09749500806832831d34c82632527b3880f6",
-            "tw.kevinzhang.mobile01" to "1518d8988d341cfdae51de7ca17535726d840f94cb52c3ba09d80d164804eee7",
+            "tw.kevinzhang.mobile01" to "6d5f1c025d40a396d73b793ce4a3ff0a23f9495531b7163d2d271b7c5f9e0cdf",
             "tw.kevinzhang.newshub.extension.ptt" to "974635280b574bbf7ba5c4e48ce6eb7fa4ffc8f9b59dde456322b37037ef3edc",
         )
     }

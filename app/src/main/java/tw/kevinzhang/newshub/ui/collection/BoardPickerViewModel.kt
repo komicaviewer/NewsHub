@@ -150,7 +150,12 @@ class BoardPickerViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<BoardPickerUiState>(BoardPickerUiState.Loading)
     val uiState = _uiState.asStateFlow()
     private var installedSources: List<Source> = emptyList()
-    private val controllers = mutableMapOf<String, tw.kevinzhang.newshub.ui.boards.BoardCatalogController>()
+    private val pool = tw.kevinzhang.newshub.ui.boards.BoardCatalogControllerPool(cache, viewModelScope,
+        onInvalidated = { source, failure ->
+            if (failure.code == tw.kevinzhang.extension_api.SourceFailureCode.TRUST_INACTIVE) sessionManager.invalidateCatalogContext(source.id)
+            else sessionManager.markExpired(source.id)
+        }, onChanged = { publish() })
+    private val controllers get() = pool.controllers
     private var query = ""
     private var selectedSourceId: String? = null
     private var selectedCategoryId: String? = null
@@ -159,28 +164,19 @@ class BoardPickerViewModel @Inject constructor(
         viewModelScope.launch {
             kotlinx.coroutines.flow.combine(extensionLoader.sourcesFlow, sessionManager.catalogContexts) { sources, contexts ->
                 sources to contexts
-            }.collectLatest { (sources, contexts) ->
-                controllers.values.forEach { it.close() }
-                controllers.clear()
+            }.collect { (sources, contexts) ->
                 installedSources = sources
                 if (sources.none { it.id == selectedSourceId }) {
                     selectedSourceId = null
                     selectedCategoryId = null
                 }
-                kotlinx.coroutines.coroutineScope {
-                    sources.forEach { source ->
-                        val context = contexts[source.id] ?: return@forEach
-                        val controller = tw.kevinzhang.newshub.ui.boards.BoardCatalogController(source, context, cache, this)
-                        controllers[source.id] = controller
-                        controller.setQuery(requestQuery(source.id))
-                        launch { controller.state.collect { publish() } }
-                    }
-                    publish()
-                    kotlinx.coroutines.awaitCancellation()
-                }
+                val eligible = contexts.filterKeys { id -> sources.any { it.id == id && (!it.needsLogin || sessionManager.stateFor(id) == tw.kevinzhang.extension_api.AuthState.SignedIn) } }
+                pool.reconcile(sources, eligible, ::requestQuery)
             }
         }
     }
+    override fun onCleared() { pool.close(); super.onCleared() }
+
     fun updateQuery(value: String) {
         if (query == value) return
         query = value
@@ -213,7 +209,9 @@ class BoardPickerViewModel @Inject constructor(
             val state = controllers[source.id]?.state?.value
             SourceBoardLoadResult(source, state?.boards.orEmpty(), state?.categories.orEmpty(), state?.nextPageToken,
                 state?.isRecentFallback ?: false,
-                state?.firstPageFailure?.let { BoardLoadFailure(source, it) },
+                (state?.firstPageFailure ?: if (state == null) tw.kevinzhang.extension_api.SourceFailure(
+                    if (source is tw.kevinzhang.extension_api.AuthenticatedSource) tw.kevinzhang.extension_api.SourceFailureCode.AUTH_REQUIRED
+                    else tw.kevinzhang.extension_api.SourceFailureCode.TRUST_INACTIVE) else null)?.let { BoardLoadFailure(source, it) },
                 state?.catalogInfo,
             )
         }

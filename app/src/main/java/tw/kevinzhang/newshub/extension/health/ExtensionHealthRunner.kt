@@ -414,6 +414,7 @@ private fun classifySourceFailureCode(code: SourceFailureCode): HealthFailureCla
     SourceFailureCode.PARSER_CONTRACT -> HealthFailureClass.PARSER_CONTRACT
     SourceFailureCode.TIMED_OUT -> HealthFailureClass.TIMEOUT
     SourceFailureCode.EXTENSION_RUNTIME,
+    SourceFailureCode.EXTENSION_UPDATE_REQUIRED,
     SourceFailureCode.TRUST_INACTIVE,
     SourceFailureCode.INVALID_REQUEST,
     SourceFailureCode.PAYLOAD_TOO_LARGE,

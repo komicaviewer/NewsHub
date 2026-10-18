@@ -81,7 +81,15 @@ class BoardsViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
     private val retryJobs = mutableMapOf<String, Job>()
-    private val controllers = mutableMapOf<String, BoardCatalogController>()
+    private var installedSources = emptyList<Source>()
+    private val validatedSources = mutableSetOf<Source>()
+    private val queries = mutableMapOf<String, BoardQuery>()
+    private val pool = BoardCatalogControllerPool(catalogCache, viewModelScope,
+        onInvalidated = { source, failure ->
+            if (failure.code == tw.kevinzhang.extension_api.SourceFailureCode.TRUST_INACTIVE) sessionManager.invalidateCatalogContext(source.id)
+            else sessionManager.markExpired(source.id)
+        }, onChanged = { publishCatalogs() })
+    private val controllers get() = pool.controllers
 
     val quarantinedExtensionCount: StateFlow<Int> = extensionManager.quarantinedExtensions
         .map { it.size }
@@ -106,48 +114,38 @@ class BoardsViewModel @Inject constructor(
         viewModelScope.launch {
             combine(extensionLoader.sourcesFlow, sessionManager.states, sessionManager.catalogContexts) { sources, authStates, contexts ->
                 Triple(sources, authStates, contexts)
-            }.collectLatest { (sources, authStates, contexts) ->
-                controllers.values.forEach { it.close() }
-                controllers.clear()
-                _isLoading.value = true
-                _sources.value = sources.map { SourceWithBoards(it, emptyList(), SourceBoardState.Loading) }
-                coroutineScope {
-                    sources.forEach { source ->
-                        val authState = authStates[source.id] ?: AuthState.Unknown
-                        if (source is AuthenticatedSource && authState == AuthState.Unknown) launch {
-                            if (validateSessionOrFalse(source)) sessionManager.markSignedIn(source.id)
-                            else sessionManager.markExpired(source.id)
-                        }
-                        val context = contexts[source.id]
-                        if ((source.needsLogin && authState != AuthState.SignedIn) || context == null) {
-                            _sources.value = _sources.value.map {
-                                if (it.source === source) it.copy(loadState = SourceBoardState.LoginRequired) else it
-                            }
-                        } else {
-                            val controller = BoardCatalogController(source, context, catalogCache, this)
-                            controllers[source.id] = controller
-                            controller.setQuery(BoardQuery())
-                            launch {
-                                controller.state.collect { state ->
-                                    _sources.value = _sources.value.map {
-                                        if (it.source === source) it.copy(boards = state.boards, catalog = state,
-                                            loadState = when {
-                                                state.firstPageLoading -> SourceBoardState.Loading
-                                                state.firstPageFailure != null -> SourceBoardState.Failed(state.firstPageFailure)
-                                                state.boards.isEmpty() -> SourceBoardState.EmptySuccessfully
-                                                else -> SourceBoardState.Ready(state.boards.size)
-                                            }) else it
-                                    }
-                                }
-                            }
+            }.collect { (sources, authStates, contexts) ->
+                installedSources = sources
+                validatedSources.retainAll(sources.toSet())
+                sources.forEach { source ->
+                    if (source is AuthenticatedSource && authStates[source.id] == AuthState.Unknown && validatedSources.add(source)) launch {
+                        val valid = validateSessionOrFalse(source)
+                        if (installedSources.any { it === source }) {
+                            if (valid) sessionManager.markSignedIn(source.id) else sessionManager.markExpired(source.id)
                         }
                     }
-                    _isLoading.value = false
-                    kotlinx.coroutines.awaitCancellation()
                 }
+                val eligible = contexts.filterKeys { id -> sources.any { it.id == id && (!it.needsLogin || authStates[id] == AuthState.SignedIn) } }
+                pool.reconcile(sources, eligible) { queries[it] ?: BoardQuery() }
+                _isLoading.value = false
             }
         }
     }
+
+    private fun publishCatalogs() {
+        _sources.value = installedSources.map { source ->
+            val state = controllers[source.id]?.state?.value
+            if (state == null) SourceWithBoards(source, emptyList(), SourceBoardState.LoginRequired)
+            else SourceWithBoards(source, state.boards, when {
+                state.firstPageLoading -> SourceBoardState.Loading
+                state.firstPageFailure != null -> SourceBoardState.Failed(state.firstPageFailure)
+                state.boards.isEmpty() -> SourceBoardState.EmptySuccessfully
+                else -> SourceBoardState.Ready(state.boards.size)
+            }, state)
+        }
+    }
+
+    override fun onCleared() { pool.close(); super.onCleared() }
 
     fun addBoardToCollections(collectionIds: List<String>, board: Board, source: Source) {
         viewModelScope.launch {
@@ -164,30 +162,9 @@ class BoardsViewModel @Inject constructor(
         }
     }
 
-    fun retrySource(sourceId: String) {
-        controllers[sourceId]?.let { it.retry(); return }
-        val current = _sources.value.firstOrNull { it.source.id == sourceId } ?: return
-        retryJobs.remove(sourceId)?.cancel()
-        _sources.value = _sources.value.map {
-            if (it.source.id == sourceId) it.copy(loadState = SourceBoardState.Loading) else it
-        }
-        retryJobs[sourceId] = viewModelScope.launch {
-            try {
-                val load = loadBoards(current.source, sessionManager.stateFor(sourceId))
-                _sources.value = _sources.value.map {
-                    if (it.source === current.source) {
-                        it.copy(boards = load.boards, loadState = load.state)
-                    } else {
-                        it
-                    }
-                }
-            } finally {
-                retryJobs.remove(sourceId)
-            }
-        }
-    }
+    fun retrySource(sourceId: String) { controllers[sourceId]?.retry() }
 
-    fun searchBoards(sourceId: String, text: String) { controllers[sourceId]?.setQuery(BoardQuery(text)) }
+    fun searchBoards(sourceId: String, text: String) { queries[sourceId] = BoardQuery(text); controllers[sourceId]?.setQuery(BoardQuery(text)) }
     fun refreshBoards(sourceId: String) { controllers[sourceId]?.refresh() }
     fun loadMoreBoards(sourceId: String) { controllers[sourceId]?.loadMore() }
 }

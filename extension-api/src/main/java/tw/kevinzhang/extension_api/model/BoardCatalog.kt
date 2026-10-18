@@ -48,4 +48,6 @@ data class BoardCatalogInfo(
     val updatedAtMillis: Long? = null,
     val isStale: Boolean = false,
     val coverage: BoardCatalogCoverage = BoardCatalogCoverage.UNKNOWN,
+    /** Echo after the source has applied this Host-issued catalog generation. */
+    val contextEpoch: String? = null,
 )

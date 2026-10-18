@@ -10,6 +10,72 @@ import tw.kevinzhang.newshub.ui.collection.BoardCatalogCache
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class BoardCatalogControllerTest {
+    @Test fun `updated authenticated source acknowledges the context before publishing`() = runTest {
+        val updated = source { request -> BoardPage(listOf(board("visible")), catalogInfo = BoardCatalogInfo(contextEpoch = request.contextEpoch)) }
+        val authenticated = object : tw.kevinzhang.extension_api.AuthenticatedSource, Source by updated {
+            override val authSpec = tw.kevinzhang.extension_api.AuthSpec.None
+            override suspend fun validateSession() = true
+        }
+        val controller = BoardCatalogController(authenticated, BoardCatalogContext("id", "new-account"), BoardCatalogCache(), backgroundScope)
+        controller.setQuery(BoardQuery()); runCurrent()
+        assertEquals("visible", controller.state.value.boards.single().name)
+        controller.close()
+    }
+    @Test fun `changing another source context preserves the current query and controller`() = runTest {
+        val a = source { BoardPage(emptyList()) }
+        val b = object : Source by a { override val id = "b" }
+        val pool = BoardCatalogControllerPool(BoardCatalogCache(), backgroundScope)
+        val contexts = mapOf("s" to BoardCatalogContext("a", "1"), "b" to BoardCatalogContext("b", "1"))
+        pool.reconcile(listOf(a, b), contexts)
+        val controller = pool.controllers.getValue("s")
+        controller.setQuery(BoardQuery("keep this"))
+        pool.reconcile(listOf(a, b), contexts + ("b" to BoardCatalogContext("b", "2")))
+        assertSame(controller, pool.controllers.getValue("s"))
+        assertEquals("keep this", controller.state.value.query.text)
+        pool.close()
+    }
+    @Test fun `authentication failure on a later page revokes visible and cached boards`() = runTest {
+        val cache = BoardCatalogCache()
+        val context = BoardCatalogContext("id", "1")
+        var calls = 0
+        var revoked = false
+        val controller = BoardCatalogController(source { request ->
+            calls++
+            if (request.pageToken == null) BoardPage(listOf(board("private")), "next")
+            else throw tw.kevinzhang.extension_api.AuthenticationRequiredException()
+        }, context, cache, backgroundScope, onInvalidated = { revoked = true })
+        controller.setQuery(BoardQuery()); runCurrent()
+        controller.loadMore(); runCurrent()
+        assertTrue(revoked)
+        assertTrue(controller.state.value.boards.isEmpty())
+        assertNull(cache.get(context, BoardQuery()))
+        controller.retry(); runCurrent()
+        assertEquals(2, calls)
+    }
+    @Test fun `legacy authenticated extension cannot publish an unacknowledged account catalog`() = runTest {
+        val legacy = source { BoardPage(listOf(board("private"))) }
+        val authenticated = object : tw.kevinzhang.extension_api.AuthenticatedSource, Source by legacy {
+            override val authSpec = tw.kevinzhang.extension_api.AuthSpec.None
+            override suspend fun validateSession() = true
+        }
+        val controller = BoardCatalogController(authenticated, BoardCatalogContext("id", "new-account"), BoardCatalogCache(), backgroundScope)
+        controller.setQuery(BoardQuery()); runCurrent()
+        assertTrue(controller.state.value.boards.isEmpty())
+        assertEquals(tw.kevinzhang.extension_api.SourceFailureCode.EXTENSION_UPDATE_REQUIRED, controller.state.value.firstPageFailure?.code)
+        controller.close()
+    }
+    @Test fun `input preserves spaces while only wire queries are trimmed`() = runTest {
+        val requests = mutableListOf<String>()
+        val controller = BoardCatalogController(source { request ->
+            requests += request.query.text
+            BoardPage(emptyList())
+        }, BoardCatalogContext("id", "1"), BoardCatalogCache(), backgroundScope)
+        controller.setQuery(BoardQuery("new "))
+        assertEquals("new ", controller.state.value.query.text)
+        advanceTimeBy(300); runCurrent()
+        assertEquals(listOf("new"), requests)
+        controller.close()
+    }
     @Test fun `debounce and late responses do not publish obsolete queries`() = runTest {
         val requests = mutableListOf<String>()
         val source = source { request ->

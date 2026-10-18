@@ -84,7 +84,7 @@ class SourceSessionManager @Inject constructor(
             sourceIdentities[identity.sourceId] = storageKey
         }
         val sourceSession = session(identity.sourceId)
-        boardContexts.activate(identity.sourceId, storageKey)
+        boardContexts.activate(identity.sourceId, storageKey, stateFor(identity.sourceId) !in setOf(AuthState.SigningIn, AuthState.Expired))
         if (oauthCredentialProvider.hasCredential(identity) || oauth1CredentialProvider.hasCredential(identity)) {
             sourceSession.setState(AuthState.Unknown)
         }
@@ -202,25 +202,24 @@ class SourceSessionManager @Inject constructor(
     fun stateFor(sourceId: String): AuthState = states.value[sourceId] ?: AuthState.Unknown
 
     fun beginLogin(sourceId: String) {
-        boardContexts.rotate(sourceId)
+        boardContexts.suspendContext(sourceId)
         invalidateSourceCapabilities(sourceId)
         session(sourceId).setState(AuthState.SigningIn)
     }
 
-    fun markSignedIn(sourceId: String) {
-        if (stateFor(sourceId) != AuthState.SignedIn) boardContexts.rotate(sourceId)
+    fun markSignedIn(sourceId: String) = boardContexts.mutate(sourceId) {
         invalidateSourceCapabilities(sourceId)
         session(sourceId).setState(AuthState.SignedIn)
     }
 
-    fun markSignedOut(sourceId: String) {
-        if (stateFor(sourceId) != AuthState.SignedOut) boardContexts.rotate(sourceId)
+    fun markSignedOut(sourceId: String) = boardContexts.mutate(sourceId) {
+        session(sourceId).jar.clear()
         invalidateSourceCapabilities(sourceId)
         session(sourceId).setState(AuthState.SignedOut)
     }
 
     fun markExpired(sourceId: String) {
-        if (stateFor(sourceId) != AuthState.Expired) boardContexts.rotate(sourceId)
+        boardContexts.suspendContext(sourceId)
         invalidateSourceCapabilities(sourceId)
         session(sourceId).setState(AuthState.Expired)
     }
@@ -267,6 +266,7 @@ class SourceSessionManager @Inject constructor(
      * pairs, so those cookies remain host-only and are never widened to a parent domain.
      */
     fun importWebViewCookies(sourceId: String, spec: AuthSpec.WebCookie) {
+        boardContexts.suspendContext(sourceId)
         val policy = activePolicyForSource(sourceId)
         val jar = session(sourceId).jar
         val cookieManager = CookieManager.getInstance()
@@ -282,12 +282,10 @@ class SourceSessionManager @Inject constructor(
         saveWebViewCookieBatch(originHeaders) { cookies ->
             jar.saveAllFromResponses(cookies)
         }
-        boardContexts.rotate(sourceId)
     }
 
     /** Clears only one source's OkHttp and WebView cookies. */
-    fun logout(sourceId: String, spec: AuthSpec.WebCookie) {
-        boardContexts.rotate(sourceId)
+    fun logout(sourceId: String, spec: AuthSpec.WebCookie) = boardContexts.mutate(sourceId) {
         val policy = activePolicyForSource(sourceId)
         val jar = session(sourceId).jar
         val cookieManager = CookieManager.getInstance()
@@ -314,6 +312,8 @@ class SourceSessionManager @Inject constructor(
         invalidateSourceCapabilities(sourceId)
         session(sourceId).setState(AuthState.SignedOut)
     }
+
+    fun invalidateCatalogContext(sourceId: String) { boardContexts.suspendContext(sourceId) }
 
     private fun session(sourceId: String): SourceSession = synchronized(sessions) {
         val storageKey = sourceIdentities[sourceId] ?: sourceId

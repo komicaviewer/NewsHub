@@ -375,7 +375,8 @@ private fun LoadFailureBanner(failures: List<BoardLoadFailure>, onRetry: () -> U
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Text("部分來源無法載入", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onErrorContainer)
             failures.forEach { failure ->
-                Text(failure.source.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+                Text("${failure.source.name}：${tw.kevinzhang.newshub.ui.boards.sourceBoardFailureMessage(failure.failure.code)}",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
             }
             TextButton(onClick = onRetry) { Text("全部重試") }
         }

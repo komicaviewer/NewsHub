@@ -27,6 +27,7 @@ class BoardCatalogController(
     private val context: BoardCatalogContext,
     private val cache: BoardCatalogCache,
     private val scope: CoroutineScope,
+    private val onInvalidated: (SourceFailure) -> Unit = {},
 ) {
     private val mutableState = MutableStateFlow(BoardCatalogState())
     val state = mutableState.asStateFlow()
@@ -35,7 +36,7 @@ class BoardCatalogController(
     private var generation = 0L
     private var closed = false
 
-    fun setQuery(query: BoardQuery) = loadFirst(query.copy(text = query.text.trim()), false, query.text.isNotBlank())
+    fun setQuery(query: BoardQuery) = loadFirst(query, false, query.text.isNotBlank())
     fun refresh() = loadFirst(state.value.query, true, false)
     fun retry() = loadFirst(state.value.query, false, false)
 
@@ -47,23 +48,28 @@ class BoardCatalogController(
         firstJob = scope.launch {
             if (debounce) delay(300)
             try {
-                val page = source.getBoardPage(BoardPageRequest(query, refresh = refresh, contextEpoch = context.epoch))
+                val page = source.getBoardPage(BoardPageRequest(query.copy(text = query.text.trim()), refresh = refresh, contextEpoch = context.epoch))
                 ensureActive()
                 if (closed || requestGeneration != generation) return@launch
+                verifyContext(page)
                 mutableState.value = BoardCatalogState(query, page.boards.distinctBy(Board::url), catalogInfo = page.catalogInfo,
                     nextPageToken = page.nextPageToken)
                 cache.put(context, query, CachedBoardResult(page.boards, page.catalogInfo, System.currentTimeMillis()))
                 // First page invalidates source-owned catalogs before any categories can be read.
                 val categories = try { source.getBoardCategories().distinctBy(BoardCategory::id) }
                     catch (error: CancellationException) { throw error }
-                    catch (_: Exception) { emptyList() }
+                    catch (error: Exception) {
+                        if (revokesContext(SourceFailures.fromThrowable(error).code)) throw error
+                        emptyList()
+                    }
                 ensureActive()
                 if (!closed && requestGeneration == generation) mutableState.value = state.value.copy(categories = categories)
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) {
                 if (closed || requestGeneration != generation) return@launch
                 val failure = SourceFailures.fromThrowable(error, "board_page")
-                val authFailure = failure.code in setOf(SourceFailureCode.AUTH_REQUIRED, SourceFailureCode.AUTH_EXPIRED, SourceFailureCode.TRUST_INACTIVE)
+                if (revokesContext(failure.code)) { revoke(failure); return@launch }
+                val authFailure = failure.code == SourceFailureCode.EXTENSION_UPDATE_REQUIRED
                 if (authFailure) cache.invalidate(context.identityKey)
                 val cached = if (authFailure) null else cache.get(context, query)
                 mutableState.value = BoardCatalogState(query, cached?.boards.orEmpty(),
@@ -81,9 +87,10 @@ class BoardCatalogController(
         mutableState.value = before.copy(moreLoading = true, moreFailure = null)
         moreJob = scope.launch {
             try {
-                val page = source.getBoardPage(BoardPageRequest(before.query, token, contextEpoch = context.epoch))
+                val page = source.getBoardPage(BoardPageRequest(before.query.copy(text = before.query.text.trim()), token, contextEpoch = context.epoch))
                 ensureActive()
                 if (closed || requestGeneration != generation) return@launch
+                verifyContext(page)
                 require(page.nextPageToken != token) { "Source repeated its page token" }
                 val merged = (before.boards + page.boards).distinctBy(Board::url)
                 mutableState.value = state.value.copy(boards = merged, catalogInfo = page.catalogInfo ?: before.catalogInfo,
@@ -91,10 +98,31 @@ class BoardCatalogController(
                 cache.put(context, before.query, CachedBoardResult(merged, state.value.catalogInfo, System.currentTimeMillis()))
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) {
+                val failure = SourceFailures.fromThrowable(error, "board_page")
+                if (!closed && requestGeneration == generation && revokesContext(failure.code)) {
+                    revoke(failure)
+                    return@launch
+                }
                 if (!closed && requestGeneration == generation) mutableState.value = state.value.copy(
-                    moreLoading = false, moreFailure = SourceFailures.fromThrowable(error, "board_page"))
+                    moreLoading = false, moreFailure = failure)
             }
         }
+    }
+
+    private fun verifyContext(page: BoardPage) {
+        if (source is AuthenticatedSource && page.catalogInfo?.contextEpoch != context.epoch) {
+            throw SourceFailureException(SourceFailure(SourceFailureCode.EXTENSION_UPDATE_REQUIRED, "board_page"))
+        }
+    }
+
+    private fun revokesContext(code: SourceFailureCode) = code in setOf(
+        SourceFailureCode.AUTH_REQUIRED, SourceFailureCode.AUTH_EXPIRED, SourceFailureCode.TRUST_INACTIVE)
+
+    private fun revoke(failure: SourceFailure) {
+        closed = true; generation++
+        cache.invalidate(context.identityKey)
+        mutableState.value = BoardCatalogState(query = state.value.query, firstPageFailure = failure)
+        onInvalidated(failure)
     }
 
     fun close() {

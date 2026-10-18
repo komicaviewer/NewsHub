@@ -27,6 +27,7 @@ internal class BoardCatalogInfoAdapter : JsonDeserializer<BoardCatalogInfo> {
             updatedAtMillis = obj.optional("updatedAtMillis")?.asLong,
             isStale = obj.optional("isStale")?.asBoolean ?: false,
             coverage = enumValues<BoardCatalogCoverage>().firstOrNull { it.name == obj.optional("coverage")?.asString } ?: BoardCatalogCoverage.UNKNOWN,
+            contextEpoch = obj.optional("contextEpoch")?.asString,
         )
     }
 }

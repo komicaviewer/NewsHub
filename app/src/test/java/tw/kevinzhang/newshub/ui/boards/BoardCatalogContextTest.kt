@@ -4,6 +4,21 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BoardCatalogContextTest {
+    @Test fun `credential mutation suspends publication until the new credentials are installed`() {
+        val registry = BoardCatalogContexts()
+        val before = registry.activate("forum", "id")
+        var cleared = false
+        registry.mutate("forum") {
+            assertFalse(registry.states.value.containsKey("forum"))
+            cleared = true
+        }
+        assertTrue(cleared)
+        assertNotEquals(before.epoch, registry.states.value.getValue("forum").epoch)
+        registry.suspendContext("forum")
+        assertTrue(registry.states.value.isEmpty())
+        registry.resume("forum")
+        assertEquals("id", registry.states.value.getValue("forum").identityKey)
+    }
     @Test fun `same account state can rotate context and revoke old responses`() {
         val registry = BoardCatalogContexts()
         val first = registry.activate("forum", "identity-a")
