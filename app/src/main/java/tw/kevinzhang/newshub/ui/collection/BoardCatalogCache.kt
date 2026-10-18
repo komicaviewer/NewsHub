@@ -23,9 +23,4 @@ class BoardCatalogCache @Inject constructor() {
     @Synchronized fun invalidate(identityKey: String) {
         entries.keys.removeAll { it.context.identityKey == identityKey }
     }
-    // Transitional callers without a verified context cannot read or save results.
-    suspend fun get(sourceId: String, query: BoardQuery): List<Board> = emptyList()
-    suspend fun put(sourceId: String, query: BoardQuery, boards: List<Board>) = Unit
-    suspend fun getCategories(sourceId: String): List<BoardCategory> = emptyList()
-    suspend fun putCategories(sourceId: String, categories: List<BoardCategory>) = Unit
 }

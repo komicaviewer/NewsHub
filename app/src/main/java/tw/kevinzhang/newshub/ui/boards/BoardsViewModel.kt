@@ -17,6 +17,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
+import tw.kevinzhang.newshub.ui.collection.BoardCatalogCache
+import tw.kevinzhang.extension_api.model.BoardQuery
 import tw.kevinzhang.data.CollectionRepository
 import tw.kevinzhang.data.SourceIdentityRepository
 import tw.kevinzhang.extension_api.AuthState
@@ -50,6 +53,7 @@ data class SourceWithBoards(
     } else {
         SourceBoardState.Ready(boards.size)
     },
+    val catalog: BoardCatalogState = BoardCatalogState(),
 )
 
 internal data class SourceBoardLoad(
@@ -66,6 +70,7 @@ class BoardsViewModel @Inject constructor(
     private val sourceIdentityRepository: SourceIdentityRepository,
     private val sessionManager: SourceSessionManager,
     internal val resourceProvider: HostResourceProvider,
+    private val catalogCache: BoardCatalogCache,
 ) : ViewModel() {
 
     val authStates: StateFlow<Map<String, AuthState>> = sessionManager.states
@@ -76,6 +81,7 @@ class BoardsViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
     private val retryJobs = mutableMapOf<String, Job>()
+    private val controllers = mutableMapOf<String, BoardCatalogController>()
 
     val quarantinedExtensionCount: StateFlow<Int> = extensionManager.quarantinedExtensions
         .map { it.size }
@@ -98,27 +104,47 @@ class BoardsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            combine(extensionLoader.sourcesFlow, sessionManager.states) { sources, authStates ->
-                sources to authStates
-            }.collectLatest { (sources, authStates) ->
+            combine(extensionLoader.sourcesFlow, sessionManager.states, sessionManager.catalogContexts) { sources, authStates, contexts ->
+                Triple(sources, authStates, contexts)
+            }.collectLatest { (sources, authStates, contexts) ->
+                controllers.values.forEach { it.close() }
+                controllers.clear()
                 _isLoading.value = true
-                _sources.value = coroutineScope {
-                    sources.map { source ->
-                        async {
-                            val authState = authStates[source.id] ?: AuthState.Unknown
-                            if (source is AuthenticatedSource && authState == AuthState.Unknown) {
-                                if (validateSessionOrFalse(source)) {
-                                    sessionManager.markSignedIn(source.id)
-                                } else {
-                                    sessionManager.markExpired(source.id)
+                _sources.value = sources.map { SourceWithBoards(it, emptyList(), SourceBoardState.Loading) }
+                coroutineScope {
+                    sources.forEach { source ->
+                        val authState = authStates[source.id] ?: AuthState.Unknown
+                        if (source is AuthenticatedSource && authState == AuthState.Unknown) launch {
+                            if (validateSessionOrFalse(source)) sessionManager.markSignedIn(source.id)
+                            else sessionManager.markExpired(source.id)
+                        }
+                        val context = contexts[source.id]
+                        if ((source.needsLogin && authState != AuthState.SignedIn) || context == null) {
+                            _sources.value = _sources.value.map {
+                                if (it.source === source) it.copy(loadState = SourceBoardState.LoginRequired) else it
+                            }
+                        } else {
+                            val controller = BoardCatalogController(source, context, catalogCache, this)
+                            controllers[source.id] = controller
+                            controller.setQuery(BoardQuery())
+                            launch {
+                                controller.state.collect { state ->
+                                    _sources.value = _sources.value.map {
+                                        if (it.source === source) it.copy(boards = state.boards, catalog = state,
+                                            loadState = when {
+                                                state.firstPageLoading -> SourceBoardState.Loading
+                                                state.firstPageFailure != null -> SourceBoardState.Failed(state.firstPageFailure)
+                                                state.boards.isEmpty() -> SourceBoardState.EmptySuccessfully
+                                                else -> SourceBoardState.Ready(state.boards.size)
+                                            }) else it
+                                    }
                                 }
                             }
-                            val load = loadBoards(source, authState)
-                            SourceWithBoards(source = source, boards = load.boards, loadState = load.state)
                         }
-                    }.awaitAll()
+                    }
+                    _isLoading.value = false
+                    kotlinx.coroutines.awaitCancellation()
                 }
-                _isLoading.value = false
             }
         }
     }
@@ -139,6 +165,7 @@ class BoardsViewModel @Inject constructor(
     }
 
     fun retrySource(sourceId: String) {
+        controllers[sourceId]?.let { it.retry(); return }
         val current = _sources.value.firstOrNull { it.source.id == sourceId } ?: return
         retryJobs.remove(sourceId)?.cancel()
         _sources.value = _sources.value.map {
@@ -159,6 +186,10 @@ class BoardsViewModel @Inject constructor(
             }
         }
     }
+
+    fun searchBoards(sourceId: String, text: String) { controllers[sourceId]?.setQuery(BoardQuery(text)) }
+    fun refreshBoards(sourceId: String) { controllers[sourceId]?.refresh() }
+    fun loadMoreBoards(sourceId: String) { controllers[sourceId]?.loadMore() }
 }
 
 internal suspend fun validateSessionOrFalse(source: AuthenticatedSource): Boolean = try {
@@ -173,7 +204,7 @@ internal suspend fun loadBoards(
     source: Source,
     authState: AuthState = AuthState.Unknown,
 ): SourceBoardLoad {
-    if (source is AuthenticatedSource && authState != AuthState.SignedIn) {
+    if (source.needsLogin && authState != AuthState.SignedIn) {
         return SourceBoardLoad(emptyList(), SourceBoardState.LoginRequired)
     }
     return try {

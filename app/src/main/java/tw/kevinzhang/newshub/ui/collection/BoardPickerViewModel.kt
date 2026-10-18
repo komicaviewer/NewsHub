@@ -11,6 +11,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import tw.kevinzhang.extension_api.Source
 import tw.kevinzhang.extension_api.SourceFailure
@@ -35,6 +37,7 @@ data class SourceWithBoards(
     val isAppending: Boolean = false,
     val isFromCache: Boolean = false,
     val appendFailure: Throwable? = null,
+    val catalogInfo: tw.kevinzhang.extension_api.model.BoardCatalogInfo? = null,
 )
 
 data class SelectedBoard(
@@ -83,6 +86,7 @@ internal data class SourceBoardLoadResult(
     val nextPageToken: String? = null,
     val isFromCache: Boolean = false,
     val failure: BoardLoadFailure? = null,
+    val catalogInfo: tw.kevinzhang.extension_api.model.BoardCatalogInfo? = null,
 )
 
 /** Stable identity used for selection across sources whose board URLs may overlap. */
@@ -126,6 +130,7 @@ internal fun boardPickerUiState(
                 categories = it.categories,
                 nextPageToken = it.nextPageToken,
                 isFromCache = it.isFromCache,
+                catalogInfo = it.catalogInfo,
             )
         },
         allSources = allSources,
@@ -140,289 +145,86 @@ internal fun boardPickerUiState(
 class BoardPickerViewModel @Inject constructor(
     private val extensionLoader: ExtensionLoader,
     private val cache: BoardCatalogCache,
+    private val sessionManager: tw.kevinzhang.newshub.auth.SourceSessionManager,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<BoardPickerUiState>(BoardPickerUiState.Loading)
     val uiState = _uiState.asStateFlow()
-
     private var installedSources: List<Source> = emptyList()
-    private val categoriesBySource = mutableMapOf<String, List<BoardCategory>>()
+    private val controllers = mutableMapOf<String, tw.kevinzhang.newshub.ui.boards.BoardCatalogController>()
     private var query = ""
     private var selectedSourceId: String? = null
     private var selectedCategoryId: String? = null
-    private var reloadJob: Job? = null
-    private var queryJob: Job? = null
 
     init {
         viewModelScope.launch {
-            extensionLoader.sourcesFlow.collect { sources ->
-                queryJob?.cancel()
+            kotlinx.coroutines.flow.combine(extensionLoader.sourcesFlow, sessionManager.catalogContexts) { sources, contexts ->
+                sources to contexts
+            }.collectLatest { (sources, contexts) ->
+                controllers.values.forEach { it.close() }
+                controllers.clear()
                 installedSources = sources
-                categoriesBySource.keys.retainAll(sources.map(Source::id).toSet())
-                if (selectedSourceId != null && sources.none { it.id == selectedSourceId }) {
+                if (sources.none { it.id == selectedSourceId }) {
                     selectedSourceId = null
                     selectedCategoryId = null
                 }
-                reload()
+                kotlinx.coroutines.coroutineScope {
+                    sources.forEach { source ->
+                        val context = contexts[source.id] ?: return@forEach
+                        val controller = tw.kevinzhang.newshub.ui.boards.BoardCatalogController(source, context, cache, this)
+                        controllers[source.id] = controller
+                        controller.setQuery(requestQuery(source.id))
+                        launch { controller.state.collect { publish() } }
+                    }
+                    publish()
+                    kotlinx.coroutines.awaitCancellation()
+                }
             }
         }
     }
-
-    /** A single non-whitespace character is enough to run a remote search. */
     fun updateQuery(value: String) {
         if (query == value) return
         query = value
-        reloadJob?.cancel()
-        (_uiState.value as? BoardPickerUiState.Content)?.let { state ->
-            _uiState.value = state.copy(query = value)
-        }
-        queryJob?.cancel()
-        queryJob = viewModelScope.launch {
-            if (value.isNotBlank()) delay(SEARCH_DEBOUNCE_MILLIS)
-            reload()
-        }
+        updateRequests()
     }
-
-    /** null means all installed sources, whose results are loaded concurrently and kept grouped. */
     fun selectSource(sourceId: String?) {
-        if (selectedSourceId == sourceId) return
-        selectedSourceId = sourceId?.takeIf { id -> installedSources.any { it.id == id } }
+        selectedSourceId = sourceId
         selectedCategoryId = null
-        (_uiState.value as? BoardPickerUiState.Content)?.let { state ->
-            _uiState.value = state.copy(
-                selectedSourceId = selectedSourceId,
-                selectedCategoryId = null,
-            )
-        }
-        queryJob?.cancel()
-        reload()
+        updateRequests()
     }
-
-    /** Categories apply only while one source is selected. */
     fun selectCategory(categoryId: String?) {
-        val sourceId = selectedSourceId ?: return
-        val validId = categoryId?.takeIf { id ->
-            categoriesBySource[sourceId].orEmpty().any { it.id == id }
+        selectedCategoryId = categoryId
+        updateRequests()
+    }
+    fun retry() { targetControllers().forEach { it.retry() } }
+    fun refresh() { targetControllers().forEach { it.refresh() } }
+    fun retrySource(sourceId: String) { controllers[sourceId]?.retry() }
+    fun loadNextPage(sourceId: String) { controllers[sourceId]?.loadMore() }
+    private fun requestQuery(sourceId: String) = BoardQuery(query.trim(), selectedCategoryId.takeIf { selectedSourceId == sourceId })
+    private fun targetControllers() = controllers.filterKeys { selectedSourceId == null || it == selectedSourceId }.values
+    private fun updateRequests() {
+        controllers.forEach { (id, controller) ->
+            if (selectedSourceId == null || selectedSourceId == id) controller.setQuery(requestQuery(id))
         }
-        if (selectedCategoryId == validId) return
-        selectedCategoryId = validId
-        (_uiState.value as? BoardPickerUiState.Content)?.let { state ->
-            _uiState.value = state.copy(selectedCategoryId = validId)
-        }
-        queryJob?.cancel()
-        reload()
+        publish()
     }
-
-    fun retry() {
-        queryJob?.cancel()
-        reload()
-    }
-
-    fun retrySource(sourceId: String) {
-        if (selectedSourceId == sourceId) reload() else reloadSource(sourceId)
-    }
-
-    fun loadNextPage(sourceId: String) {
-        val state = _uiState.value as? BoardPickerUiState.Content ?: return
-        val group = state.sources.firstOrNull { it.source.id == sourceId } ?: return
-        val token = group.nextPageToken ?: return
-        if (group.isAppending) return
-
-        val requestQuery = BoardQuery(
-            text = state.query.trim(),
-            categoryId = state.selectedCategoryId.takeIf { state.selectedSourceId == sourceId },
-        )
-        _uiState.value = state.copy(
-            sources = state.sources.map {
-                if (it.source.id == sourceId) it.copy(isAppending = true, appendFailure = null) else it
-            },
-        )
-        viewModelScope.launch {
-            runCatching {
-                group.source.getBoardPage(
-                    BoardPageRequest(
-                        query = requestQuery,
-                        pageToken = token,
-                        pageSize = BOARD_PAGE_SIZE,
-                    ),
-                )
-            }.onSuccess { page ->
-                val current = _uiState.value as? BoardPickerUiState.Content ?: return@onSuccess
-                if (!current.matches(state)) return@onSuccess
-                val merged = (group.boards + page.boards).distinctBy(Board::url)
-                _uiState.value = current.copy(
-                    sources = current.sources.map {
-                        if (it.source.id == sourceId) {
-                            it.copy(
-                                boards = merged,
-                                nextPageToken = page.nextPageToken,
-                                isAppending = false,
-                                isFromCache = false,
-                                appendFailure = null,
-                            )
-                        } else {
-                            it
-                        }
-                    },
-                )
-                cache.put(sourceId, requestQuery, merged)
-            }.onFailure { error ->
-                if (error is CancellationException) throw error
-                val current = _uiState.value as? BoardPickerUiState.Content ?: return@onFailure
-                if (!current.matches(state)) return@onFailure
-                _uiState.value = current.copy(
-                    sources = current.sources.map {
-                        if (it.source.id == sourceId) {
-                            it.copy(
-                                isAppending = false,
-                                appendFailure = SourceFailureException(
-                                    SourceFailures.fromThrowable(error, "board_page"),
-                                ),
-                            )
-                        } else {
-                            it
-                        }
-                    },
-                )
-            }
-        }
-    }
-
-    private fun reload() {
-        reloadJob?.cancel()
-        reloadJob = viewModelScope.launch { loadFirstPages() }
-    }
-
-    private fun reloadSource(sourceId: String) {
-        val state = _uiState.value as? BoardPickerUiState.Content ?: return reload()
-        val source = installedSources.firstOrNull { it.id == sourceId } ?: return
-        reloadJob?.cancel()
-        reloadJob = viewModelScope.launch {
-            val result = loadFirstPage(source, state.query, state.selectedCategoryId)
-            val current = _uiState.value as? BoardPickerUiState.Content ?: return@launch
-            _uiState.value = current.copy(
-                sources = current.sources.map {
-                    if (it.source.id == sourceId) result.toSourceWithBoards() else it
-                },
-                failures = current.failures.filterNot { it.source.id == sourceId } +
-                    listOfNotNull(result.failure),
+    private fun publish() {
+        val sources = installedSources.filter { selectedSourceId == null || it.id == selectedSourceId }
+        val results = sources.map { source ->
+            val state = controllers[source.id]?.state?.value
+            SourceBoardLoadResult(source, state?.boards.orEmpty(), state?.categories.orEmpty(), state?.nextPageToken,
+                state?.isRecentFallback ?: false,
+                state?.firstPageFailure?.let { BoardLoadFailure(source, it) },
+                state?.catalogInfo,
             )
         }
-    }
-
-    private suspend fun loadFirstPages() {
-        if (installedSources.isEmpty()) {
-            _uiState.value = BoardPickerUiState.NoExtensions
-            return
-        }
-
-        val targetSources = selectedSourceId?.let { id ->
-            installedSources.filter { it.id == id }
-        } ?: installedSources
-        val requestQuery = query
-        val requestSourceId = selectedSourceId
-        val requestCategoryId = selectedCategoryId
-        val previous = _uiState.value as? BoardPickerUiState.Content
-        if (previous == null) {
-            _uiState.value = BoardPickerUiState.Loading
-        } else {
-            _uiState.value = previous.copy(
-                sources = targetSources.map { source ->
-                    val oldGroup = previous.sources.firstOrNull { it.source.id == source.id }
-                    SourceWithBoards(
-                        source = source,
-                        boards = emptyList(),
-                        categories = categoriesBySource[source.id] ?: oldGroup?.categories.orEmpty(),
-                    )
-                },
-                allSources = installedSources,
-                query = requestQuery,
-                selectedSourceId = requestSourceId,
-                selectedCategoryId = requestCategoryId,
-                isRefreshing = true,
-                failures = emptyList(),
-            )
-        }
-
-        val results = coroutineScope {
-            targetSources.map { source ->
-                async { loadFirstPage(source, requestQuery, requestCategoryId) }
-            }.awaitAll()
-        }
-        _uiState.value = boardPickerUiState(
-            sources = targetSources,
-            results = results,
-            allSources = installedSources,
-            query = requestQuery,
-            selectedSourceId = requestSourceId,
-            selectedCategoryId = requestCategoryId,
-            allowEmptyContent = previous != null,
-        )
-    }
-
-    private suspend fun loadFirstPage(
-        source: Source,
-        requestQuery: String,
-        requestCategoryId: String?,
-    ): SourceBoardLoadResult {
-        val categories = categoriesBySource[source.id] ?: run {
-            val remote = runCatching { source.getBoardCategories().distinctBy(BoardCategory::id) }
-            if (remote.isSuccess) {
-                remote.getOrThrow().also {
-                    categoriesBySource[source.id] = it
-                    cache.putCategories(source.id, it)
-                }
-            } else {
-                remote.exceptionOrNull()?.let { if (it is CancellationException) throw it }
-                cache.getCategories(source.id).also {
-                    if (it.isNotEmpty()) categoriesBySource[source.id] = it
-                }
-            }
-        }
-        val boardQuery = BoardQuery(
-            text = requestQuery.trim(),
-            categoryId = requestCategoryId,
-        )
-
-        return runCatching {
-            source.getBoardPage(BoardPageRequest(query = boardQuery, pageSize = BOARD_PAGE_SIZE))
-        }.fold(
-            onSuccess = { page ->
-                val boards = page.boards.distinctBy(Board::url)
-                cache.put(source.id, boardQuery, boards)
-                SourceBoardLoadResult(
-                    source = source,
-                    boards = boards,
-                    categories = categories,
-                    nextPageToken = page.nextPageToken,
-                )
+        val base = boardPickerUiState(sources, results, installedSources, query, selectedSourceId, selectedCategoryId, true)
+        _uiState.value = if (base is BoardPickerUiState.Content) base.copy(
+            isRefreshing = targetControllers().any { it.state.value.firstPageLoading },
+            sources = base.sources.map { group ->
+                val state = controllers[group.source.id]?.state?.value
+                group.copy(isAppending = state?.moreLoading ?: false,
+                    appendFailure = state?.moreFailure?.let(::SourceFailureException))
             },
-            onFailure = { error ->
-                if (error is CancellationException) throw error
-                val cachedBoards = cache.get(source.id, boardQuery)
-                SourceBoardLoadResult(
-                    source = source,
-                    boards = cachedBoards,
-                    categories = categories,
-                    isFromCache = cachedBoards.isNotEmpty(),
-                    failure = BoardLoadFailure(
-                        source,
-                        SourceFailures.fromThrowable(error, "board_page"),
-                    ),
-                )
-            },
-        )
+        ) else base
     }
-
-    private fun SourceBoardLoadResult.toSourceWithBoards() = SourceWithBoards(
-        source = source,
-        boards = boards,
-        categories = categories,
-        nextPageToken = nextPageToken,
-        isFromCache = isFromCache,
-    )
-
-    private fun BoardPickerUiState.Content.matches(other: BoardPickerUiState.Content): Boolean =
-        query == other.query &&
-            selectedSourceId == other.selectedSourceId &&
-            selectedCategoryId == other.selectedCategoryId
 }
