@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import tw.kevinzhang.extension_loader.ExtensionManager
 import tw.kevinzhang.marketplace.MarketplaceRepository
 import tw.kevinzhang.marketplace.RepositoryAccessRequiredException
@@ -106,9 +107,14 @@ class MarketplaceViewModel @Inject constructor(
         viewModelScope.launch {
             setStep(info.id, InstallStep.DOWNLOADING)
             try {
-                val apkFile = marketplaceRepository.downloadApk(info)
-                setStep(info.id, InstallStep.INSTALLING)
-                extensionManager.installExtension(apkFile)
+                marketplaceRepository.withRepositoryAccess(info.repositoryDomainId) {
+                    val apkFile = marketplaceRepository.downloadApk(info)
+                    try {
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                        setStep(info.id, InstallStep.INSTALLING)
+                        extensionManager.installExtension(apkFile)
+                    } catch (error: Exception) { apkFile.delete(); throw error }
+                }
                 setStep(info.id, InstallStep.IDLE)
             } catch (e: CancellationException) {
                 setStep(info.id, InstallStep.IDLE)

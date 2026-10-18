@@ -39,19 +39,26 @@ internal class RepositoryContentTransport(
             throw TrustedMetadataException("Repository URL escaped its trust domain")
         }
         require(maxBytes >= 0) { "Negative repository response limit" }
+        val credential = if (access.kind == RepositoryAccessKind.GITHUB_CONTENTS) credentialProvider()
+            ?: throw RepositoryAccessRequiredException(domainId, RepositoryAccessFailureReason.MISSING_CREDENTIAL) else null
+        credential?.ensureCurrent()
         val request = when (access.kind) {
             RepositoryAccessKind.PUBLIC_HTTPS -> Request.Builder().url(virtualUrl).get().build()
             RepositoryAccessKind.GITHUB_CONTENTS -> githubRequest(
                 virtualUrl,
-                credentialProvider() ?: throw RepositoryAccessRequiredException(
-                    domainId,
-                    RepositoryAccessFailureReason.MISSING_CREDENTIAL,
-                ),
+                requireNotNull(credential),
             )
         }
-        return client.newCall(request).execute().use { response ->
+        val call = client.newCall(request)
+        val cancellation = credential?.lifetime?.invokeOnCompletion { call.cancel() }
+        try { return call.execute().use { response ->
+            credential?.ensureCurrent()
             if (response.request.url != request.url || response.isRedirect) {
                 throw TrustedMetadataException("Repository request URL changed")
+            }
+            if (response.code == 429 || (response.code == 403 &&
+                (response.header("X-RateLimit-Remaining") == "0" || response.header("Retry-After") != null))) {
+                throw IOException("GitHub request limit reached; retry later")
             }
             if (access.kind == RepositoryAccessKind.GITHUB_CONTENTS && response.code in setOf(401, 403)) {
                 throw RepositoryAccessRequiredException(
@@ -73,9 +80,11 @@ internal class RepositoryContentTransport(
             if (declaredLength > maxBytes) {
                 throw TrustedMetadataException("Repository response exceeds size limit")
             }
-            response.body?.boundedRepositoryBytes(maxBytes)
+            val bytes = response.body?.boundedRepositoryBytes(maxBytes)
                 ?: throw IOException("Repository response is empty")
-        }
+            credential?.ensureCurrent()
+            bytes
+        } } finally { cancellation?.dispose() }
     }
 
     private fun githubRequest(

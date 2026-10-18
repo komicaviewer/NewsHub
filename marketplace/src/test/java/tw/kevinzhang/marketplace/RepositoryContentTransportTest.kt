@@ -17,6 +17,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RepositoryContentTransportTest {
+    @Test fun `logout during response prevents returned metadata`() {
+        val lifetime = kotlinx.coroutines.Job()
+        val credential = RepositoryAccessCredential.githubToken("secret").leased(lifetime) { }
+        val client = clientResponding { chain ->
+            lifetime.cancel()
+            response(chain.request(), 200, ROOT_BYTES)
+        }
+        assertThrows(Exception::class.java) {
+            runBlocking { githubTransport(client, credential).fetchRequired(VIRTUAL_ROOT, 1024) }
+        }
+    }
     @Test fun `GitHub subdirectory stays inside repository and ref is encoded once`() = runBlocking {
         val client = clientResponding { chain ->
             assertEquals("https://api.github.com/repos/acme/private-repo/contents/%E5%A5%97%E4%BB%B6/repo/metadata/root.json?ref=release%2Fv1", chain.request().url.toString())

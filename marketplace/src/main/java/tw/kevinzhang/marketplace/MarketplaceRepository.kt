@@ -45,4 +45,7 @@ interface MarketplaceRepository {
 
     fun getInstallState(info: ExtensionInfo): InstallState
     suspend fun downloadApk(info: ExtensionInfo): File
+
+    /** Keep a repository session lease through download and installer dispatch. */
+    suspend fun withRepositoryAccess(domainId: String, action: suspend () -> Unit) { action() }
 }

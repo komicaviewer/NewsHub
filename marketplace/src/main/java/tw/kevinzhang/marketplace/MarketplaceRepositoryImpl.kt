@@ -69,6 +69,7 @@ class MarketplaceRepositoryImpl @Inject constructor(
                 credentialProvider = { credential },
             )
             val bytes = transport.fetchRequired(rootUrl, MAX_BOOTSTRAP_ROOT_BYTES)
+            credential?.ensureCurrent()
             // Constructor verification proves that the downloaded root meets its own root role
             // threshold before the user is shown fingerprints.
             TrustedMetadataVerifier(bytes, Instant::now)
@@ -96,6 +97,13 @@ class MarketplaceRepositoryImpl @Inject constructor(
         val pending = synchronized(pendingInspections) {
             pendingInspections.remove(confirmationToken)
         } ?: throw TrustedMetadataException("Repository confirmation has expired")
+        return if (pending.access.credentialBinding == RepositoryCredentialBinding.GITHUB_ACCOUNT) {
+            requireNotNull(pending.credential).authorized { confirmPendingRoot(pending) }
+        } else confirmPendingRoot(pending)
+    }
+
+    private suspend fun confirmPendingRoot(pending: PendingInspection): RepositoryTrustDomain {
+        pending.credential?.ensureCurrent()
         val domain = RepositoryTrustDomain(
             id = UUID.randomUUID().toString(),
             canonicalBaseUrl = pending.canonicalBaseUrl,
@@ -108,7 +116,7 @@ class MarketplaceRepositoryImpl @Inject constructor(
         val store = RepositoryTrustDomainStore(trustDirectory, domain.id)
         var credentialSaved = false
         return try {
-            if (domain.access.kind == RepositoryAccessKind.GITHUB_CONTENTS) {
+            if (domain.access.credentialBinding == RepositoryCredentialBinding.MANUAL_PAT) {
                 val credential = pending.credential ?: throw RepositoryAccessRequiredException(
                     domain.id,
                     RepositoryAccessFailureReason.MISSING_CREDENTIAL,
@@ -122,6 +130,7 @@ class MarketplaceRepositoryImpl @Inject constructor(
                 runtime.client.refresh(domain.canonicalBaseUrl)
             }
             runtime.cache(domain.canonicalBaseUrl, snapshot)
+            pending.credential?.ensureCurrent()
             trustConsumer.install(snapshot.trust)
             synchronized(runtimes) {
                 check(runtimes.values.none { it.domain.canonicalBaseUrl == domain.canonicalBaseUrl }) {
@@ -232,23 +241,44 @@ class MarketplaceRepositoryImpl @Inject constructor(
     override suspend fun downloadApk(info: ExtensionInfo): File {
         val runtime = synchronized(runtimes) { runtimes[info.repositoryDomainId] }
             ?: throw TrustedMetadataException("Unknown repository trust domain")
-        return runtime.client.downloadAndVerify(context, info)
+        var downloaded: File? = null
+        return try { withAccess(runtime) {
+            runtime.client.downloadAndVerify(context, info).also { downloaded = it }
+        } } catch (error: Exception) { downloaded?.delete(); throw error }
+    }
+
+    override suspend fun withRepositoryAccess(domainId: String, action: suspend () -> Unit) {
+        val runtime = synchronized(runtimes) { runtimes[domainId] }
+            ?: throw TrustedMetadataException("Unknown repository trust domain")
+        withAccess(runtime, action)
+    }
+
+    private suspend fun <T> withAccess(runtime: DomainRuntime, action: suspend () -> T): T {
+        if (runtime.domain.state != RepositoryDomainState.ACTIVE) throw TrustedMetadataException("Repository is not active")
+        if (runtime.domain.access.kind != RepositoryAccessKind.GITHUB_CONTENTS) return action()
+        val credential = credentialStore.getCredential(runtime.domain) ?: throw RepositoryAccessRequiredException(
+            runtime.domain.id, RepositoryAccessFailureReason.MISSING_CREDENTIAL)
+        return credential.authorized(action)
     }
 
     private suspend fun refresh(repoUrl: String): RepositorySnapshot = refreshMutex.withLock {
         val runtime = runtimeFor(repoUrl)
+        withAccess(runtime) { refreshRuntime(runtime, repoUrl) }
+    }
+
+    private suspend fun refreshRuntime(runtime: DomainRuntime, repoUrl: String): RepositorySnapshot {
         if (runtime.domain.state != RepositoryDomainState.ACTIVE) {
             throw TrustedMetadataException("Repository trust is ${runtime.domain.state}")
         }
         val now = System.currentTimeMillis()
         runtime.cachedSnapshot
             ?.takeIf { runtime.cachedRepoUrl == repoUrl && now - runtime.cachedAtMillis <= MEMORY_CACHE_MILLIS }
-            ?.let { return@withLock it }
+            ?.let { return it }
 
         val refreshed = withContext(Dispatchers.IO) { runtime.client.refresh(runtime.domain.canonicalBaseUrl) }
         runtime.cache(repoUrl, refreshed)
         trustConsumer.install(refreshed.trust)
-        refreshed
+        return refreshed
     }
 
     private fun runtimeFor(repoUrl: String): DomainRuntime {
@@ -277,7 +307,7 @@ class MarketplaceRepositoryImpl @Inject constructor(
             domain = domain,
             credentialProvider = {
                 if (domain.access.kind == RepositoryAccessKind.GITHUB_CONTENTS) {
-                    credentialStore.getCredential(domain.id)
+                    credentialStore.getCredential(domain)
                 } else {
                     null
                 }

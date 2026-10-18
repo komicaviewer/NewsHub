@@ -15,6 +15,7 @@ import javax.inject.Inject
 
 @HiltAndroidApp
 class App: Application(), ImageLoaderFactory {
+    @Inject lateinit var githubRepositoryAccessMonitor: tw.kevinzhang.newshub.github.GitHubRepositoryAccessMonitor
 
     @Inject
     lateinit var imageLoader: ImageLoader

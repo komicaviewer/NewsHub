@@ -18,12 +18,12 @@ abstract class RepoModule {
     @Binds
     @Singleton
     abstract fun bindRepositoryCredentialStore(
-        impl: RepositoryCredentialVault,
+        impl: AccountRepositoryCredentialStore,
     ): RepositoryCredentialStore
 
     @Binds
     @Singleton
     abstract fun bindRepositoryCredentialProvider(
-        impl: RepositoryCredentialVault,
+        impl: AccountRepositoryCredentialStore,
     ): RepositoryCredentialProvider
 }
