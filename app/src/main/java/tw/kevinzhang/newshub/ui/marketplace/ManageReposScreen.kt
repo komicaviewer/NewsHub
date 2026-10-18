@@ -1,5 +1,8 @@
 package tw.kevinzhang.newshub.ui.marketplace
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,6 +34,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +71,16 @@ fun ManageReposScreen(
     val validationState by viewModel.validationState.collectAsStateWithLifecycle()
     val accessRequiredDomainIds by viewModel.accessRequiredDomainIds.collectAsStateWithLifecycle()
     val reauthorizationState by viewModel.reauthorizationState.collectAsStateWithLifecycle()
+    var adding by rememberSaveable { mutableStateOf(false) }
+    var choosing by rememberSaveable { mutableStateOf(true) }
+    val busy = validationState is AddRepoValidationState.InspectingRoot || validationState is AddRepoValidationState.Confirming
+    val back: () -> Unit = {
+        if (adding && !busy) {
+            if (accountMode && !choosing) { viewModel.cancelTrustConfirmation(); choosing = true }
+            else { viewModel.cancelTrustConfirmation(); adding = false }
+        } else if (!adding) onNavigateUp()
+    }
+    BackHandler(enabled = adding) { back() }
     var revokeCandidate by remember { mutableStateOf<RepositoryTrustDomain?>(null) }
 
     when (val reauth = reauthorizationState) {
@@ -107,28 +121,39 @@ fun ManageReposScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("管理來源") },
+                title = { Text(if (!adding) "管理來源" else if (!accountMode) "新增來源" else if (choosing) "選擇 GitHub 來源" else "檢查來源") },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateUp) {
+                    IconButton(onClick = back, enabled = !busy) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
             )
         },
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(innerPadding),
-        ) {
-            item {
+        Column(Modifier.fillMaxSize().padding(innerPadding), horizontalAlignment = Alignment.CenterHorizontally) {
+        if (adding && accountMode) {
+            Box(if (choosing) Modifier.widthIn(max = 640.dp).weight(1f).padding(horizontal = 24.dp, vertical = 12.dp) else Modifier.height(0.dp)) {
+                GitHubRepositoryPicker(
+                    onSelect = { repo, credential -> viewModel.selectGitHubRepository(repo, credential); choosing = false },
+                    onSessionChanged = { viewModel.invalidateGitHubSelection(); choosing = true },
+                    selectionEnabled = !busy,
+                    showRepositories = choosing,
+                )
+            }
+        }
+        if (!(adding && accountMode && choosing)) LazyColumn(Modifier.widthIn(max = 640.dp).fillMaxSize()) {
+            if (!adding) item {
+                Button(onClick = { adding = true; choosing = true; viewModel.onAccessKindChanged(RepositoryAccessKind.PUBLIC_HTTPS) },
+                    modifier = Modifier.fillMaxWidth().padding(16.dp)) { Text("新增來源") }
+            }
+            if (adding) item {
                 AddRepoSection(
                     url = addRepoUrl,
                     accessKind = accessKind,
                     accountMode = accountMode,
                     revision = revision,
                     directory = directory,
-                    onAccountMode = viewModel::useGitHubAccount,
-                    onSelectRepo = viewModel::selectGitHubRepository,
-                    onSessionChanged = viewModel::invalidateGitHubSelection,
+                    onAccountMode = { choosing = true; viewModel.useGitHubAccount() },
                     onRevisionChanged = viewModel::onRepositoryRevisionChanged,
                     onDirectoryChanged = viewModel::onRepositoryDirectoryChanged,
                     githubToken = githubToken,
@@ -140,8 +165,12 @@ fun ManageReposScreen(
                     onConfirm = viewModel::confirmTrust,
                     onCancel = viewModel::cancelTrustConfirmation,
                 )
+                if (validationState is AddRepoValidationState.Success) {
+                    Button(onClick = { viewModel.cancelTrustConfirmation(); adding = false },
+                        modifier = Modifier.fillMaxWidth().padding(16.dp)) { Text("完成") }
+                }
             }
-            item {
+            if (!adding) item {
                 HorizontalDivider()
                 Text(
                     "已授權的來源",
@@ -150,7 +179,7 @@ fun ManageReposScreen(
                     modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
                 )
             }
-            items(domains, key = RepositoryTrustDomain::id) { domain ->
+            if (!adding) items(domains, key = RepositoryTrustDomain::id) { domain ->
                 RepositoryDomainItem(
                     domain = domain,
                     onSuspend = { viewModel.suspendRepository(domain.id) },
@@ -163,6 +192,7 @@ fun ManageReposScreen(
             }
         }
     }
+    }
 }
 
 @Composable
@@ -174,8 +204,6 @@ private fun AddRepoSection(
     revision: String,
     directory: String,
     onAccountMode: () -> Unit,
-    onSelectRepo: (tw.kevinzhang.newshub.github.GitHubRepo, tw.kevinzhang.marketplace.RepositoryAccessCredential) -> Unit,
-    onSessionChanged: () -> Unit,
     onRevisionChanged: (String) -> Unit,
     onDirectoryChanged: (String) -> Unit,
     githubToken: String,
@@ -192,13 +220,13 @@ private fun AddRepoSection(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("新增 extensions repo", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "公開來源或你有權存取的 GitHub private repository 都會先顯示根金鑰指紋。",
+        if (!accountMode) Text("選擇加入方式", style = MaterialTheme.typography.titleLarge)
+        if (!accountMode) Text(
+            "加入前會檢查來源格式，並請你核對簽署金鑰。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (!accountMode) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
                 selected = accessKind == RepositoryAccessKind.PUBLIC_HTTPS,
                 onClick = { onAccessKindChanged(RepositoryAccessKind.PUBLIC_HTTPS) },
@@ -211,10 +239,13 @@ private fun AddRepoSection(
                 label = { Text("GitHub private") },
                 enabled = !busy,
             )
-            FilterChip(selected = accountMode, onClick = onAccountMode, label = { Text("登入 GitHub") }, enabled = !busy)
+            FilterChip(selected = accountMode, onClick = onAccountMode, label = { Text("GitHub 帳號") }, enabled = !busy)
         }
-        if (accountMode) GitHubRepositoryPicker(onSelect = onSelectRepo, onSessionChanged = onSessionChanged, selectionEnabled = !busy)
-        OutlinedTextField(
+        if (accountMode) {
+            Text(url.removePrefix("https://github.com/"), style = MaterialTheme.typography.titleLarge)
+            Text("確認來源位置，再檢查簽署金鑰。", style = MaterialTheme.typography.bodyMedium)
+        }
+        if (!accountMode) OutlinedTextField(
             value = url,
             onValueChange = onUrlChanged,
             label = { Text(if (accessKind == RepositoryAccessKind.GITHUB_CONTENTS) "GitHub repository URL" else "固定 HTTPS 網址") },
@@ -243,7 +274,11 @@ private fun AddRepoSection(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        var advanced by remember(url) { mutableStateOf(false) }
         if (accessKind == RepositoryAccessKind.GITHUB_CONTENTS && url.isNotBlank()) {
+            TextButton(onClick = { advanced = !advanced }, enabled = !busy) { Text(if (advanced) "收起進階設定" else "進階設定：分支與子目錄") }
+        }
+        if (accessKind == RepositoryAccessKind.GITHUB_CONTENTS && url.isNotBlank() && advanced) {
             OutlinedTextField(value = revision, onValueChange = onRevisionChanged, label = { Text("分支或 revision") },
                 singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = directory, onValueChange = onDirectoryChanged, label = { Text("子目錄（空白表示根目錄）") },
@@ -256,7 +291,7 @@ private fun AddRepoSection(
                     accessKind == RepositoryAccessKind.PUBLIC_HTTPS || accountMode || githubToken.isNotBlank()
                 ),
                 modifier = Modifier.align(Alignment.End),
-            ) { Text("檢查金鑰") }
+            ) { Text("檢查來源") }
             AddRepoValidationState.InspectingRoot -> BusyMessage("正在安全地讀取根金鑰…")
             is AddRepoValidationState.Confirming -> BusyMessage("正在驗證並加入來源…")
             is AddRepoValidationState.AwaitingTrustConfirmation -> TrustPreview(

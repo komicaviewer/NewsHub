@@ -1,6 +1,7 @@
 package tw.kevinzhang.newshub.ui.marketplace
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -31,14 +32,22 @@ class GitHubRepositoryPickerInstrumentedTest {
         val session = GitHubAccountSession(GitHubOAuthClient(http, "fake-client"), catalog, storage)
         val vm = GitHubRepositoryPickerViewModel(session, catalog)
         var selected: GitHubRepo? = null
-        compose.setContent { MaterialTheme { GitHubRepositoryPicker({ repo, _ -> selected = repo }, {}, vm) } }
-        compose.onNodeWithText("已登入 test-account").assertIsDisplayed()
+        val showing = mutableStateOf(true)
+        compose.setContent { MaterialTheme {
+            GitHubRepositoryPicker({ repo, _ -> selected = repo; showing.value = false }, {}, vm, showRepositories = showing.value)
+        } }
+        compose.onNodeWithText("test-account").assertIsDisplayed()
         compose.waitUntil(5000) { compose.onAllNodesWithText("team/extensions").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("搜尋可讀取的 repositories").performTextInput("extensions")
+        compose.onNodeWithText("搜尋儲存庫").performTextInput("extensions")
         compose.onNodeWithText("team/extensions").performClick()
         compose.runOnIdle { assertEquals("release/stable", selected?.defaultBranch) }
+        compose.onNodeWithText("team/extensions").assertDoesNotExist()
+        compose.runOnIdle { showing.value = true }
+        compose.onNodeWithText("team/extensions").assertIsDisplayed()
+        compose.onNodeWithText("extensions").assertIsDisplayed()
+        compose.onNodeWithContentDescription("帳號選單").performClick()
         compose.onNodeWithText("登出 GitHub").performClick()
-        compose.onNodeWithText("登入 GitHub").assertIsDisplayed()
+        compose.onNodeWithText("繼續連接 GitHub").assertIsDisplayed()
         compose.onNodeWithText("team/extensions").assertDoesNotExist()
         compose.runOnIdle { assertNull(storage.saved) }
     }

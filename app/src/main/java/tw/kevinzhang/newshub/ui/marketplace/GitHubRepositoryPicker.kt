@@ -1,6 +1,15 @@
 package tw.kevinzhang.newshub.ui.marketplace
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,45 +26,81 @@ import tw.kevinzhang.newshub.github.GitHubRepo
 
 @Composable
 internal fun GitHubRepositoryPicker(onSelect: (GitHubRepo, RepositoryAccessCredential) -> Unit,
-    onSessionChanged: () -> Unit, viewModel: GitHubRepositoryPickerViewModel = hiltViewModel(), selectionEnabled: Boolean = true) {
+    onSessionChanged: () -> Unit, viewModel: GitHubRepositoryPickerViewModel = hiltViewModel(), selectionEnabled: Boolean = true, showRepositories: Boolean = true) {
     val session by viewModel.session.state.collectAsStateWithLifecycle()
     val search by viewModel.search.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
     val clipboard = LocalClipboardManager.current
-    var expanded by remember(session.account) { mutableStateOf(true) }
+    val listState = rememberLazyListState()
+    val loginScroll = rememberScrollState()
+    var menuOpen by remember { mutableStateOf(false) }
     LaunchedEffect(session.account) { onSessionChanged(); if (session.account != null) viewModel.loadMore() }
     DisposableEffect(Unit) { onDispose { if (viewModel.session.state.value.busy) viewModel.cancel() } }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("GitHub 登入使用 repo 授權，GitHub 會一併授予寫入權限；NewsHub 僅讀取來源內容。",
-            style = MaterialTheme.typography.bodySmall)
+    Column(modifier = Modifier.fillMaxWidth().fillMaxHeight().then(
+        if (session.account == null) Modifier.verticalScroll(loginScroll) else Modifier
+    ), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (!viewModel.session.configured) {
             Text("此版本尚未設定 GitHub 登入。", color = MaterialTheme.colorScheme.error)
         } else if (session.account == null) {
-            if (!session.busy) Button(onClick = viewModel::login) { Text("登入 GitHub") }
-        } else {
-            Text("已登入 ${session.account!!.login}")
-            TextButton(onClick = viewModel::logout) { Text("登出 GitHub") }
-            TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起 repository 清單" else "選擇其他 repository") }
-            if (expanded) {
-            OutlinedTextField(value = search.query, onValueChange = viewModel::query,
-                label = { Text("搜尋可讀取的 repositories") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            Text("清單受組織 OAuth／SSO 政策限制。搜尋時會繼續讀取後續頁面。", style = MaterialTheme.typography.bodySmall)
-            // Parent is a LazyColumn: cap this batch and offer more locally to avoid composing a huge directory.
-            var visible by remember(search.query) { mutableIntStateOf(20) }
-            search.results.take(visible).forEach { repo ->
-                OutlinedButton(modifier = Modifier.fillMaxWidth(), enabled = selectionEnabled, onClick = {
-                    viewModel.session.currentCredential()?.let { onSelect(repo, it); expanded = false }
-                }) { Column(Modifier.fillMaxWidth()) {
-                    Text(repo.fullName)
-                    Text(if (repo.private) "私人 repository" else "公開 repository", style = MaterialTheme.typography.bodySmall)
-                    repo.description?.let { Text(it, maxLines = 2, style = MaterialTheme.typography.bodySmall) }
-                } }
+            Text("連接 GitHub", style = MaterialTheme.typography.headlineMedium)
+            Text("選擇你能存取的擴充來源。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(16.dp))
+            Text("GitHub 此授權包含儲存庫寫入權限；NewsHub 僅用於讀取來源。",
+                style = MaterialTheme.typography.bodyMedium)
+            if (!session.busy) Button(onClick = viewModel::login, modifier = Modifier.fillMaxWidth()) {
+                Text("繼續連接 GitHub")
             }
-            if (search.results.size > visible) TextButton(onClick = { visible += 20 }) { Text("顯示更多結果") }
-            if (search.loading) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("正在搜尋／讀取目錄…") }
-            else if (!search.complete) TextButton(onClick = viewModel::loadMore) { Text("載入更多／重試") }
-            if (search.complete && search.results.isEmpty()) Text("沒有符合的 repository。")
-            search.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        } else if (showRepositories) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    Text(session.account!!.login, style = MaterialTheme.typography.titleMedium)
+                    Text("GitHub 已連接", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "帳號選單")
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(text = { Text("管理 GitHub 授權") }, onClick = {
+                            menuOpen = false; uriHandler.openUri("https://github.com/settings/applications")
+                        })
+                        DropdownMenuItem(text = { Text("登出 GitHub") }, onClick = {
+                            menuOpen = false; viewModel.logout()
+                        })
+                    }
+                }
+            }
+            OutlinedTextField(value = search.query, onValueChange = viewModel::query,
+                label = { Text("搜尋儲存庫") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            if (search.loading) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text("正在讀取更多儲存庫…", style = MaterialTheme.typography.bodySmall)
+            }
+            LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f)) {
+                items(search.results, key = { it.fullName }) { repo ->
+                    Column(Modifier.fillMaxWidth().clickable(enabled = selectionEnabled) {
+                        viewModel.session.currentCredential()?.let { onSelect(repo, it) }
+                    }.padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(repo.fullName, style = MaterialTheme.typography.titleSmall)
+                        Text(if (repo.private) "私人儲存庫" else "公開儲存庫",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        repo.description?.let {
+                            Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+                item {
+                    if (!search.loading && !search.complete) TextButton(onClick = viewModel::loadMore) { Text("載入更多儲存庫") }
+                    if (search.complete && search.results.isEmpty()) Text("沒有符合的儲存庫。", Modifier.padding(vertical = 24.dp))
+                    search.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    Text("找不到組織的儲存庫？請確認組織的 OAuth／SSO 授權。",
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 16.dp))
+                }
             }
         }
         if (session.busy) {
@@ -77,6 +122,6 @@ internal fun GitHubRepositoryPicker(onSelect: (GitHubRepo, RepositoryAccessCrede
             TextButton(onClick = viewModel::cancel) { Text("取消登入") }
         }
         session.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        TextButton(onClick = { uriHandler.openUri("https://github.com/settings/applications") }) { Text("管理 GitHub 授權") }
+
     }
 }
