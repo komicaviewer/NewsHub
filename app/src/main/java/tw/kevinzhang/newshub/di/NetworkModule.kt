@@ -12,10 +12,16 @@ import tw.kevinzhang.extension_api.HostResourceProvider
 import tw.kevinzhang.newshub.auth.SourceSessionManager
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
+import javax.inject.Named
 
 @InstallIn(SingletonComponent::class)
 @Module
 object NetworkModule {
+    /** Private repository URLs must never go through the debug HTTP logger. */
+    @Provides @Singleton @Named("repositoryHttpClient")
+    fun provideRepositoryHttpClient(): OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS).readTimeout(10, TimeUnit.SECONDS)
+        .writeTimeout(10, TimeUnit.SECONDS).callTimeout(30, TimeUnit.SECONDS).build()
 
     @Provides
     @Singleton

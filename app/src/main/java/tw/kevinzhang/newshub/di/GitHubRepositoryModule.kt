@@ -30,6 +30,8 @@ object GitHubRepositoryModule {
         repo.getRepositoryDomains(), session::currentCredential, { domain, token ->
             val identity = catalog.getAccount(token)
             check(identity.id == session.state.value.account?.id)
+            marketplace.registerRepositoryDomains(listOf(domain))
             marketplace.verifyRepositoryAccess(domain.id, token)
+            marketplace.fetchExtensions(domain.canonicalBaseUrl)
         }, statuses)
 }

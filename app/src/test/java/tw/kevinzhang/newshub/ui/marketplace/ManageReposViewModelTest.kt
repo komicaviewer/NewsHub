@@ -37,6 +37,18 @@ import java.io.File
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ManageReposViewModelTest {
+    @Test fun `logout after DataStore commit rolls back the persisted source`() = runTest {
+        val lifetime = kotlinx.coroutines.Job()
+        val repo = FakeRepoRepository(afterAdd = { lifetime.cancel() })
+        val credentials = FakeCredentialStore()
+        val marketplace = FakeMarketplaceRepository(credentials)
+        val vm = viewModel(repo, marketplace, credentials)
+        vm.selectGitHubRepository(tw.kevinzhang.newshub.github.GitHubRepo(1, "org", "ext", "main", true, null),
+            RepositoryAccessCredential.githubToken("token").leased(lifetime) {})
+        vm.inspectNow(); advanceUntilIdle()
+        vm.confirmTrust(); advanceUntilIdle()
+        assertTrue(repo.domains.value.isEmpty())
+    }
     @Test fun `account selection uses default branch directory and still requires trust`() = runTest {
         val repo = FakeRepoRepository()
         val credentials = FakeCredentialStore()
@@ -181,7 +193,7 @@ class ManageReposViewModelTest {
         credentials: RepositoryCredentialStore,
     ) = ManageReposViewModel(repo, marketplace, credentials, RepositoryAccessStatusStore())
 
-    private class FakeRepoRepository(private val failAdd: Boolean = false) : RepoRepository {
+    private class FakeRepoRepository(private val failAdd: Boolean = false, val afterAdd: () -> Unit = {}) : RepoRepository {
         val domains = MutableStateFlow<List<RepositoryTrustDomain>>(emptyList())
         override fun getRepositoryDomains(): Flow<List<RepositoryTrustDomain>> = domains
         override fun getRepoUrls(): Flow<Set<String>> = domains.map { list ->
@@ -190,9 +202,13 @@ class ManageReposViewModelTest {
         override suspend fun addRepositoryDomain(domain: RepositoryTrustDomain) {
             if (failAdd) error("DataStore unavailable")
             domains.value += domain
+            afterAdd()
         }
         override suspend fun setRepositoryDomainState(domainId: String, state: RepositoryDomainState) {
             domains.value = domains.value.map { if (it.id == domainId) it.copy(state = state) else it }
+        }
+        override suspend fun discardUncommittedRepositoryDomain(domainId: String) {
+            domains.value = domains.value.filterNot { it.id == domainId }
         }
         override suspend fun addRepoUrl(url: String) = Unit
         override suspend fun removeRepoUrl(url: String) = Unit

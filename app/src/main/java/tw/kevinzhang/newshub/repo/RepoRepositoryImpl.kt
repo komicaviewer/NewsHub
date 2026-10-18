@@ -99,6 +99,13 @@ class RepoRepositoryImpl @Inject constructor(
         marketplaceRepository.setRepositoryDomainState(requireNotNull(updated))
     }
 
+    override suspend fun discardUncommittedRepositoryDomain(domainId: String) {
+        require(domainId != RepositoryTrustDomains.OFFICIAL_ID)
+        dataStore.edit { preferences ->
+            preferences[REPOSITORY_DOMAINS_KEY] = encodeRepositoryDomains(currentDomains(preferences).filterNot { it.id == domainId })
+        }
+    }
+
     override suspend fun addRepoUrl(url: String) {
         val normalized = url.trim().trimEnd('/')
         if (normalized == LEGACY_OFFICIAL_REPO_URL || normalized == officialDomain.canonicalBaseUrl) return

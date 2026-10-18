@@ -13,7 +13,7 @@ import tw.kevinzhang.newshub.github.GitHubRepo
 
 @Composable
 internal fun GitHubRepositoryPicker(onSelect: (GitHubRepo, RepositoryAccessCredential) -> Unit,
-    onSessionChanged: () -> Unit, viewModel: GitHubRepositoryPickerViewModel = hiltViewModel()) {
+    onSessionChanged: () -> Unit, viewModel: GitHubRepositoryPickerViewModel = hiltViewModel(), selectionEnabled: Boolean = true) {
     val session by viewModel.session.state.collectAsStateWithLifecycle()
     val search by viewModel.search.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
@@ -38,7 +38,7 @@ internal fun GitHubRepositoryPicker(onSelect: (GitHubRepo, RepositoryAccessCrede
             // Parent is a LazyColumn: cap this batch and offer more locally to avoid composing a huge directory.
             var visible by remember(search.query) { mutableIntStateOf(20) }
             search.results.take(visible).forEach { repo ->
-                OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = {
+                OutlinedButton(modifier = Modifier.fillMaxWidth(), enabled = selectionEnabled, onClick = {
                     viewModel.session.currentCredential()?.let { onSelect(repo, it); expanded = false }
                 }) { Column(Modifier.fillMaxWidth()) {
                     Text(repo.fullName)

@@ -79,6 +79,7 @@ class ManageReposViewModel @Inject constructor(
     }
 
     fun selectGitHubRepository(repo: GitHubRepo, credential: RepositoryAccessCredential) {
+        if (_validationState.value is AddRepoValidationState.Confirming) return
         cancelCurrentPreview(); inspectionJob?.cancel()
         _accessKind.value = RepositoryAccessKind.GITHUB_CONTENTS
         _githubAccountMode.value = true
@@ -322,11 +323,11 @@ class ManageReposViewModel @Inject constructor(
     }
 
     private suspend fun cleanUpFailedConfirmation(domain: RepositoryTrustDomain) {
-        runCatching { credentialStore.deleteCredential(domain.id) }
-        runCatching {
-            marketplaceRepository.setRepositoryDomainState(
-                domain.copy(state = RepositoryDomainState.REVOKED),
-            )
+        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+            // Invalidate trust/bootstrap first: even a storage failure must not reactivate on restart.
+            runCatching { marketplaceRepository.discardUncommittedRepositoryDomain(domain.id) }
+            runCatching { repoRepository.discardUncommittedRepositoryDomain(domain.id) }
+            runCatching { credentialStore.deleteCredential(domain.id) }
         }
     }
 

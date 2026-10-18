@@ -22,6 +22,7 @@ interface MarketplaceRepository {
 
     /** Forget a process-local preview. No domain or metadata has been written at this point. */
     fun cancelRepositoryRootInspection(confirmationToken: String)
+    suspend fun discardUncommittedRepositoryDomain(domainId: String) { }
 
     /** Verify replacement access without persisting it. */
     suspend fun verifyRepositoryAccess(

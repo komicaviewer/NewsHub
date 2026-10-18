@@ -9,6 +9,8 @@ interface RepoRepository {
     fun getRepoUrls(): Flow<Set<String>>
 
     suspend fun addRepositoryDomain(domain: RepositoryTrustDomain)
+    /** Roll back an addition whose confirmation has not been delivered to the user. */
+    suspend fun discardUncommittedRepositoryDomain(domainId: String) { error("Rollback is unsupported") }
     suspend fun setRepositoryDomainState(domainId: String, state: RepositoryDomainState)
 
     /** Legacy adapters retained while Marketplace callers migrate to domain records. */

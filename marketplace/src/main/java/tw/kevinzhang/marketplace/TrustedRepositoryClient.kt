@@ -245,7 +245,10 @@ internal class TrustedRepositoryClient(
         }
     }
 
-    suspend fun downloadAndVerify(context: Context, info: ExtensionInfo): File = withContext(Dispatchers.IO) {
+    suspend fun downloadAndVerify(context: Context, info: ExtensionInfo): File {
+        require(info.sha256.matches(Regex("[a-fA-F0-9]{64}"))) { "Invalid APK digest" }
+        val destination = File(context.cacheDir, "${info.sha256}-${java.util.UUID.randomUUID()}.apk")
+        return repositoryFileOperation(destination, Dispatchers.IO) {
         requireDomainActive()
         if (info.repositoryDomainId != domain.id) {
             throw TrustedMetadataException("APK belongs to a different repository trust domain")
@@ -256,7 +259,6 @@ internal class TrustedRepositoryClient(
         if (!MessageDigest.isEqual(bytes.sha256(), info.sha256.hexBytes())) {
             throw TrustedMetadataException("APK hash mismatch")
         }
-        val destination = File(context.cacheDir, "${info.sha256}.apk")
         destination.writeBytes(bytes)
         try {
             verifyArchiveIdentity(context.packageManager, destination, info)
@@ -265,6 +267,7 @@ internal class TrustedRepositoryClient(
             throw error
         }
         destination
+        }
     }
 
     internal fun parseTargets(

@@ -64,6 +64,10 @@ fun MarketplaceScreen(
     onNavigateToManageRepos: () -> Unit,
     viewModel: MarketplaceViewModel = hiltViewModel(),
 ) {
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        // Returning from account management must reflect restored/paused repository access.
+        viewModel.refresh()
+    }
     val repoGroups by viewModel.repoGroups.collectAsStateWithLifecycle()
     val installSteps by viewModel.installSteps.collectAsStateWithLifecycle()
     val installedPackageNames by viewModel.installedPackageNames.collectAsStateWithLifecycle()

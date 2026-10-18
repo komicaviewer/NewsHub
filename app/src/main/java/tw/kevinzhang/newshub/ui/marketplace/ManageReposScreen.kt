@@ -213,7 +213,7 @@ private fun AddRepoSection(
             )
             FilterChip(selected = accountMode, onClick = onAccountMode, label = { Text("登入 GitHub") }, enabled = !busy)
         }
-        if (accountMode) GitHubRepositoryPicker(onSelect = onSelectRepo, onSessionChanged = onSessionChanged)
+        if (accountMode) GitHubRepositoryPicker(onSelect = onSelectRepo, onSessionChanged = onSessionChanged, selectionEnabled = !busy)
         OutlinedTextField(
             value = url,
             onValueChange = onUrlChanged,
@@ -360,7 +360,9 @@ private fun RepositoryDomainItem(
         )
         if (accessRequired) {
             Text(
-                "需要重新授權才能更新 metadata 或下載 APK。",
+                if (domain.access.credentialBinding == RepositoryCredentialBinding.GITHUB_ACCOUNT)
+                    "GitHub 更新已暫停或待確認，請使用「登入 GitHub」確認帳號及讀取權限。"
+                else "需要重新授權才能更新 metadata 或下載 APK。",
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
             )

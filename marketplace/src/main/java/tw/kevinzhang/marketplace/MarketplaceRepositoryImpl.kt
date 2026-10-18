@@ -20,7 +20,7 @@ import javax.inject.Inject
 
 class MarketplaceRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
-    okHttpClient: OkHttpClient,
+    @javax.inject.Named("repositoryHttpClient") okHttpClient: OkHttpClient,
     private val trustConsumer: VerifiedRepositoryTrustConsumer,
     private val credentialStore: RepositoryCredentialStore,
 ) : MarketplaceRepository {
@@ -33,6 +33,7 @@ class MarketplaceRepositoryImpl @Inject constructor(
     private val baseClient = okHttpClient
     private val pendingInspections = linkedMapOf<String, PendingInspection>()
     private val runtimes = linkedMapOf<String, DomainRuntime>()
+    private val discardedDomains = mutableSetOf<String>()
 
     init {
         val official = officialRepositoryDomain
@@ -97,9 +98,17 @@ class MarketplaceRepositoryImpl @Inject constructor(
         val pending = synchronized(pendingInspections) {
             pendingInspections.remove(confirmationToken)
         } ?: throw TrustedMetadataException("Repository confirmation has expired")
-        return if (pending.access.credentialBinding == RepositoryCredentialBinding.GITHUB_ACCOUNT) {
-            requireNotNull(pending.credential).authorized { confirmPendingRoot(pending) }
-        } else confirmPendingRoot(pending)
+        var confirmed: RepositoryTrustDomain? = null
+        try {
+            return if (pending.access.credentialBinding == RepositoryCredentialBinding.GITHUB_ACCOUNT) {
+                requireNotNull(pending.credential).authorized { confirmPendingRoot(pending).also { confirmed = it } }
+            } else confirmPendingRoot(pending)
+        } catch (error: Exception) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                confirmed?.let { discardUncommittedRepositoryDomain(it.id) }
+            }
+            throw error
+        }
     }
 
     private suspend fun confirmPendingRoot(pending: PendingInspection): RepositoryTrustDomain {
@@ -140,6 +149,7 @@ class MarketplaceRepositoryImpl @Inject constructor(
             }
             domain
         } catch (error: Exception) {
+            trustConsumer.setDomainState(domain.id, RepositoryDomainState.REVOKED)
             store.deleteUncommittedDomain()
             if (credentialSaved) runCatching { credentialStore.deleteCredential(domain.id) }
             throw error
@@ -148,6 +158,17 @@ class MarketplaceRepositoryImpl @Inject constructor(
 
     override fun cancelRepositoryRootInspection(confirmationToken: String) {
         synchronized(pendingInspections) { pendingInspections.remove(confirmationToken) }
+    }
+
+    override suspend fun discardUncommittedRepositoryDomain(domainId: String) {
+        require(domainId != RepositoryTrustDomains.OFFICIAL_ID)
+        val runtime = synchronized(runtimes) {
+            discardedDomains.add(domainId)
+            trustConsumer.setDomainState(domainId, RepositoryDomainState.REVOKED)
+            runtimes.remove(domainId)
+        }
+        (runtime?.store ?: RepositoryTrustDomainStore(trustDirectory, domainId)).deleteUncommittedDomain()
+        credentialStore.deleteCredential(domainId)
     }
 
     override suspend fun verifyRepositoryAccess(
@@ -172,6 +193,7 @@ class MarketplaceRepositoryImpl @Inject constructor(
     override fun registerRepositoryDomains(domains: Collection<RepositoryTrustDomain>) {
         val normalized = (domains + officialRepositoryDomain).associateBy(RepositoryTrustDomain::id)
         normalized.values.forEach { domain ->
+            if (synchronized(runtimes) { domain.id in discardedDomains }) return@forEach
             val existing = synchronized(runtimes) { runtimes[domain.id] }
             if (existing?.domain == domain) return@forEach
             if (domain.id == RepositoryTrustDomains.OFFICIAL_ID) {
@@ -182,7 +204,10 @@ class MarketplaceRepositoryImpl @Inject constructor(
                 ?: if (domain.id == RepositoryTrustDomains.OFFICIAL_ID) embeddedRoot else null
             if (bootstrapRoot == null) return@forEach
             val runtime = newRuntime(domain, bootstrapRoot, store)
-            synchronized(runtimes) { runtimes[domain.id] = runtime }
+            synchronized(runtimes) {
+                if (domain.id in discardedDomains) return@forEach
+                runtimes[domain.id] = runtime
+            }
             if (domain.state == RepositoryDomainState.ACTIVE) {
                 restorePersistedSnapshot(runtime)
             } else {
@@ -319,8 +344,12 @@ class MarketplaceRepositoryImpl @Inject constructor(
         runCatching { runtime.client.loadPersistedSnapshot() }
             .getOrNull()
             ?.let { snapshot ->
-                runtime.cache(runtime.domain.canonicalBaseUrl, snapshot)
-                trustConsumer.install(snapshot.trust)
+                synchronized(runtimes) {
+                    if (runtime.domain.id !in discardedDomains) {
+                        runtime.cache(runtime.domain.canonicalBaseUrl, snapshot)
+                        trustConsumer.install(snapshot.trust)
+                    }
+                }
             }
     }
 
