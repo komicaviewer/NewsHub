@@ -9,6 +9,14 @@ import tw.kevinzhang.marketplace.RepositoryTrustDomain
 import tw.kevinzhang.marketplace.RepositoryTrustMode
 
 class RepositoryDomainPersistenceTest {
+    @Test fun `old GitHub settings stay manual PAT and account binding round trips`() {
+        val old = """[{"id":"00000000-0000-4000-8000-000000000098","canonicalBaseUrl":"https://github.com/org/repo","trustMode":"USER_PINNED","state":"ACTIVE","rootThreshold":1,"rootKeyFingerprints":["${"a".repeat(64)}"],"accessKind":"GITHUB_CONTENTS","accessRevision":"release/stable"}]"""
+        val domain = decodeRepositoryDomains(old).single()
+        assertEquals(tw.kevinzhang.marketplace.RepositoryCredentialBinding.MANUAL_PAT, domain.access.credentialBinding)
+        val account = domain.copy(access = RepositoryAccessDescriptor.githubContents("release/stable", "套件/repo",
+            tw.kevinzhang.marketplace.RepositoryCredentialBinding.GITHUB_ACCOUNT))
+        assertEquals(listOf(account), decodeRepositoryDomains(encodeRepositoryDomains(listOf(account))))
+    }
     @Test
     fun `domain records round trip every trust state and sorted fingerprints`() {
         val domains = RepositoryDomainState.entries.mapIndexed { index, state ->
