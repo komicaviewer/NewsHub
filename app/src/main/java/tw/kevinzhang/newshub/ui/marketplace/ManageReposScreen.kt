@@ -3,6 +3,8 @@ package tw.kevinzhang.newshub.ui.marketplace
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,6 +46,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tw.kevinzhang.marketplace.RepositoryDomainState
 import tw.kevinzhang.marketplace.RepositoryAccessKind
+import tw.kevinzhang.marketplace.RepositoryCredentialBinding
 import tw.kevinzhang.marketplace.RepositoryRootPreview
 import tw.kevinzhang.marketplace.RepositoryTrustDomain
 import tw.kevinzhang.marketplace.RepositoryTrustMode
@@ -57,6 +60,9 @@ fun ManageReposScreen(
     val domains by viewModel.repositoryDomains.collectAsStateWithLifecycle()
     val addRepoUrl by viewModel.addRepoUrl.collectAsStateWithLifecycle()
     val accessKind by viewModel.accessKind.collectAsStateWithLifecycle()
+    val accountMode by viewModel.githubAccountMode.collectAsStateWithLifecycle()
+    val revision by viewModel.repositoryRevision.collectAsStateWithLifecycle()
+    val directory by viewModel.repositoryDirectory.collectAsStateWithLifecycle()
     val githubToken by viewModel.githubToken.collectAsStateWithLifecycle()
     val validationState by viewModel.validationState.collectAsStateWithLifecycle()
     val accessRequiredDomainIds by viewModel.accessRequiredDomainIds.collectAsStateWithLifecycle()
@@ -117,6 +123,14 @@ fun ManageReposScreen(
                 AddRepoSection(
                     url = addRepoUrl,
                     accessKind = accessKind,
+                    accountMode = accountMode,
+                    revision = revision,
+                    directory = directory,
+                    onAccountMode = viewModel::useGitHubAccount,
+                    onSelectRepo = viewModel::selectGitHubRepository,
+                    onSessionChanged = viewModel::invalidateGitHubSelection,
+                    onRevisionChanged = viewModel::onRepositoryRevisionChanged,
+                    onDirectoryChanged = viewModel::onRepositoryDirectoryChanged,
                     githubToken = githubToken,
                     state = validationState,
                     onUrlChanged = viewModel::onAddRepoUrlChanged,
@@ -152,9 +166,18 @@ fun ManageReposScreen(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun AddRepoSection(
     url: String,
     accessKind: RepositoryAccessKind,
+    accountMode: Boolean,
+    revision: String,
+    directory: String,
+    onAccountMode: () -> Unit,
+    onSelectRepo: (tw.kevinzhang.newshub.github.GitHubRepo, tw.kevinzhang.marketplace.RepositoryAccessCredential) -> Unit,
+    onSessionChanged: () -> Unit,
+    onRevisionChanged: (String) -> Unit,
+    onDirectoryChanged: (String) -> Unit,
     githubToken: String,
     state: AddRepoValidationState,
     onUrlChanged: (String) -> Unit,
@@ -175,7 +198,7 @@ private fun AddRepoSection(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
                 selected = accessKind == RepositoryAccessKind.PUBLIC_HTTPS,
                 onClick = { onAccessKindChanged(RepositoryAccessKind.PUBLIC_HTTPS) },
@@ -183,12 +206,14 @@ private fun AddRepoSection(
                 enabled = !busy,
             )
             FilterChip(
-                selected = accessKind == RepositoryAccessKind.GITHUB_CONTENTS,
+                selected = accessKind == RepositoryAccessKind.GITHUB_CONTENTS && !accountMode,
                 onClick = { onAccessKindChanged(RepositoryAccessKind.GITHUB_CONTENTS) },
                 label = { Text("GitHub private") },
                 enabled = !busy,
             )
+            FilterChip(selected = accountMode, onClick = onAccountMode, label = { Text("登入 GitHub") }, enabled = !busy)
         }
+        if (accountMode) GitHubRepositoryPicker(onSelect = onSelectRepo, onSessionChanged = onSessionChanged)
         OutlinedTextField(
             value = url,
             onValueChange = onUrlChanged,
@@ -202,11 +227,11 @@ private fun AddRepoSection(
                     },
                 )
             },
-            enabled = !busy,
+            enabled = !busy && !accountMode,
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
-        if (accessKind == RepositoryAccessKind.GITHUB_CONTENTS) {
+        if (accessKind == RepositoryAccessKind.GITHUB_CONTENTS && !accountMode) {
             OutlinedTextField(
                 value = githubToken,
                 onValueChange = onGithubTokenChanged,
@@ -218,11 +243,17 @@ private fun AddRepoSection(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        if (accessKind == RepositoryAccessKind.GITHUB_CONTENTS && url.isNotBlank()) {
+            OutlinedTextField(value = revision, onValueChange = onRevisionChanged, label = { Text("分支或 revision") },
+                singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = directory, onValueChange = onDirectoryChanged, label = { Text("子目錄（空白表示根目錄）") },
+                singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
+        }
         when (state) {
             AddRepoValidationState.Idle -> Button(
                 onClick = onInspect,
                 enabled = url.isNotBlank() && (
-                    accessKind == RepositoryAccessKind.PUBLIC_HTTPS || githubToken.isNotBlank()
+                    accessKind == RepositoryAccessKind.PUBLIC_HTTPS || accountMode || githubToken.isNotBlank()
                 ),
                 modifier = Modifier.align(Alignment.End),
             ) { Text("檢查金鑰") }
@@ -251,6 +282,10 @@ private fun AddRepoSection(
                 "已安全加入 ${state.domain.canonicalBaseUrl}",
                 color = MaterialTheme.colorScheme.primary,
             )
+        }
+        if (state is AddRepoValidationState.Error || state is AddRepoValidationState.AccessRequired) {
+            TextButton(onClick = onInspect, enabled = url.isNotBlank() && (accountMode ||
+                accessKind == RepositoryAccessKind.PUBLIC_HTTPS || githubToken.isNotBlank())) { Text("重新檢查") }
         }
     }
 }
@@ -333,7 +368,7 @@ private fun RepositoryDomainItem(
         if (domain.trustMode == RepositoryTrustMode.USER_PINNED && domain.state != RepositoryDomainState.REVOKED) {
             Spacer(Modifier.height(2.dp))
             Row(modifier = Modifier.align(Alignment.End)) {
-                if (domain.access.kind == RepositoryAccessKind.GITHUB_CONTENTS) {
+                if (domain.access.credentialBinding == RepositoryCredentialBinding.MANUAL_PAT) {
                     TextButton(onClick = onReauthorize) {
                         Text(if (accessRequired) "重新授權" else "更新 token")
                     }
@@ -402,5 +437,7 @@ internal fun RepositoryTrustDomain.stateLabel(): String = when (state) {
 
 internal fun RepositoryTrustDomain.accessLabel(): String = when (access.kind) {
     RepositoryAccessKind.PUBLIC_HTTPS -> "公開 HTTPS"
-    RepositoryAccessKind.GITHUB_CONTENTS -> "GitHub private (${access.revision})"
+    RepositoryAccessKind.GITHUB_CONTENTS -> if (access.credentialBinding == RepositoryCredentialBinding.GITHUB_ACCOUNT)
+        "GitHub 帳號 (${access.revision}${access.repositoryPath.takeIf { it.isNotEmpty() }?.let { ":$it" }.orEmpty()})"
+        else "GitHub private (${access.revision})"
 }

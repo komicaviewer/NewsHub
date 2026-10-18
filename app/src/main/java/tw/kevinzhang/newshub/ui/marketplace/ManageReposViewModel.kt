@@ -19,6 +19,9 @@ import tw.kevinzhang.marketplace.RepositoryAccessFailureReason
 import tw.kevinzhang.marketplace.RepositoryAccessKind
 import tw.kevinzhang.marketplace.RepositoryAccessRequiredException
 import tw.kevinzhang.marketplace.RepositoryCredentialStore
+import tw.kevinzhang.marketplace.RepositoryCredentialBinding
+import tw.kevinzhang.marketplace.authorized
+import tw.kevinzhang.newshub.github.GitHubRepo
 import tw.kevinzhang.marketplace.RepositoryDomainState
 import tw.kevinzhang.marketplace.RepositoryRootPreview
 import tw.kevinzhang.marketplace.RepositoryTrustDomain
@@ -61,6 +64,48 @@ class ManageReposViewModel @Inject constructor(
 
     private val _accessKind = MutableStateFlow(RepositoryAccessKind.PUBLIC_HTTPS)
     val accessKind = _accessKind.asStateFlow()
+    private val _githubAccountMode = MutableStateFlow(false)
+    val githubAccountMode = _githubAccountMode.asStateFlow()
+    private val _repositoryRevision = MutableStateFlow("main")
+    val repositoryRevision = _repositoryRevision.asStateFlow()
+    private val _repositoryDirectory = MutableStateFlow("")
+    val repositoryDirectory = _repositoryDirectory.asStateFlow()
+    private var accountCredential: RepositoryAccessCredential? = null
+
+    fun useGitHubAccount() {
+        onAccessKindChanged(RepositoryAccessKind.GITHUB_CONTENTS)
+        _githubAccountMode.value = true
+        _addRepoUrl.value = ""
+    }
+
+    fun selectGitHubRepository(repo: GitHubRepo, credential: RepositoryAccessCredential) {
+        cancelCurrentPreview(); inspectionJob?.cancel()
+        _accessKind.value = RepositoryAccessKind.GITHUB_CONTENTS
+        _githubAccountMode.value = true
+        _githubToken.value = ""
+        _addRepoUrl.value = repo.url
+        _repositoryRevision.value = repo.defaultBranch
+        _repositoryDirectory.value = ""
+        accountCredential = credential
+        _validationState.value = AddRepoValidationState.Idle
+    }
+
+    fun invalidateGitHubSelection() {
+        if (!_githubAccountMode.value) return
+        cancelCurrentPreview(); inspectionJob?.cancel()
+        accountCredential = null; _addRepoUrl.value = ""
+        _validationState.value = AddRepoValidationState.Idle
+    }
+
+    fun onRepositoryRevisionChanged(value: String) {
+        cancelCurrentPreview(); inspectionJob?.cancel()
+        _repositoryRevision.value = value; _validationState.value = AddRepoValidationState.Idle
+    }
+
+    fun onRepositoryDirectoryChanged(value: String) {
+        cancelCurrentPreview(); inspectionJob?.cancel()
+        _repositoryDirectory.value = value; _validationState.value = AddRepoValidationState.Idle
+    }
 
     private val _githubToken = MutableStateFlow("")
     val githubToken = _githubToken.asStateFlow()
@@ -91,10 +136,13 @@ class ManageReposViewModel @Inject constructor(
     }
 
     fun onAccessKindChanged(kind: RepositoryAccessKind) {
-        if (kind == _accessKind.value) return
+        if (kind == _accessKind.value && !_githubAccountMode.value) return
         cancelCurrentPreview()
         inspectionJob?.cancel()
         _accessKind.value = kind
+        _githubAccountMode.value = false
+        accountCredential = null
+        _repositoryRevision.value = "main"; _repositoryDirectory.value = ""
         _githubToken.value = ""
         _validationState.value = AddRepoValidationState.Idle
     }
@@ -119,11 +167,17 @@ class ManageReposViewModel @Inject constructor(
         viewModelScope.launch {
             var confirmedDomain: RepositoryTrustDomain? = null
             try {
-                val domain = marketplaceRepository.confirmRepositoryRoot(state.preview.confirmationToken)
-                confirmedDomain = domain
-                repoRepository.addRepositoryDomain(domain)
+                val confirm: suspend () -> Unit = {
+                    val domain = marketplaceRepository.confirmRepositoryRoot(state.preview.confirmationToken)
+                    confirmedDomain = domain
+                    repoRepository.addRepositoryDomain(domain)
+                }
+                if (_githubAccountMode.value) {
+                    requireNotNull(accountCredential).authorized(confirm)
+                } else confirm()
             } catch (error: CancellationException) {
                 confirmedDomain?.let { cleanUpFailedConfirmation(it) }
+                _validationState.value = AddRepoValidationState.AccessRequired("登入已結束，請重新登入並選取來源。")
                 throw error
             } catch (error: Exception) {
                 confirmedDomain?.let { cleanUpFailedConfirmation(it) }
@@ -205,25 +259,29 @@ class ManageReposViewModel @Inject constructor(
         try {
             val access = when (_accessKind.value) {
                 RepositoryAccessKind.PUBLIC_HTTPS -> RepositoryAccessDescriptor.publicHttps()
-                RepositoryAccessKind.GITHUB_CONTENTS -> RepositoryAccessDescriptor.githubContents()
+                RepositoryAccessKind.GITHUB_CONTENTS -> RepositoryAccessDescriptor.githubContents(
+                    _repositoryRevision.value, _repositoryDirectory.value,
+                    if (_githubAccountMode.value) RepositoryCredentialBinding.GITHUB_ACCOUNT else RepositoryCredentialBinding.MANUAL_PAT)
             }
             val credential = when (_accessKind.value) {
                 RepositoryAccessKind.PUBLIC_HTTPS -> null
-                RepositoryAccessKind.GITHUB_CONTENTS -> RepositoryAccessCredential.githubToken(
-                    _githubToken.value,
-                )
+                RepositoryAccessKind.GITHUB_CONTENTS -> if (_githubAccountMode.value) requireNotNull(accountCredential)
+                    else RepositoryAccessCredential.githubToken(_githubToken.value)
             }
+            credential?.ensureCurrent()
             val preview = marketplaceRepository.inspectRepositoryRoot(
                 RepositoryAccessDraft(repositoryUrl = url, access = access),
                 credential,
             )
+            credential?.ensureCurrent()
             _validationState.value = AddRepoValidationState.AwaitingTrustConfirmation(preview)
         } catch (error: CancellationException) {
             throw error
         } catch (error: RepositoryAccessRequiredException) {
             _githubToken.value = ""
             _validationState.value = AddRepoValidationState.AccessRequired(
-                "GitHub 無法存取這個 repository。請重新輸入具備 Contents: read 權限的 token。",
+                if (_githubAccountMode.value) "GitHub 無法存取這個 repository，請檢查登入及組織授權。"
+                else "GitHub 無法存取這個 repository。請重新輸入具備 Contents: read 權限的 token。",
             )
         } catch (error: Exception) {
             _githubToken.value = ""
@@ -260,6 +318,7 @@ class ManageReposViewModel @Inject constructor(
         _addRepoUrl.value = ""
         _githubToken.value = ""
         _accessKind.value = RepositoryAccessKind.PUBLIC_HTTPS
+        accountCredential = null; _githubAccountMode.value = false
     }
 
     private suspend fun cleanUpFailedConfirmation(domain: RepositoryTrustDomain) {

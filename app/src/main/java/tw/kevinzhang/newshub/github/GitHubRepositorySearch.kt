@@ -16,9 +16,13 @@ class GitHubRepositorySearch(private val scope: CoroutineScope, session: StateFl
     private val directory = linkedMapOf<Long, GitHubRepo>()
     private var nextPage: Int? = 1
     private var job: Job? = null
+    private var account = session.value.account
+    private var generation = 0
     init {
         scope.launch {
             session.map { it.account }.distinctUntilChanged().collect {
+                if (it == account) return@collect
+                account = it; generation++
                 job?.cancel(); directory.clear(); nextPage = 1
                 _state.value = GitHubSearchState()
             }
@@ -32,6 +36,7 @@ class GitHubRepositorySearch(private val scope: CoroutineScope, session: StateFl
     fun loadMore() {
         if (job?.isActive == true || nextPage == null) return
         val token = credential() ?: return
+        val stamp = generation
         job = scope.launch {
             _state.value = _state.value.copy(loading = true, error = null)
             try {
@@ -39,6 +44,7 @@ class GitHubRepositorySearch(private val scope: CoroutineScope, session: StateFl
                     val page = nextPage ?: break
                     val result = fetch(token, page)
                     token.ensureCurrent(); ensureActive()
+                    if (stamp != generation) break
                     result.items.forEach { directory[it.id] = it }
                     nextPage = result.nextPage
                     publish()
@@ -47,8 +53,8 @@ class GitHubRepositorySearch(private val scope: CoroutineScope, session: StateFl
                 } while (nextPage != null && _state.value.query.isNotBlank())
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                _state.value = _state.value.copy(error = if (e is GitHubFailure) e.message else "無法載入 repositories，請重試。")
-            } finally { _state.value = _state.value.copy(loading = false) }
+                if (stamp == generation) _state.value = _state.value.copy(error = if (e is GitHubFailure) e.message else "無法載入 repositories，請重試。")
+            } finally { if (stamp == generation) _state.value = _state.value.copy(loading = false) }
         }
     }
     private fun publish() {

@@ -23,7 +23,7 @@ android {
         versionCode appVersionCode
         versionName appVersionName
         def githubClientId = providers.gradleProperty("GITHUB_OAUTH_CLIENT_ID")
-                .orElse(providers.environmentVariable("GITHUB_OAUTH_CLIENT_ID")).getOrElse("")
+                .orElse(providers.environmentVariable("GITHUB_OAUTH_CLIENT_ID")).getOrElse("Ov23li7ka2rPsx0YetVc")
         if (!(githubClientId ==~ /[A-Za-z0-9._-]*/)) throw new GradleException("Invalid GitHub OAuth client ID")
         buildConfigField "String", "GITHUB_OAUTH_CLIENT_ID", '"' + githubClientId + '"'
 

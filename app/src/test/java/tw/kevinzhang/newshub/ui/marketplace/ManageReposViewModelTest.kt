@@ -37,6 +37,37 @@ import java.io.File
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ManageReposViewModelTest {
+    @Test fun `account selection uses default branch directory and still requires trust`() = runTest {
+        val repo = FakeRepoRepository()
+        val credentials = FakeCredentialStore()
+        val marketplace = FakeMarketplaceRepository(credentials)
+        val vm = viewModel(repo, marketplace, credentials)
+        vm.selectGitHubRepository(tw.kevinzhang.newshub.github.GitHubRepo(1, "org", "ext", "release/stable", true, null),
+            RepositoryAccessCredential.githubToken("token"))
+        vm.onRepositoryDirectoryChanged("套件/repo")
+        vm.inspectNow()
+        advanceUntilIdle()
+        assertEquals("release/stable", marketplace.inspectedDraft?.access?.revision)
+        assertEquals("套件/repo", marketplace.inspectedDraft?.access?.repositoryPath)
+        assertEquals(tw.kevinzhang.marketplace.RepositoryCredentialBinding.GITHUB_ACCOUNT, marketplace.inspectedDraft?.access?.credentialBinding)
+        assertTrue(repo.domains.value.isEmpty())
+        vm.onRepositoryRevisionChanged("next")
+        assertEquals(AddRepoValidationState.Idle, vm.validationState.value)
+    }
+
+    @Test fun `logout invalidates preview and cannot confirm existing account selection`() = runTest {
+        val repo = FakeRepoRepository()
+        val credentials = FakeCredentialStore()
+        val marketplace = FakeMarketplaceRepository(credentials)
+        val vm = viewModel(repo, marketplace, credentials)
+        val lifetime = kotlinx.coroutines.Job()
+        vm.selectGitHubRepository(tw.kevinzhang.newshub.github.GitHubRepo(1, "org", "ext", "main", true, null),
+            RepositoryAccessCredential.githubToken("token").leased(lifetime) {})
+        vm.inspectNow(); advanceUntilIdle()
+        lifetime.cancel()
+        vm.confirmTrust(); advanceUntilIdle()
+        assertTrue(repo.domains.value.isEmpty())
+    }
     private val dispatcher = UnconfinedTestDispatcher()
 
     @Before fun setUp() = Dispatchers.setMain(dispatcher)
