@@ -55,7 +55,8 @@ data class RepositoryAccessDraft(
  * A short-lived in-process credential. It intentionally has no value equality and its string
  * representation is always redacted so accidental exception interpolation cannot disclose it.
  */
-class RepositoryAccessCredential private constructor(internal val secret: String) {
+class RepositoryAccessCredential private constructor(internal val secret: String,
+    val lifetime: kotlinx.coroutines.Job? = null, private val validator: () -> Unit = {}) {
     init {
         require(secret.isNotBlank() && secret.length <= MAX_CREDENTIAL_LENGTH &&
             secret.none { it.code < 0x20 || it.code == 0x7f }
@@ -65,7 +66,11 @@ class RepositoryAccessCredential private constructor(internal val secret: String
     override fun toString(): String = "RepositoryAccessCredential(REDACTED)"
 
     /** Keep raw access scoped to the secure-store or HTTP-header operation. */
-    fun <T> withSecret(block: (String) -> T): T = block(secret)
+    fun ensureCurrent() { validator(); check(lifetime?.isActive != false) { "Repository login expired" } }
+    fun <T> withSecret(block: (String) -> T): T { ensureCurrent(); return block(secret) }
+
+    fun leased(lifetime: kotlinx.coroutines.Job, validator: () -> Unit): RepositoryAccessCredential =
+        RepositoryAccessCredential(secret, lifetime, validator)
 
     companion object {
         private const val MAX_CREDENTIAL_LENGTH = 4096
@@ -76,6 +81,7 @@ class RepositoryAccessCredential private constructor(internal val secret: String
 
 interface RepositoryCredentialProvider {
     suspend fun getCredential(domainId: String): RepositoryAccessCredential?
+    suspend fun getCredential(domain: RepositoryTrustDomain): RepositoryAccessCredential? = getCredential(domain.id)
 }
 
 interface RepositoryCredentialStore : RepositoryCredentialProvider {
