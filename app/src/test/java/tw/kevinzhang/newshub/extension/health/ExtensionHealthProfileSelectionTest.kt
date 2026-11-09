@@ -83,6 +83,56 @@ class ExtensionHealthProfileSelectionTest {
     }
 
     @Test
+    fun publicRecurringProfileNarrowsToRequestedSourcesAndRecomputesRequestBudget() {
+        val selection = ExtensionHealthProfileSelection.selectionFor(
+            ExtensionHealthProfileSelection.PUBLIC_RECURRING_PROFILE,
+            "tw.kevinzhang.mobile01, tw.kevinzhang.eyny,tw.kevinzhang.mobile01",
+        )
+        val narrowed = selection.select(officialProfile())
+
+        assertEquals(ExtensionHealthProfileSelection.PUBLIC_RECURRING_PROFILE, narrowed.profileId)
+        assertEquals(
+            setOf("tw.kevinzhang.mobile01", "tw.kevinzhang.eyny"),
+            narrowed.sources.mapTo(linkedSetOf()) { it.sourceId },
+        )
+        assertEquals(narrowed.sources.sumOf(SourceHealthProfile::maximumRequestCount), narrowed.maxRequests)
+        assertEquals(true, selection.allowAuthPending)
+        assertEquals(true, selection.useOperationLevelAuthentication)
+    }
+
+    @Test
+    fun blankSourceArgumentKeepsTheWholePublicProfile() {
+        listOf(null, "", "  ").forEach { argument ->
+            val selection = ExtensionHealthProfileSelection.selectionFor(
+                ExtensionHealthProfileSelection.PUBLIC_RECURRING_PROFILE,
+                argument,
+            )
+
+            assertEquals(13, selection.select(officialProfile()).sources.size)
+        }
+    }
+
+    @Test
+    fun sourceNarrowingRejectsUnknownMalformedAndNonPublicProfiles() {
+        val public = ExtensionHealthProfileSelection.PUBLIC_RECURRING_PROFILE
+        val full = officialProfile()
+
+        assertThrows(IllegalArgumentException::class.java) {
+            ExtensionHealthProfileSelection.selectionFor(public, "tw.kevinzhang.unknown").select(full)
+        }
+        listOf(",", " , ", "../secret", "tw.kevinzhang.eyny;rm", "a".repeat(129)).forEach { argument ->
+            assertThrows(IllegalArgumentException::class.java) {
+                ExtensionHealthProfileSelection.selectionFor(public, argument)
+            }
+        }
+        listOf(null, "official-live-v1", "candidate-eyny-v1", "zero-secret-hackernews-v1").forEach { profile ->
+            assertThrows(IllegalArgumentException::class.java) {
+                ExtensionHealthProfileSelection.selectionFor(profile, "tw.kevinzhang.eyny")
+            }
+        }
+    }
+
+    @Test
     fun publicRecurringProfileKeepsAllThirteenAndUsesOperationLevelAuthentication() {
         val full = officialProfile()
         val selection = ExtensionHealthProfileSelection.selectionFor(

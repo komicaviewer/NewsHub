@@ -44,6 +44,7 @@ class ExtensionLiveHealthInstrumentedTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val selection = ExtensionHealthProfileSelection.selectionFor(
             InstrumentationRegistry.getArguments().getString(PROFILE_ARGUMENT),
+            InstrumentationRegistry.getArguments().getString(SOURCE_IDS_ARGUMENT),
         )
         val profileJson = instrumentation.context.assets
             .open(selection.assetPath)
@@ -303,6 +304,7 @@ class ExtensionLiveHealthInstrumentedTest {
     private companion object {
         const val REPORT_DIRECTORY = "extension-health"
         const val PROFILE_ARGUMENT = "extensionHealthProfile"
+        const val SOURCE_IDS_ARGUMENT = "extensionHealthSourceIds"
         const val OUTPUT_ROOT_ARGUMENT = "extensionHealthOutputRoot"
         const val REPORT_NAME_ARGUMENT = "extensionHealthReportName"
         const val DEFAULT_REPORT_NAME = "health-report.json"
