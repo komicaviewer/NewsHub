@@ -127,5 +127,26 @@ object ExtensionHealthProfileSelection {
         argument ?: FULL_PROFILE
     ] ?: throw IllegalArgumentException("Unknown extension health profile")
 
+    private val SOURCE_ID_PATTERN = Regex("[A-Za-z0-9._-]{1,128}")
+    private const val MAX_NARROWED_SOURCES = 32
+
+    /**
+     * Narrows only the public recurring profile to a caller-chosen subset of its own Sources.
+     * The subset is validated against the profile at select time, so it can never add a Source,
+     * host, package or policy that the closed profile does not already contain.
+     */
+    fun selectionFor(argument: String?, sourceIdsArgument: String?): Selection {
+        val base = selectionFor(argument)
+        if (sourceIdsArgument.isNullOrBlank()) return base
+        require(base.profileId == PUBLIC_RECURRING_PROFILE) {
+            "Only the public recurring health profile can be narrowed"
+        }
+        val requested = sourceIdsArgument.split(',').map(String::trim)
+        require(requested.all(SOURCE_ID_PATTERN::matches)) { "Malformed health Source id" }
+        val unique = requested.toCollection(linkedSetOf())
+        require(unique.size <= MAX_NARROWED_SOURCES) { "Too many health Source ids" }
+        return base.copy(sourceIds = unique)
+    }
+
     fun assetFor(argument: String?): String = selectionFor(argument).assetPath
 }
