@@ -91,7 +91,7 @@ internal fun canonicalRepositoryBaseUrl(value: String): HttpUrl {
 
 object RepositoryTrustDomains {
     const val OFFICIAL_ID = BUILTIN_REPOSITORY_DOMAIN_ID
-    const val OFFICIAL_BASE_URL = "https://raw.githubusercontent.com/komicaviewer/extensions/main"
+    val OFFICIAL_BASE_URL: String = BuildConfig.OFFICIAL_TRUST_BASE_URL
 
     fun official(rootBytes: ByteArray): RepositoryTrustDomain {
         val inspection = inspectTrustedRoot(rootBytes)
