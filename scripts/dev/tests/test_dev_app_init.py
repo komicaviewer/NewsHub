@@ -29,5 +29,18 @@ class DevAppInitScriptTest(unittest.TestCase):
         self.assertNotIn("src/main/assets/extension-root.json", SCRIPT)
 
 
+    def test_app_debug_resources_include_dev_badge(self):
+        self.assertIn("src/dev/res", SCRIPT)
+
+    def test_dev_resources_rename_app_and_badge_icon(self):
+        res = Path(__file__).resolve().parents[3] / "app" / "src" / "dev" / "res"
+        strings = (res / "values" / "strings.xml").read_text()
+        self.assertIn('<string name="app_name">NewsHub Dev</string>', strings)
+        for name in ("ic_launcher.xml", "ic_launcher_round.xml"):
+            icon = (res / "mipmap-anydpi-v26" / name).read_text()
+            self.assertIn("@drawable/ic_launcher_foreground_dev", icon)
+            self.assertIn("@drawable/ic_launcher_monochrome_dev", icon)
+
+
 if __name__ == "__main__":
     unittest.main()
