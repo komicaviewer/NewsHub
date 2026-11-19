@@ -4,7 +4,7 @@
     <!--
         Android 11+ package visibility does not expose signature-protected extension
         services to the debug health harness through the intent query alone. Keep the
-        live-test surface closed to the seven official extension packages instead of
+        live-test surface closed to the seven official extension packages and their .debug dev variants instead of
         granting QUERY_ALL_PACKAGES or widening the production manifest.
     -->
     <queries>
@@ -15,6 +15,13 @@
         <package android:name="tw.kevinzhang.newshub.extension.komica2" />
         <package android:name="tw.kevinzhang.newshub.extension.mobile01" />
         <package android:name="tw.kevinzhang.newshub.extension.ptt" />
+        <package android:name="tw.kevinzhang.newshub.extension.eyny.debug" />
+        <package android:name="tw.kevinzhang.newshub.extension.gamer.debug" />
+        <package android:name="tw.kevinzhang.newshub.extension.hackernews.debug" />
+        <package android:name="tw.kevinzhang.newshub.extension.komica.debug" />
+        <package android:name="tw.kevinzhang.newshub.extension.komica2.debug" />
+        <package android:name="tw.kevinzhang.newshub.extension.mobile01.debug" />
+        <package android:name="tw.kevinzhang.newshub.extension.ptt.debug" />
     </queries>
 
 </manifest>

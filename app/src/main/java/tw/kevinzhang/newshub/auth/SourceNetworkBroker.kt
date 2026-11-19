@@ -51,6 +51,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import tw.kevinzhang.newshub.BuildConfig
 import tw.kevinzhang.newshub.auth.oauth.OAuthCredentialProvider
 import tw.kevinzhang.newshub.auth.oauth.OAuth1CredentialProvider
 
@@ -420,12 +421,13 @@ internal fun executeNamedCookieOperation(
     operation: Int,
     payload: String,
     now: Long = System.currentTimeMillis(),
+    packageSuffix: String = BuildConfig.EXTENSION_PACKAGE_SUFFIX,
 ): String = when (operation) {
     ExtensionProtocol.COOKIE_OP_PTT_ADULT_CONSENT_STATUS -> {
         require(NamedHostCapabilities.PTT_ADULT_CONSENT_STATUS in policy.namedCapabilities) {
             "PTT consent capability is not authorized"
         }
-        require(identity.packageName == PTT_PACKAGE && identity.sourceId == PTT_SOURCE) {
+        require(identity.packageName == PTT_PACKAGE + packageSuffix && identity.sourceId == PTT_SOURCE) {
             "PTT consent capability belongs to a different Source"
         }
         require("www.ptt.cc" in policy.authExactHosts) {
@@ -446,7 +448,7 @@ internal fun executeNamedCookieOperation(
         require(NamedHostCapabilities.EYNY_CHALLENGE_PROOF in policy.namedCapabilities) {
             "EYNY challenge capability is not authorized"
         }
-        require(identity.packageName == EYNY_PACKAGE && identity.sourceId == EYNY_SOURCE) {
+        require(identity.packageName == EYNY_PACKAGE + packageSuffix && identity.sourceId == EYNY_SOURCE) {
             "EYNY challenge capability belongs to a different Source"
         }
         val proof = ExtensionWireJson.decode<EynyChallengeProof>(payload)

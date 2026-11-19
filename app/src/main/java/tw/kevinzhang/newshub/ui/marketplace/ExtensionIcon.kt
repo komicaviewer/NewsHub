@@ -2,13 +2,18 @@ package tw.kevinzhang.newshub.ui.marketplace
 
 import androidx.annotation.DrawableRes
 import tw.kevinzhang.marketplace.RepositoryTrustDomains
+import tw.kevinzhang.newshub.BuildConfig
 import tw.kevinzhang.newshub.R
 
 /** Local artwork for known packages from the pinned official repository. */
 @DrawableRes
-internal fun bundledExtensionIcon(packageName: String, repositoryDomainId: String): Int? {
+internal fun bundledExtensionIcon(
+    packageName: String,
+    repositoryDomainId: String,
+    packageSuffix: String = BuildConfig.EXTENSION_PACKAGE_SUFFIX,
+): Int? {
     if (repositoryDomainId != RepositoryTrustDomains.OFFICIAL_ID) return null
-    return when (packageName) {
+    return when (packageName.removeSuffix(packageSuffix)) {
         "tw.kevinzhang.newshub.extension.eyny" -> R.drawable.extension_icon_eyny
         "tw.kevinzhang.newshub.extension.gamer" -> R.drawable.extension_icon_gamer
         "tw.kevinzhang.newshub.extension.hackernews" -> R.drawable.extension_icon_hackernews

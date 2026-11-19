@@ -26,6 +26,13 @@ class ExtensionIconTest {
     }
 
     @Test
+    fun `dev suffixed packages resolve to the same icon when the host suffix matches`() {
+        assertEquals(R.drawable.extension_icon_komica2, bundledExtensionIcon(
+            "tw.kevinzhang.newshub.extension.komica2.debug", RepositoryTrustDomains.OFFICIAL_ID, ".debug",
+        ))
+    }
+
+    @Test
     fun `a custom repository cannot inherit official branding by reusing a package name`() {
         assertNull(bundledExtensionIcon(
             "tw.kevinzhang.newshub.extension.komica", "3b0dc4f2-76ba-4ea4-a4cd-9c06bf149a74",
