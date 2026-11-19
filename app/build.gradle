@@ -92,6 +92,22 @@ android {
     namespace 'tw.kevinzhang.newshub'
 }
 
+// Marketplace guards its own project properties; the suffix is also resolved here (app/gradle.properties
+// is visible only to this project), so the effective app value must be checked separately.
+tasks.register('verifyAppReleaseEnvironment') {
+    def packageSuffix = (findProperty("newshubExtensionPackageSuffix") ?: "").toString()
+    doLast {
+        if (packageSuffix != "") {
+            throw new GradleException("Release blocked: dev extension package suffix is forbidden")
+        }
+    }
+}
+tasks.configureEach { task ->
+    if (task.name == 'preReleaseBuild') {
+        task.dependsOn tasks.named('verifyAppReleaseEnvironment')
+    }
+}
+
 dependencies {
     implementation project(':extension-api')
     implementation project(':extension-loader')
