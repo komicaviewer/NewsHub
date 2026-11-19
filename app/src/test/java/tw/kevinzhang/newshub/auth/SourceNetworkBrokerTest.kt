@@ -2,6 +2,7 @@ package tw.kevinzhang.newshub.auth
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -355,6 +356,40 @@ class SourceNetworkBrokerTest {
             payload = "{}",
         )
         assertFalse(ExtensionWireJson.decode<Boolean>(result))
+    }
+
+    @Test fun `PTT consent accepts the dev package only with the matching suffix`() {
+        val jar = RecordingCookieJar(
+            listOf(
+                Cookie.Builder().name("over18").value("1")
+                    .hostOnlyDomain("www.ptt.cc").path("/").secure().build(),
+            ),
+        )
+        val policy = SourceNetworkPolicy(
+            exactHosts = setOf("www.ptt.cc"),
+            operations = emptyMap(),
+            namedCapabilities = setOf(NamedHostCapabilities.PTT_ADULT_CONSENT_STATUS),
+        )
+        val devIdentity = SourceIdentity("$PTT_PACKAGE_FOR_TEST.debug", "trusted-signer", PTT_SOURCE_FOR_TEST)
+        val result = executeNamedCookieOperation(
+            identity = devIdentity,
+            policy = policy,
+            cookieJar = jar,
+            operation = ExtensionProtocol.COOKIE_OP_PTT_ADULT_CONSENT_STATUS,
+            payload = "{}",
+            packageSuffix = ".debug",
+        )
+        assertTrue(ExtensionWireJson.decode<Boolean>(result))
+        assertThrows(IllegalArgumentException::class.java) {
+            executeNamedCookieOperation(
+                identity = devIdentity,
+                policy = policy,
+                cookieJar = jar,
+                operation = ExtensionProtocol.COOKIE_OP_PTT_ADULT_CONSENT_STATUS,
+                payload = "{}",
+                packageSuffix = "",
+            )
+        }
     }
 
     @Test fun `external link validation is exact-host HTTPS only`() {
