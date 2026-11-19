@@ -1,0 +1,14 @@
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+
+// Release must never ship, or share root keys with, the dev trust root.
+ext.checkReleaseRootIsNotDev = { File prodRoot, File devRoot ->
+    if (!devRoot.isFile() || !prodRoot.isFile()) return
+    def sha = { File f -> MessageDigest.getInstance('SHA-256').digest(f.bytes).encodeHex().toString() }
+    def rootKeyIds = { File f ->
+        (new JsonSlurper().parse(f).signed.roles.root.keyids ?: []) as Set
+    }
+    if (sha(prodRoot) == sha(devRoot) || !(rootKeyIds(prodRoot) intersect rootKeyIds(devRoot)).isEmpty()) {
+        throw new GradleException('Release blocked: production TUF root matches or shares keys with the dev root')
+    }
+}

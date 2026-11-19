@@ -35,7 +35,13 @@ dependencies {
     testImplementation libs.junit4
 }
 
+apply from: rootProject.file('gradle/release-root-guard.gradle')
+
 def productionTrustRoot = layout.projectDirectory.file('src/main/assets/extension-root.json')
+def devTrustRoot = layout.projectDirectory.file('src/dev/assets/extension-root.json')
+tasks.register('verifyReleaseRootIsNotDev') {
+    doLast { checkReleaseRootIsNotDev(productionTrustRoot.asFile, devTrustRoot.asFile) }
+}
 tasks.register('verifyReleaseEnvironment') {
     def trustBaseUrl = (findProperty('newshubTrustBaseUrl') ?: prodTrustBaseUrl).toString()
     def packageSuffix = (findProperty('newshubExtensionPackageSuffix') ?: '').toString()
@@ -53,7 +59,7 @@ tasks.register('verifyReleaseTrustRoot') {
     // Run the JVM verifier against the exact production root, rather than only checking that a
     // non-empty file exists. This catches canonicalization or signature regressions before release.
     // Reject dev environment values first; the debug tests assert prod defaults and would mask this error.
-    dependsOn 'verifyReleaseEnvironment', 'testDebugUnitTest'
+    dependsOn 'verifyReleaseEnvironment', 'verifyReleaseRootIsNotDev', 'testDebugUnitTest'
     // The absence of the production root is an intentional release-blocking
     // state. Do not model it as a Gradle input: Gradle validates missing input
     // files before doLast and would hide the actionable security error below.
@@ -68,7 +74,7 @@ tasks.register('verifyReleaseTrustRoot') {
     }
 }
 
-tasks.matching { it.name == 'testDebugUnitTest' }.configureEach { mustRunAfter 'verifyReleaseEnvironment' }
+tasks.matching { it.name == 'testDebugUnitTest' }.configureEach { mustRunAfter 'verifyReleaseEnvironment', 'verifyReleaseRootIsNotDev' }
 
 tasks.configureEach { task ->
     if (task.name == 'preReleaseBuild') {
