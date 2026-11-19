@@ -61,6 +61,66 @@ class RepositoryTrustDomainStoreTest {
         assertArrayEquals(bytes("targets-1"), recovered.loadTargets())
     }
 
+    @Test
+    fun `changing bootstrap root discards persisted generations`() {
+        val root = Files.createTempDirectory("repository-root-change").toFile()
+        val domain = "44444444-4444-4444-8444-444444444444"
+        val store = RepositoryTrustDomainStore(root, domain)
+        store.saveBootstrapRoot(bytes("root-a"))
+        store.save(bytes("root-a"), bytes("timestamp-a"), bytes("snapshot-a"), bytes("targets-a"), versions(7))
+
+        store.saveBootstrapRoot(bytes("root-b"))
+
+        val reopened = RepositoryTrustDomainStore(root, domain)
+        assertNull(reopened.loadRoot())
+        assertNull(reopened.loadTargets())
+        assertEquals(RepositoryVersions(), reopened.loadVersions())
+        assertArrayEquals(bytes("root-b"), reopened.loadBootstrapRoot())
+    }
+
+    @Test
+    fun `changing bootstrap root leaves other domains untouched`() {
+        val root = Files.createTempDirectory("repository-root-change-isolated").toFile()
+        val official = RepositoryTrustDomainStore(root, "44444444-4444-4444-8444-444444444444")
+        val other = RepositoryTrustDomainStore(root, "55555555-5555-4555-8555-555555555555")
+        official.saveBootstrapRoot(bytes("root-a"))
+        other.saveBootstrapRoot(bytes("root-x"))
+        other.save(bytes("root-x"), bytes("timestamp-x"), bytes("snapshot-x"), bytes("targets-x"), versions(3))
+
+        official.saveBootstrapRoot(bytes("root-b"))
+
+        val reopened = RepositoryTrustDomainStore(root, "55555555-5555-4555-8555-555555555555")
+        assertArrayEquals(bytes("targets-x"), reopened.loadTargets())
+        assertArrayEquals(bytes("root-x"), reopened.loadBootstrapRoot())
+    }
+
+    @Test
+    fun `same bootstrap root keeps generations`() {
+        val root = Files.createTempDirectory("repository-root-same").toFile()
+        val domain = "44444444-4444-4444-8444-444444444444"
+        val store = RepositoryTrustDomainStore(root, domain)
+        store.saveBootstrapRoot(bytes("root-a"))
+        store.save(bytes("root-a"), bytes("timestamp-a"), bytes("snapshot-a"), bytes("targets-a"), versions(7))
+
+        store.saveBootstrapRoot(bytes("root-a"))
+
+        val reopened = RepositoryTrustDomainStore(root, domain)
+        assertArrayEquals(bytes("targets-a"), reopened.loadTargets())
+        assertEquals(7L, reopened.loadVersions().root)
+    }
+
+    @Test
+    fun `first bootstrap root keeps pre-existing generations`() {
+        val root = Files.createTempDirectory("repository-root-first").toFile()
+        val domain = "44444444-4444-4444-8444-444444444444"
+        val store = RepositoryTrustDomainStore(root, domain)
+        store.save(bytes("root-a"), bytes("timestamp-a"), bytes("snapshot-a"), bytes("targets-a"), versions(7))
+
+        store.saveBootstrapRoot(bytes("root-a"))
+
+        assertArrayEquals(bytes("targets-a"), RepositoryTrustDomainStore(root, domain).loadTargets())
+    }
+
     private fun versions(version: Long) = RepositoryVersions(
         root = version,
         timestamp = version,
