@@ -261,7 +261,7 @@ internal class TrustedRepositoryClient(
         }
         destination.writeBytes(bytes)
         try {
-            verifyArchiveIdentity(context.packageManager, destination, info)
+            verifyArchiveIdentity(context.packageManager, context.packageName, destination, info)
         } catch (error: Exception) {
             destination.delete()
             throw error
@@ -737,6 +737,7 @@ internal class TrustedRepositoryClient(
 
     private fun verifyArchiveIdentity(
         packageManager: PackageManager,
+        hostPackage: String,
         archive: File,
         info: ExtensionInfo,
     ) {
@@ -780,7 +781,7 @@ internal class TrustedRepositoryClient(
             val expected = expectedServices.getValue(service.name)
             val metadata = service.metaData
                 ?: throw TrustedMetadataException("Source service has no metadata")
-            if (!service.exported || service.permission != ExtensionProtocol.BIND_PERMISSION ||
+            if (!service.exported || service.permission != ExtensionProtocol.bindPermission(hostPackage) ||
                 service.flags and ServiceInfo.FLAG_ISOLATED_PROCESS == 0 ||
                 service.flags and ServiceInfo.FLAG_EXTERNAL_SERVICE != 0 ||
                 !service.processName.startsWith("${info.id}:") ||

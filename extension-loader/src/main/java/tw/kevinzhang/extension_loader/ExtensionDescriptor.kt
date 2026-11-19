@@ -16,7 +16,7 @@ data class ExtensionDescriptor(
 )
 
 internal object ExtensionDescriptorValidator {
-    fun fromServiceInfo(service: ServiceInfo): ExtensionDescriptor {
+    fun fromServiceInfo(service: ServiceInfo, hostPackage: String): ExtensionDescriptor {
         val metadata = requireNotNull(service.metaData) { "Missing Source service metadata" }
         require(metadata.getInt(ExtensionProtocol.META_PROTOCOL, -1) == ExtensionProtocol.VERSION) {
             "Unsupported extension protocol"
@@ -27,8 +27,9 @@ internal object ExtensionDescriptorValidator {
                 !metadata.containsKey(ExtensionProtocol.META_LOGIN_HOSTS),
         ) { "Protocol v2 forbids legacy login metadata; authentication is declared at runtime" }
         require(service.exported) { "Source service must be exported" }
-        require(service.permission == ExtensionProtocol.BIND_PERMISSION) {
-            "Source service must require ${ExtensionProtocol.BIND_PERMISSION}"
+        val bindPermission = ExtensionProtocol.bindPermission(hostPackage)
+        require(service.permission == bindPermission) {
+            "Source service must require $bindPermission"
         }
         require(service.flags and ServiceInfo.FLAG_ISOLATED_PROCESS != 0) {
             "Source service must use isolatedProcess"

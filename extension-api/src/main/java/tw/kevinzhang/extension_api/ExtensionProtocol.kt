@@ -53,7 +53,14 @@ import kotlin.coroutines.resumeWithException
 object ExtensionProtocol {
     const val VERSION = 2
     const val SERVICE_ACTION = "tw.kevinzhang.newshub.extension.SERVICE"
-    const val BIND_PERMISSION = "tw.kevinzhang.newshub.permission.BIND_EXTENSION"
+    private const val PROD_HOST_PACKAGE = "tw.kevinzhang.newshub"
+    private const val BIND_PERMISSION_SUFFIX = ".permission.BIND_EXTENSION"
+
+    /** Prod Host's bind permission; other Hosts must use [bindPermission] with their own package. */
+    const val BIND_PERMISSION = "$PROD_HOST_PACKAGE$BIND_PERMISSION_SUFFIX"
+
+    /** Signature permission owned by [hostPackage], so coexisting Hosts never share one. */
+    fun bindPermission(hostPackage: String): String = "$hostPackage$BIND_PERMISSION_SUFFIX"
 
     const val META_PROTOCOL = "newshub.extension.protocol"
     const val META_SOURCE_ID = "newshub.extension.source_id"
