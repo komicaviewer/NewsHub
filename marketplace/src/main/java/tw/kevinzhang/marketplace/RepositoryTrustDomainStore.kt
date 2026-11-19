@@ -43,7 +43,12 @@ internal class RepositoryTrustDomainStore(
         ?.let { bootstrapRootFile.openRead().use { input -> input.readBytes() } }
 
     fun saveBootstrapRoot(root: ByteArray) {
-        if (loadBootstrapRoot()?.contentEquals(root) == true) return
+        val existing = loadBootstrapRoot()
+        if (existing?.contentEquals(root) == true) return
+        // Generations were verified against the previous bootstrap root; a different embedded root
+        // would reject them as a rollback, so re-bootstrap from scratch. CURRENT goes first so an
+        // interruption never exposes a generation without its blobs.
+        if (existing != null) discardGenerations()
         var output: FileOutputStream? = null
         try {
             output = bootstrapRootFile.startWrite()
@@ -54,6 +59,11 @@ internal class RepositoryTrustDomainStore(
             output?.let(bootstrapRootFile::failWrite)
             throw error
         }
+    }
+
+    private fun discardGenerations() {
+        currentFile.delete()
+        blobDirectory.listFiles()?.forEach(File::delete)
     }
 
     /** Used only to roll back an onboarding attempt that never became a persisted domain. */
