@@ -18,7 +18,7 @@ import tw.kevinzhang.extension_api.sha256
 class ExtensionDescriptorTest {
     @Test
     fun `accepts one isolated service with current metadata`() {
-        val descriptor = ExtensionDescriptorValidator.fromServiceInfo(validService())
+        val descriptor = ExtensionDescriptorValidator.fromServiceInfo(validService(), PROD_HOST)
         assertEquals("tw.kevinzhang.newshub.extension.hackernews", descriptor.packageName)
         assertEquals("tw.kevinzhang.newshub.extension.hackernews", descriptor.sourceId)
     }
@@ -63,7 +63,7 @@ class ExtensionDescriptorTest {
 
     @Test
     fun `signed service metadata must match every runtime descriptor field`() {
-        val descriptor = ExtensionDescriptorValidator.fromServiceInfo(validService())
+        val descriptor = ExtensionDescriptorValidator.fromServiceInfo(validService(), PROD_HOST)
         val expected = ExpectedSourceService(
             serviceClassName = descriptor.serviceClassName,
             name = descriptor.name,
@@ -111,12 +111,31 @@ class ExtensionDescriptorTest {
         }
     }
 
-    private fun validService() = ServiceInfo().apply {
+    @Test
+    fun `service with dev permission is accepted by dev host`() {
+        val descriptor = ExtensionDescriptorValidator.fromServiceInfo(
+            validService(ExtensionProtocol.bindPermission(DEV_HOST)),
+            DEV_HOST,
+        )
+        assertEquals("tw.kevinzhang.newshub.extension.hackernews", descriptor.sourceId)
+    }
+
+    @Test
+    fun `service with prod permission is rejected by dev host`() {
+        assertInvalid(validService(ExtensionProtocol.bindPermission(PROD_HOST)), DEV_HOST)
+    }
+
+    @Test
+    fun `service with dev permission is rejected by prod host`() {
+        assertInvalid(validService(ExtensionProtocol.bindPermission(DEV_HOST)), PROD_HOST)
+    }
+
+    private fun validService(bindPermission: String = ExtensionProtocol.BIND_PERMISSION) = ServiceInfo().apply {
         packageName = "tw.kevinzhang.newshub.extension.hackernews"
         name = "$packageName.HackerNewsService"
         processName = "$packageName:hackernews"
         exported = true
-        permission = ExtensionProtocol.BIND_PERMISSION
+        permission = bindPermission
         flags = ServiceInfo.FLAG_ISOLATED_PROCESS
         metaData = Bundle().apply {
             putInt(ExtensionProtocol.META_PROTOCOL, ExtensionProtocol.VERSION)
@@ -127,9 +146,9 @@ class ExtensionDescriptorTest {
         }
     }
 
-    private fun assertInvalid(service: ServiceInfo) {
+    private fun assertInvalid(service: ServiceInfo, hostPackage: String = PROD_HOST) {
         try {
-            ExtensionDescriptorValidator.fromServiceInfo(service)
+            ExtensionDescriptorValidator.fromServiceInfo(service, hostPackage)
             fail("Expected invalid Source service")
         } catch (_: IllegalArgumentException) {
             // expected
@@ -143,5 +162,10 @@ class ExtensionDescriptorTest {
         } catch (_: IllegalArgumentException) {
             // expected
         }
+    }
+
+    private companion object {
+        const val PROD_HOST = "tw.kevinzhang.newshub"
+        const val DEV_HOST = "tw.kevinzhang.newshub.debug"
     }
 }

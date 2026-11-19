@@ -183,7 +183,7 @@ class ExtensionManager @Inject constructor(
                 }
                 val info = packageInfo(packageName)
                 val artifactAuthorization = verifyInstalledPackageArtifact(info.toInstalledArtifact(), signingPolicy)
-                val descriptors = services.map(ExtensionDescriptorValidator::fromServiceInfo)
+                val descriptors = services.map { ExtensionDescriptorValidator.fromServiceInfo(it, context.packageName) }
                 verifyExpectedServiceSet(descriptors, signingPolicy)
                 val signingIdentity = verifiedSigningIdentity(packageName, info, signingPolicy)
                 val packageMarker = info.toInstalledMarker(signingIdentity)
@@ -386,7 +386,7 @@ class ExtensionManager @Inject constructor(
     }
 
     private fun verifyHostBindPermission() {
-        val permission = context.packageManager.getPermissionInfo(ExtensionProtocol.BIND_PERMISSION, 0)
+        val permission = context.packageManager.getPermissionInfo(ExtensionProtocol.bindPermission(context.packageName), 0)
         require(permission.packageName == context.packageName) { "Host does not own bind permission" }
         require(permission.protectionLevel and PermissionInfo.PROTECTION_MASK_BASE == PermissionInfo.PROTECTION_SIGNATURE) {
             "Extension bind permission must be signature protected"
