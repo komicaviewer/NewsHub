@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed icons render alpha only, so the letters are cut out of the band. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M18,64H90V78H18Z M38,66H43Q47,66 47,71Q47,76 43,76H38Z M40,68V74H43Q45,74 45,71Q45,68 43,68Z M50,66H57V68H52V70H56V72H52V74H57V76H50Z M60,66H62.2L64,72.5L65.8,66H68L65,76H63Z" />
+</vector>

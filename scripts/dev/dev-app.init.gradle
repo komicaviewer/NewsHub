@@ -12,6 +12,8 @@ gradle.beforeProject { project ->
 allprojects {
     plugins.withId('com.android.application') {
         android.buildTypes.debug.applicationIdSuffix = '.debug'
+        // Dev App label and launcher badge, so it cannot be confused with the production App.
+        android.sourceSets.debug.res.srcDirs += layout.projectDirectory.dir('src/dev/res').asFile
     }
     if (project.path == ':marketplace') {
         plugins.withId('com.android.library') {
