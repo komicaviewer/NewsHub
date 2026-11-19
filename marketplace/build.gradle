@@ -11,7 +11,7 @@ android {
     compileSdk 34
     defaultConfig {
         minSdk 29
-        def trustBaseUrl = providers.gradleProperty('newshubTrustBaseUrl').getOrElse(prodTrustBaseUrl)
+        def trustBaseUrl = (findProperty('newshubTrustBaseUrl') ?: prodTrustBaseUrl).toString()
         if (!(trustBaseUrl ==~ /https:\/\/[A-Za-z0-9._~\/-]+/)) throw new GradleException('Invalid newshubTrustBaseUrl')
         buildConfigField 'String', 'OFFICIAL_TRUST_BASE_URL', '"' + trustBaseUrl + '"'
     }
@@ -37,8 +37,8 @@ dependencies {
 
 def productionTrustRoot = layout.projectDirectory.file('src/main/assets/extension-root.json')
 tasks.register('verifyReleaseEnvironment') {
-    def trustBaseUrl = providers.gradleProperty('newshubTrustBaseUrl').getOrElse(prodTrustBaseUrl)
-    def packageSuffix = providers.gradleProperty('newshubExtensionPackageSuffix').getOrElse('')
+    def trustBaseUrl = (findProperty('newshubTrustBaseUrl') ?: prodTrustBaseUrl).toString()
+    def packageSuffix = (findProperty('newshubExtensionPackageSuffix') ?: '').toString()
     def releaseAssetDirs = android.sourceSets.getByName('release').assets.srcDirs
     def devAssets = layout.projectDirectory.dir('src/dev/assets').asFile.canonicalFile
     doLast {

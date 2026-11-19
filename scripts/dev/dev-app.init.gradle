@@ -1,17 +1,26 @@
-// Build the existing device dev App, preserving its package and repository trust anchors.
+// Build the device dev App against the dev trust root and the dev branch of the extension repository.
+def devTrustBaseUrl = 'https://raw.githubusercontent.com/komicaviewer/extensions/dev'
+def devExtensionPackageSuffix = '.debug'
+
+// Project properties are snapshotted before init scripts run, so the dev values are exposed as
+// project extra properties; the build scripts resolve them through findProperty (same as -P).
+gradle.beforeProject { project ->
+    project.ext.newshubTrustBaseUrl = devTrustBaseUrl
+    project.ext.newshubExtensionPackageSuffix = devExtensionPackageSuffix
+}
+
 allprojects {
     plugins.withId('com.android.application') {
         android.buildTypes.debug.applicationIdSuffix = '.debug'
     }
     if (project.path == ':marketplace') {
         plugins.withId('com.android.library') {
-            def trustedRoot = layout.projectDirectory.file('src/main/assets/extension-root.json').asFile
-            if (!trustedRoot.isFile()) {
-                throw new GradleException('Dev App build requires the existing trusted repository root')
+            def devRoot = layout.projectDirectory.file('src/dev/assets/extension-root.json').asFile
+            if (!devRoot.isFile()) {
+                throw new GradleException('Dev App build requires marketplace/src/dev/assets/extension-root.json')
             }
-            // src/debug/assets contains synthetic keys for isolated tests. The installed dev App
-            // uses the same main root as its previous APK; never replace that trust with a fixture.
-            android.sourceSets.debug.assets.setSrcDirs([])
+            // Debug builds use the dev root instead of src/debug fixtures or the production root.
+            android.sourceSets.debug.assets.setSrcDirs([layout.projectDirectory.dir('src/dev/assets').asFile])
         }
     }
 }

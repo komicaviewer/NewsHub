@@ -27,7 +27,7 @@ android {
         if (!(githubClientId ==~ /[A-Za-z0-9._-]*/)) throw new GradleException("Invalid GitHub OAuth client ID")
         buildConfigField "String", "GITHUB_OAUTH_CLIENT_ID", '"' + githubClientId + '"'
 
-        def extensionPackageSuffix = providers.gradleProperty("newshubExtensionPackageSuffix").getOrElse("")
+        def extensionPackageSuffix = (findProperty("newshubExtensionPackageSuffix") ?: "").toString()
         if (!(extensionPackageSuffix ==~ /(\.[a-z][a-z0-9_]*)*/)) throw new GradleException("Invalid newshubExtensionPackageSuffix")
         buildConfigField "String", "EXTENSION_PACKAGE_SUFFIX", '"' + extensionPackageSuffix + '"'
 
